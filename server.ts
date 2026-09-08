@@ -869,10 +869,10 @@ async function startServer() {
   // ADMIN AUTHENTICATION & LOGIN GATEWAY
   // ----------------------------------------------------
   const ADMIN_CREDENTIALS = {
-    userId: 'Nazhalijing',
-    password: 'nazha@9589',
+    userId: process.env.ADMIN_USER_ID || '',
+    password: process.env.ADMIN_PASSWORD || '',
   };
-  const ADMIN_SESSION_SECRET = 'admin_session_valid_nazhalijing_9589';
+  const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || '';
 
   function isAuthorizedAdminRequest(req: Request): boolean {
     const requesterEmail = (
@@ -885,9 +885,10 @@ async function startServer() {
     const adminToken = (req.headers['x-admin-token'] as string) || '';
 
     if (
-      adminToken === ADMIN_SESSION_SECRET ||
-      authHeader === `Bearer ${ADMIN_SESSION_SECRET}` ||
-      authHeader === ADMIN_SESSION_SECRET
+      ADMIN_SESSION_SECRET &&
+      (adminToken === ADMIN_SESSION_SECRET ||
+        authHeader === `Bearer ${ADMIN_SESSION_SECRET}` ||
+        authHeader === ADMIN_SESSION_SECRET)
     ) {
       return true;
     }
@@ -901,6 +902,13 @@ async function startServer() {
       const { userId, username, password } = req.body || {};
       const givenId = String(userId || username || '').trim();
       const givenPassword = String(password || '').trim();
+
+      if (!ADMIN_CREDENTIALS.userId || !ADMIN_CREDENTIALS.password || !ADMIN_SESSION_SECRET) {
+        return res.status(503).json({
+          success: false,
+          error: 'Legacy admin credential login is not configured. Use Firebase admin access or configure server-only ADMIN_* variables.',
+        });
+      }
 
       if (
         givenId.toLowerCase() === ADMIN_CREDENTIALS.userId.toLowerCase() &&
@@ -1713,14 +1721,16 @@ async function startServer() {
 
     const acceptedTokens = [
       metaConfigStore.webhook_verify_token,
-      'autoreply_meta_verify_secret_token_2026',
       process.env.WEBHOOK_VERIFY_TOKEN,
       process.env.VERIFY_TOKEN,
     ].filter(Boolean);
 
-    const isTokenValid = Boolean(
-      token && (acceptedTokens.includes(String(token)) || acceptedTokens.length === 0)
-    );
+    if (acceptedTokens.length === 0) {
+      console.error('[WEBHOOK_VERIFICATION_CONFIG_ERROR] WEBHOOK_VERIFY_TOKEN is not configured.');
+      return res.status(503).send('Webhook verification is not configured');
+    }
+
+    const isTokenValid = Boolean(token && acceptedTokens.includes(String(token)));
 
     if (mode === 'subscribe' && isTokenValid) {
       console.log('WEBHOOK_VERIFIED successfully! Challenge:', challenge);
