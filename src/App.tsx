@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { auth, onAuthStateChanged } from './lib/firebase';
 import { Sidebar } from './components/Sidebar';
 import { PlanBanner } from './components/Common/PlanBanner';
 import { PlanRenewModal } from './components/Common/PlanRenewModal';
@@ -44,11 +45,12 @@ const MainContent: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const { firebaseUser, isGuestMode, authLoading } = useApp();
+  const { firebaseUser, authLoading } = useApp();
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
-  // If Firebase is still verifying the initial session and guest mode isn't already set, show brief splash
-  if (authLoading && !isGuestMode) {
+  // Production auth gate: never allow guest/fast-pass state to unlock user data.
+  // Only a real Firebase authenticated user may enter the dashboard.
+  if (authLoading) {
     return (
       <ErrorBoundary>
         <IntroSplash onComplete={() => {}} />
@@ -56,10 +58,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  // If user is not signed in and not in guest mode, render the Login Page
-  const isAuthenticated = Boolean(firebaseUser || isGuestMode);
-
-  if (!isAuthenticated) {
+  if (!firebaseUser) {
     return (
       <ErrorBoundary>
         <LoginPage onSuccess={() => setShowSplash(false)} />
@@ -78,12 +77,42 @@ const AppShell: React.FC = () => {
   );
 };
 
-export default function App() {
+const AuthIsolatedApp: React.FC = () => {
+  const [providerKey, setProviderKey] = useState<string>('auth-boot');
+
+  useEffect(() => {
+    if (!auth) {
+      setProviderKey('auth-unavailable');
+      return;
+    }
+
+    // Remount the complete application provider whenever the Firebase identity changes.
+    // This guarantees that Instagram account state, inbox, contacts, automations and
+    // other in-memory user data from Gmail A can never survive into Gmail B's session.
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      const nextKey = currentUser ? `firebase-user:${currentUser.uid}` : 'firebase-signed-out';
+
+      // Remove only deprecated global storage. User-specific keys remain isolated by UID.
+      try {
+        localStorage.removeItem('autoreply_connected_instagram_account');
+        localStorage.removeItem('autoreply_guest_mode');
+      } catch {}
+
+      setProviderKey(nextKey);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   return (
     <ErrorBoundary>
-      <AppProvider>
+      <AppProvider key={providerKey}>
         <AppShell />
       </AppProvider>
     </ErrorBoundary>
   );
+};
+
+export default function App() {
+  return <AuthIsolatedApp />;
 }
