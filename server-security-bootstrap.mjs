@@ -86,7 +86,10 @@ async function resolveAuthenticatedUser(req, res) {
 
   if (bearer) {
     try {
-      const decoded = await adminAuth.verifyIdToken(bearer, true);
+      // Signature, audience, issuer and expiry are verified locally using Firebase's
+      // public certificates. Revocation checking is intentionally not requested here
+      // because it requires privileged Admin credentials on the deployment host.
+      const decoded = await adminAuth.verifyIdToken(bearer);
       if (decoded?.uid) {
         writeSessionCookie(req, res, decoded.uid);
         return {
