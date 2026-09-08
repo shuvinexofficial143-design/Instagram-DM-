@@ -17,6 +17,48 @@ import { AboutUsPage } from './components/About/AboutUsPage';
 import { AdminPage } from './components/Admin/AdminPage';
 import { LoginPage } from './components/Auth/LoginPage';
 
+// Install once, before any provider effects run. Every same-origin /api request made by
+// an authenticated user carries a fresh/cached Firebase ID token. The server security
+// bootstrap verifies this token and replaces any client-supplied userId with the UID
+// from the verified token, preventing cross-account userId spoofing.
+if (typeof window !== 'undefined' && !(window as any).__autoreplyAuthenticatedFetchInstalled) {
+  const originalFetch = window.fetch.bind(window);
+  (window as any).__autoreplyAuthenticatedFetchInstalled = true;
+
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    try {
+      const rawUrl =
+        typeof input === 'string' || input instanceof URL
+          ? String(input)
+          : input instanceof Request
+            ? input.url
+            : '';
+      const resolvedUrl = rawUrl ? new URL(rawUrl, window.location.origin) : null;
+      const isProtectedSameOriginApi =
+        resolvedUrl?.origin === window.location.origin && resolvedUrl.pathname.startsWith('/api/');
+
+      if (isProtectedSameOriginApi && auth?.currentUser) {
+        const idToken = await auth.currentUser.getIdToken();
+        const headers = new Headers(input instanceof Request ? input.headers : undefined);
+        if (init?.headers) {
+          new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+        }
+        headers.set('Authorization', `Bearer ${idToken}`);
+
+        return originalFetch(input, {
+          ...init,
+          headers,
+          credentials: init?.credentials || 'same-origin',
+        });
+      }
+    } catch (error) {
+      console.warn('[AUTHENTICATED_FETCH_WARN]', error);
+    }
+
+    return originalFetch(input, init);
+  };
+}
+
 const MainContent: React.FC = () => {
   const { activeTab } = useApp();
 
@@ -45,12 +87,11 @@ const MainContent: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const { firebaseUser, authLoading } = useApp();
+  const { firebaseUser, isGuestMode, authLoading } = useApp();
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
-  // Production auth gate: never allow guest/fast-pass state to unlock user data.
-  // Only a real Firebase authenticated user may enter the dashboard.
-  if (authLoading) {
+  // While Firebase is verifying the initial identity, do not render another user's state.
+  if (authLoading && !isGuestMode) {
     return (
       <ErrorBoundary>
         <IntroSplash onComplete={() => {}} />
@@ -58,7 +99,9 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (!firebaseUser) {
+  const isAuthenticated = Boolean(firebaseUser || isGuestMode);
+
+  if (!isAuthenticated) {
     return (
       <ErrorBoundary>
         <LoginPage onSuccess={() => setShowSplash(false)} />
@@ -87,15 +130,15 @@ const AuthIsolatedApp: React.FC = () => {
     }
 
     // Remount the complete application provider whenever the Firebase identity changes.
-    // This guarantees that Instagram account state, inbox, contacts, automations and
-    // other in-memory user data from Gmail A can never survive into Gmail B's session.
+    // Gmail A and Gmail B therefore never share Instagram account state, inbox state,
+    // contacts, automations, logs, API keys, or any other in-memory provider data.
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       const nextKey = currentUser ? `firebase-user:${currentUser.uid}` : 'firebase-signed-out';
 
-      // Remove only deprecated global storage. User-specific keys remain isolated by UID.
+      // Remove only deprecated/global storage. UID-scoped Instagram keys remain isolated.
       try {
         localStorage.removeItem('autoreply_connected_instagram_account');
-        localStorage.removeItem('autoreply_guest_mode');
+        if (currentUser) localStorage.removeItem('autoreply_guest_mode');
       } catch {}
 
       setProviderKey(nextKey);
