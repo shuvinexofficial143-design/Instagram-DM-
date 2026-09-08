@@ -19,10 +19,15 @@ const sessionSecret =
 const SESSION_COOKIE = 'autoreply_session';
 const SESSION_TTL_SECONDS = 60 * 60;
 const OAUTH_STATE_MAX_AGE_MS = 15 * 60 * 1000;
+const CLEAR_SESSION_HEADER = 'x-autoreply-clear-session';
 
-function signSession(uid) {
+function signSession(uid, email = '') {
   const payload = Buffer.from(
-    JSON.stringify({ uid, exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS }),
+    JSON.stringify({
+      uid,
+      email: typeof email === 'string' ? email.toLowerCase() : '',
+      exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+    }),
     'utf8'
   ).toString('base64url');
   const signature = createHmac('sha256', sessionSecret).update(payload).digest('base64url');
@@ -42,7 +47,10 @@ function verifySession(value) {
   try {
     const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (!decoded?.uid || !decoded?.exp || decoded.exp < Math.floor(Date.now() / 1000)) return null;
-    return String(decoded.uid);
+    return {
+      uid: String(decoded.uid),
+      email: typeof decoded.email === 'string' ? decoded.email.toLowerCase() : '',
+    };
   } catch {
     return null;
   }
@@ -64,16 +72,34 @@ function readCookie(req, name) {
   return null;
 }
 
-function writeSessionCookie(req, res, uid) {
+function isSecureRequest(req) {
   const forwardedProto = String(req.headers?.['x-forwarded-proto'] || '').split(',')[0].trim();
-  const secure = req.secure || forwardedProto === 'https';
+  return Boolean(req.secure || forwardedProto === 'https');
+}
+
+function writeSessionCookie(req, res, uid, email = '') {
   const cookie = [
-    `${SESSION_COOKIE}=${encodeURIComponent(signSession(uid))}`,
+    `${SESSION_COOKIE}=${encodeURIComponent(signSession(uid, email))}`,
     'HttpOnly',
     'Path=/',
     'SameSite=Lax',
     `Max-Age=${SESSION_TTL_SECONDS}`,
-    secure ? 'Secure' : '',
+    isSecureRequest(req) ? 'Secure' : '',
+  ]
+    .filter(Boolean)
+    .join('; ');
+  res.append('Set-Cookie', cookie);
+}
+
+function clearSessionCookie(req, res) {
+  const cookie = [
+    `${SESSION_COOKIE}=`,
+    'HttpOnly',
+    'Path=/',
+    'SameSite=Lax',
+    'Max-Age=0',
+    'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+    isSecureRequest(req) ? 'Secure' : '',
   ]
     .filter(Boolean)
     .join('; ');
@@ -86,25 +112,23 @@ async function resolveAuthenticatedUser(req, res) {
 
   if (bearer) {
     try {
-      // Signature, audience, issuer and expiry are verified locally using Firebase's
-      // public certificates. Revocation checking is intentionally not requested here
-      // because it requires privileged Admin credentials on the deployment host.
+      // Signature, audience, issuer and expiry are verified using Firebase public keys.
+      // Revocation checking is intentionally not requested because it requires privileged
+      // Admin credentials on the deployment host.
       const decoded = await adminAuth.verifyIdToken(bearer);
       if (decoded?.uid) {
-        writeSessionCookie(req, res, decoded.uid);
-        return {
-          uid: decoded.uid,
-          email: typeof decoded.email === 'string' ? decoded.email : '',
-        };
+        const email = typeof decoded.email === 'string' ? decoded.email.toLowerCase() : '';
+        writeSessionCookie(req, res, decoded.uid, email);
+        return { uid: decoded.uid, email };
       }
     } catch (error) {
       console.warn('[SECURITY_INVALID_FIREBASE_TOKEN]', error?.code || error?.message || String(error));
     }
   }
 
-  const cookieUid = verifySession(readCookie(req, SESSION_COOKIE));
-  if (cookieUid) {
-    return { uid: cookieUid, email: '' };
+  const cookieSession = verifySession(readCookie(req, SESSION_COOKIE));
+  if (cookieSession?.uid) {
+    return cookieSession;
   }
 
   return null;
@@ -141,6 +165,11 @@ function classifyProtectedRoute(path) {
 
 function buildSecurityMiddleware(mode) {
   return async function autoreplySecurityMiddleware(req, res, next) {
+    if (String(req.headers?.[CLEAR_SESSION_HEADER] || '') === '1') {
+      clearSessionCookie(req, res);
+      return res.status(204).end();
+    }
+
     const authenticated = await resolveAuthenticatedUser(req, res);
     if (!authenticated?.uid) {
       return res.status(401).json({ success: false, error: 'Authentication required' });
@@ -160,10 +189,14 @@ function buildSecurityMiddleware(mode) {
       if (!timestamp || Math.abs(Date.now() - timestamp) > OAUTH_STATE_MAX_AGE_MS) {
         return res.status(400).send('Invalid or expired Instagram OAuth state. Please reconnect from the dashboard.');
       }
+
+      // Ignore any userId supplied by the browser/Meta state and bind the callback to
+      // the server-signed Firebase session cookie instead.
       forceQueryValue(req, 'state', encodeURIComponent(JSON.stringify({ userId: uid, ts: timestamp })));
       return next();
     }
 
+    // Never trust a client-provided userId. The verified Firebase UID is authoritative.
     forceQueryValue(req, 'userId', uid);
     forceBodyValue(req, 'userId', uid);
 
@@ -173,9 +206,10 @@ function buildSecurityMiddleware(mode) {
       if (email) forceBodyValue(req, 'email', email);
     }
 
-    if (mode === 'admin' && email) {
-      forceQueryValue(req, 'email', email);
-      forceBodyValue(req, 'email', email);
+    if (mode === 'admin') {
+      // Admin checks must use the verified account email, never an arbitrary query/body email.
+      forceQueryValue(req, 'email', email || '__no_verified_email__');
+      forceBodyValue(req, 'email', email || '__no_verified_email__');
     }
 
     return next();
