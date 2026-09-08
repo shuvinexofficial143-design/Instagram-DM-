@@ -18,9 +18,8 @@ import { AdminPage } from './components/Admin/AdminPage';
 import { LoginPage } from './components/Auth/LoginPage';
 
 // Install once, before any provider effects run. Every same-origin /api request made by
-// an authenticated user carries a fresh/cached Firebase ID token. The server security
-// bootstrap verifies this token and replaces any client-supplied userId with the UID
-// from the verified token, preventing cross-account userId spoofing.
+// an authenticated user carries a Firebase ID token. The server verifies that token and
+// replaces any client-supplied userId with the verified Firebase UID.
 if (typeof window !== 'undefined' && !(window as any).__autoreplyAuthenticatedFetchInstalled) {
   const originalFetch = window.fetch.bind(window);
   (window as any).__autoreplyAuthenticatedFetchInstalled = true;
@@ -34,10 +33,10 @@ if (typeof window !== 'undefined' && !(window as any).__autoreplyAuthenticatedFe
             ? input.url
             : '';
       const resolvedUrl = rawUrl ? new URL(rawUrl, window.location.origin) : null;
-      const isProtectedSameOriginApi =
+      const isSameOriginApi =
         resolvedUrl?.origin === window.location.origin && resolvedUrl.pathname.startsWith('/api/');
 
-      if (isProtectedSameOriginApi && auth?.currentUser) {
+      if (isSameOriginApi && auth?.currentUser) {
         const idToken = await auth.currentUser.getIdToken();
         const headers = new Headers(input instanceof Request ? input.headers : undefined);
         if (init?.headers) {
@@ -122,30 +121,80 @@ const AppShell: React.FC = () => {
 
 const AuthIsolatedApp: React.FC = () => {
   const [providerKey, setProviderKey] = useState<string>('auth-boot');
+  const [identityReady, setIdentityReady] = useState<boolean>(false);
 
   useEffect(() => {
     if (!auth) {
       setProviderKey('auth-unavailable');
+      setIdentityReady(true);
       return;
     }
 
+    let identitySequence = 0;
+
     // Remount the complete application provider whenever the Firebase identity changes.
-    // Gmail A and Gmail B therefore never share Instagram account state, inbox state,
-    // contacts, automations, logs, API keys, or any other in-memory provider data.
+    // This makes every in-memory collection and Instagram state belong to exactly one UID.
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      const nextKey = currentUser ? `firebase-user:${currentUser.uid}` : 'firebase-signed-out';
+      const runId = ++identitySequence;
+      setIdentityReady(false);
 
-      // Remove only deprecated/global storage. UID-scoped Instagram keys remain isolated.
-      try {
-        localStorage.removeItem('autoreply_connected_instagram_account');
-        if (currentUser) localStorage.removeItem('autoreply_guest_mode');
-      } catch {}
+      void (async () => {
+        try {
+          localStorage.removeItem('autoreply_connected_instagram_account');
+          if (currentUser) localStorage.removeItem('autoreply_guest_mode');
+        } catch {}
 
-      setProviderKey(nextKey);
+        if (currentUser) {
+          // Establish the signed HttpOnly server session before the dashboard is usable.
+          // This guarantees Instagram OAuth opens already bound to the verified Firebase UID.
+          try {
+            await window.fetch(`/api/instagram/account?userId=${encodeURIComponent(currentUser.uid)}`, {
+              method: 'GET',
+              cache: 'no-store',
+              credentials: 'same-origin',
+            });
+          } catch (error) {
+            console.warn('[AUTH_SESSION_PRIME_WARN]', error);
+          }
+
+          if (runId !== identitySequence) return;
+          setProviderKey(`firebase-user:${currentUser.uid}`);
+          setIdentityReady(true);
+          return;
+        }
+
+        // Firebase signed out: explicitly destroy the server-side signed session cookie
+        // before showing login/guest UI, so a previous Gmail can never leak into the next flow.
+        try {
+          await window.fetch('/api/instagram/account', {
+            method: 'GET',
+            headers: { 'X-AutoReply-Clear-Session': '1' },
+            cache: 'no-store',
+            credentials: 'same-origin',
+          });
+        } catch (error) {
+          console.warn('[AUTH_SESSION_CLEAR_WARN]', error);
+        }
+
+        if (runId !== identitySequence) return;
+        setProviderKey('firebase-signed-out');
+        setIdentityReady(true);
+      })();
     });
 
-    return () => unsubscribe();
+    return () => {
+      identitySequence += 1;
+      unsubscribe();
+    };
   }, []);
+
+  if (!identityReady) {
+    return (
+      <ErrorBoundary>
+        <IntroSplash onComplete={() => {}} />
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>
