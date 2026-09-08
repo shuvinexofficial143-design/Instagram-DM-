@@ -17,6 +17,7 @@ import {
   Firestore,
 } from 'firebase/firestore';
 import { Agent, setGlobalDispatcher } from 'undici';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import {
   generateGeminiChatReply,
   generateGeminiChatStream,
@@ -69,6 +70,15 @@ setInterval(preWarmHttpConnections, 45000); // Periodic keep-alive pulse every 4
 // In Node server environment without user auth credentials, client-SDK Firestore writes are disabled to prevent unauthenticated PERMISSION_DENIED stream errors.
 const db: Firestore | null = null;
 
+let adminDb: ReturnType<typeof getAdminFirestore> | null = null;
+try {
+  // server-security-bootstrap.mjs initializes the Firebase Admin default app before server.ts.
+  // Admin Firestore bypasses client rules and keeps OAuth tokens out of browser-readable paths.
+  adminDb = getAdminFirestore();
+} catch (err) {
+  console.warn('[ADMIN_FIRESTORE_INIT_WARN] Server-only token persistence unavailable; using in-memory fallback.', err);
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -83,7 +93,7 @@ async function startServer() {
     webhook_verify_token:
       process.env.WEBHOOK_VERIFY_TOKEN ||
       process.env.VERIFY_TOKEN ||
-      'autoreply_meta_verify_secret_token_2026',
+      '',
     redirect_uri:
       process.env.REDIRECT_URI ||
       `${process.env.APP_URL || 'http://localhost:3000'}/api/auth/instagram/callback`,
@@ -92,6 +102,83 @@ async function startServer() {
   let connectedInstagramAccountMemory: InstagramAccount | null = null;
   const userInstagramAccountsMemory = new Map<string, InstagramAccount>();
   const registeredUsersMemory = new Map<string, any>();
+  const SERVER_INSTAGRAM_TOKEN_COLLECTION = 'server_instagram_tokens';
+
+  function getInstagramRedirectUri(req: Request): string {
+    const host = req.get('host') || 'localhost:3000';
+    const proto = String(req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http')).split(',')[0].trim();
+    const autoRedirectUri = `${proto}://${host}/api/auth/instagram/callback`;
+    const configured = String(metaConfigStore.redirect_uri || '').trim();
+    const configuredLooksInvalid =
+      !configured ||
+      configured.includes('MY_APP_URL') ||
+      configured.includes('your-app-url') ||
+      (configured.includes('localhost') && !host.includes('localhost'));
+    return configuredLooksInvalid ? autoRedirectUri : configured;
+  }
+
+  function toClientSafeInstagramAccount(account: InstagramAccount): InstagramAccount {
+    const { access_token: _serverOnlyToken, ...safe } = account;
+    return safe as InstagramAccount;
+  }
+
+  async function persistServerInstagramAccount(userId: string, account: InstagramAccount) {
+    const cleanAccount: InstagramAccount = {
+      ...account,
+      access_token: sanitizeAccessToken(account.access_token || ''),
+    };
+    userInstagramAccountsMemory.set(userId, cleanAccount);
+    connectedInstagramAccountMemory = cleanAccount;
+
+    if (!adminDb) return;
+    try {
+      await Promise.all([
+        adminDb.collection(SERVER_INSTAGRAM_TOKEN_COLLECTION).doc(userId).set(cleanAccount, { merge: true }),
+        adminDb
+          .collection('users')
+          .doc(userId)
+          .collection('instagram_account')
+          .doc('primary')
+          .set(toClientSafeInstagramAccount(cleanAccount), { merge: true }),
+      ]);
+    } catch (err) {
+      console.warn('[SERVER_IG_ACCOUNT_PERSIST_WARN]', err);
+    }
+  }
+
+  async function loadServerInstagramAccount(userId: string): Promise<InstagramAccount | null> {
+    const cached = userInstagramAccountsMemory.get(userId);
+    if (cached?.access_token) return cached;
+    if (!adminDb) return cached || null;
+
+    try {
+      const snap = await adminDb.collection(SERVER_INSTAGRAM_TOKEN_COLLECTION).doc(userId).get();
+      if (!snap.exists) return null;
+      const account = snap.data() as InstagramAccount;
+      if (!account?.username || !account?.access_token) return null;
+      account.access_token = sanitizeAccessToken(account.access_token);
+      userInstagramAccountsMemory.set(userId, account);
+      connectedInstagramAccountMemory = account;
+      return account;
+    } catch (err) {
+      console.warn('[SERVER_IG_ACCOUNT_LOAD_WARN]', err);
+      return null;
+    }
+  }
+
+  async function deleteServerInstagramAccount(userId: string) {
+    userInstagramAccountsMemory.delete(userId);
+    if (adminDb) {
+      try {
+        await Promise.all([
+          adminDb.collection(SERVER_INSTAGRAM_TOKEN_COLLECTION).doc(userId).delete(),
+          adminDb.collection('users').doc(userId).collection('instagram_account').doc('primary').delete(),
+        ]);
+      } catch (err) {
+        console.warn('[SERVER_IG_ACCOUNT_DELETE_WARN]', err);
+      }
+    }
+  }
 
   // Helper: Sanitize & Clean Meta/Instagram Access Tokens
   // Strips wrapping quotes, whitespace, and recursively decodes URL-encoded characters (%2F, %3D, %2B, etc.) to store & send clean raw ASCII tokens.
@@ -488,22 +575,9 @@ async function startServer() {
       accountData = userInstagramAccountsMemory.get(userId) || null;
     }
 
-    // 2. Query Firestore under users/{userId}/instagram_account/primary
-    if (!accountData && db) {
-      try {
-        const userDocRef = doc(db, 'users', userId, 'instagram_account', 'primary');
-        const userSnap = await getDoc(userDocRef);
-        if (userSnap.exists()) {
-          accountData = userSnap.data() as InstagramAccount;
-          if (accountData) {
-            userInstagramAccountsMemory.set(userId, accountData);
-          }
-        }
-      } catch (err: any) {
-        if (err?.code !== 'permission-denied') {
-          console.warn('[GET_IG_ACCOUNT_DB_WARN]', err?.message || err);
-        }
-      }
+    // 2. Load server-only OAuth credentials/metadata if RAM is cold.
+    if (!accountData) {
+      accountData = await loadServerInstagramAccount(userId);
     }
 
     if (accountData?.access_token) {
@@ -565,12 +639,8 @@ async function startServer() {
         }
       }
 
-      // Return sanitized account object (mask sensitive token in client JSON response)
-      const sanitizedAccount = {
-        ...accountData,
-        access_token: cleanToken ? `${cleanToken.slice(0, 8)}...masked` : '',
-      };
-      return res.json({ success: true, account: sanitizedAccount });
+      // Never return even a masked credential field to the browser.
+      return res.json({ success: true, account: toClientSafeInstagramAccount(accountData) });
     }
 
     return res.json({ success: true, account: null });
@@ -583,15 +653,8 @@ async function startServer() {
       return res.status(400).json({ success: false, error: 'userId is required' });
     }
 
-    let token = userInstagramAccountsMemory.get(userId)?.access_token || '';
-    if ((!token || token.includes('masked')) && db) {
-      try {
-        const uSnap = await getDoc(doc(db, 'users', userId, 'instagram_account', 'primary'));
-        if (uSnap.exists()) token = uSnap.data()?.access_token || '';
-      } catch (fErr) {
-        console.warn('[REFRESH_PROFILE_FETCH_TOKEN_ERR]', fErr);
-      }
-    }
+    const storedAccount = await loadServerInstagramAccount(userId);
+    const token = storedAccount?.access_token || '';
 
     const cleanToken = sanitizeAccessToken(token);
     if (!cleanToken || cleanToken.includes('masked')) {
@@ -1215,62 +1278,15 @@ async function startServer() {
       return res.status(400).json({ success: false, error: 'userId is required for Instagram account operations' });
     }
 
-    if (req.body && 'account' in req.body) {
-      const acc = req.body.account;
-      if (acc) {
-        let incomingToken = sanitizeAccessToken(acc.access_token);
-        // If incoming token is masked (e.g., contains 'masked' or '...'), preserve existing stored token
-        if (!incomingToken || incomingToken.includes('masked') || incomingToken.includes('...')) {
-          let existingToken = userInstagramAccountsMemory.get(userId)?.access_token || '';
-          if ((!existingToken || existingToken.includes('masked')) && db) {
-            try {
-              const userSnap = await getDoc(doc(db, 'users', userId, 'instagram_account', 'primary'));
-              if (userSnap.exists()) {
-                existingToken = userSnap.data()?.access_token || '';
-              }
-            } catch (err: any) {
-              if (err?.code !== 'permission-denied') {
-                console.warn('[POST_ACC_FETCH_DB_WARN]', err?.message || err);
-              }
-            }
-          }
-          if (existingToken && !existingToken.includes('masked')) {
-            acc.access_token = existingToken;
-          } else {
-            delete acc.access_token;
-          }
-        } else {
-          acc.access_token = incomingToken;
-        }
-
-        userInstagramAccountsMemory.set(userId, acc);
-
-        if (db) {
-          try {
-            await setDoc(doc(db, 'users', userId, 'instagram_account', 'primary'), acc, { merge: true });
-            if (acc.access_token && !acc.access_token.includes('masked') && acc.ig_user_id) {
-              subscribeAppToInstagramWebhooks(acc.ig_user_id, acc.access_token).catch(console.warn);
-            }
-          } catch (err: any) {
-            if (err?.code !== 'permission-denied') {
-              console.warn('[POST_IG_ACCOUNT_DB_WARN]', err?.message || err);
-            }
-          }
-        }
-      } else {
-        userInstagramAccountsMemory.delete(userId);
-        if (db) {
-          try {
-            await deleteDoc(doc(db, 'users', userId, 'instagram_account', 'primary'));
-          } catch (err: any) {
-            if (err?.code !== 'permission-denied') {
-              console.warn('[DELETE_IG_ACCOUNT_DB_WARN]', err?.message || err);
-            }
-          }
-        }
-      }
+    if (req.body && 'account' in req.body && req.body.account === null) {
+      await deleteServerInstagramAccount(userId);
+      return res.json({ success: true, account: null });
     }
-    res.json({ success: true, account: (req.body && req.body.account) || null });
+
+    return res.status(405).json({
+      success: false,
+      error: 'Manual Instagram connection is disabled. Connect through the official Meta OAuth flow.',
+    });
   });
 
   // Contacts Deletion Endpoints (Permanently deletes from Firestore)
@@ -1421,39 +1437,9 @@ async function startServer() {
     let accessToken = '';
     let igUserId = '';
     if (userId) {
-      const cached = userInstagramAccountsMemory.get(userId);
-      if (cached) {
-        accessToken = sanitizeAccessToken(cached.access_token || '');
-        igUserId = cached.ig_user_id || '';
-      }
-    }
-    if (!accessToken && userId && db) {
-      try {
-        const uSnap = await getDoc(doc(db, 'users', userId, 'instagram_account', 'primary'));
-        if (uSnap.exists()) {
-          const accData = uSnap.data() as InstagramAccount;
-          accessToken = sanitizeAccessToken(accData.access_token || '');
-          igUserId = accData.ig_user_id || '';
-        }
-      } catch (err) {
-        console.warn('[SUBSCRIBE_ENDPOINT_FETCH_ERR]', err);
-      }
-    }
-    if (!accessToken && !userId && db) {
-      try {
-        const snap = await getDoc(doc(db, 'instagram_account', 'primary'));
-        if (snap.exists()) {
-          const accData = snap.data() as InstagramAccount;
-          accessToken = sanitizeAccessToken(accData.access_token || '');
-          igUserId = accData.ig_user_id || '';
-        }
-      } catch (err) {
-        console.warn('[SUBSCRIBE_ENDPOINT_FETCH_ERR]', err);
-      }
-    }
-    if (!accessToken && !userId && connectedInstagramAccountMemory) {
-      accessToken = sanitizeAccessToken(connectedInstagramAccountMemory.access_token);
-      igUserId = connectedInstagramAccountMemory.ig_user_id;
+      const storedAccount = await loadServerInstagramAccount(userId);
+      accessToken = sanitizeAccessToken(storedAccount?.access_token || '');
+      igUserId = storedAccount?.ig_user_id || '';
     }
 
     if (!accessToken) {
@@ -1464,39 +1450,31 @@ async function startServer() {
     return res.json({ success: result.success, result: result.response });
   });
 
-  // 2. Meta Instagram Config Endpoints
-  app.get('/api/meta-config', (req: Request, res: Response) => {
+  // 2. Meta Instagram Config Endpoints — server environment is authoritative.
+  app.get('/api/meta-config', (_req: Request, res: Response) => {
     res.json({
       app_id: metaConfigStore.app_id,
-      webhook_verify_token: metaConfigStore.webhook_verify_token,
       redirect_uri: metaConfigStore.redirect_uri,
       is_configured: Boolean(metaConfigStore.app_id && metaConfigStore.app_secret),
     });
   });
 
-  app.post('/api/meta-config', (req: Request, res: Response) => {
-    const { app_id, app_secret, webhook_verify_token, redirect_uri } = req.body;
-    if (app_id) metaConfigStore.app_id = app_id;
-    if (app_secret) metaConfigStore.app_secret = app_secret;
-    if (webhook_verify_token) metaConfigStore.webhook_verify_token = webhook_verify_token;
-    if (redirect_uri) metaConfigStore.redirect_uri = redirect_uri;
-
-    res.json({ success: true, metaConfig: metaConfigStore });
+  app.post('/api/meta-config', (_req: Request, res: Response) => {
+    return res.status(403).json({
+      success: false,
+      error: 'Meta credentials are server-only. Configure INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, WEBHOOK_VERIFY_TOKEN and REDIRECT_URI in deployment environment variables.',
+    });
   });
 
   // 3. Instagram Meta OAuth Auth Flow Endpoint (Instagram Business Login)
   app.get('/api/auth/instagram', (req: Request, res: Response) => {
-    const appId = (req.query.app_id as string) || metaConfigStore.app_id || '2300969844066002';
+    const appId = metaConfigStore.app_id;
     const clientUserId = (req.query.userId as string) || '';
-    const host = req.get('host') || 'localhost:3000';
-    const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
-    const autoRedirectUri = `${proto}://${host}/api/auth/instagram/callback`;
-    const redirectUri =
-      (req.query.redirect_uri as string) ||
-      (metaConfigStore.redirect_uri.includes('localhost') && !host.includes('localhost')
-        ? autoRedirectUri
-        : metaConfigStore.redirect_uri) ||
-      autoRedirectUri;
+    const redirectUri = getInstagramRedirectUri(req);
+
+    if (!appId || !metaConfigStore.app_secret) {
+      return res.status(503).send('Instagram OAuth is not configured on the server. Set INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET.');
+    }
 
     const scopes = [
       'instagram_business_basic',
@@ -1512,7 +1490,7 @@ async function startServer() {
       redirectUri
     )}&scope=${encodeURIComponent(scopes)}&response_type=code&state=${state}`;
 
-    console.log('[INSTAGRAM_OAUTH_REDIRECT]', { appId, redirectUri, clientUserId, instagramAuthUrl });
+    console.log('[INSTAGRAM_OAUTH_REDIRECT]', { appId, redirectUri, clientUserId });
     res.redirect(instagramAuthUrl);
   });
 
@@ -1559,7 +1537,7 @@ async function startServer() {
         formData.append('client_id', metaConfigStore.app_id);
         formData.append('client_secret', metaConfigStore.app_secret);
         formData.append('grant_type', 'authorization_code');
-        formData.append('redirect_uri', metaConfigStore.redirect_uri);
+        formData.append('redirect_uri', getInstagramRedirectUri(req));
         formData.append('code', String(code));
 
         const tokenRes = await fetch('https://api.instagram.com/oauth/access_token', {
@@ -1629,21 +1607,39 @@ async function startServer() {
       }
     }
 
-    if (!accountUsername) {
-      accountUsername = userId ? `creator_${userId.slice(-6)}` : 'connected_creator';
+    const cleanFinalToken = sanitizeAccessToken(longLivedToken || shortLivedToken);
+
+    if (!code || !cleanFinalToken || !userId || !accountUsername || !targetUserId) {
+      console.error('[INSTAGRAM_OAUTH_HARD_FAILURE]', {
+        hasCode: Boolean(code),
+        hasToken: Boolean(cleanFinalToken),
+        hasInstagramUserId: Boolean(userId),
+        hasUsername: Boolean(accountUsername),
+        hasAuthenticatedTargetUser: Boolean(targetUserId),
+      });
+      return res.status(502).send(`
+        <!DOCTYPE html>
+        <html>
+          <head><title>Instagram Connection Failed</title></head>
+          <body style="font-family: sans-serif; padding: 40px; text-align: center; background: #f8fafc;">
+            <div style="max-width: 460px; margin: 0 auto; background: white; padding: 32px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
+              <h2 style="color: #dc2626; margin-top: 0;">Instagram connection failed</h2>
+              <p style="color: #4b5563; font-size: 14px; line-height: 1.6;">Meta did not return a verified Instagram professional account and valid access token. Nothing was connected or saved. Close this window and try again.</p>
+              <button onclick="window.close()" style="margin-top: 16px; background: #3b5bff; color: white; border: 0; padding: 11px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">Close</button>
+            </div>
+          </body>
+        </html>
+      `);
     }
-    if (!accountName) {
-      accountName = accountUsername;
-    }
+
+    if (!accountName) accountName = accountUsername;
     if (!profilePicUrl) {
       profilePicUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${accountUsername}`;
     }
 
-    const cleanFinalToken = sanitizeAccessToken(longLivedToken || shortLivedToken);
-
     const connectedAccount: InstagramAccount = {
       id: 'primary',
-      ig_user_id: String(userId || `ig_user_${accountUsername}`),
+      ig_user_id: String(userId),
       username: accountUsername,
       profile_pic_url: profilePicUrl,
       followers_count: followersCount,
@@ -1653,33 +1649,9 @@ async function startServer() {
       status: 'connected',
     };
 
-    if (targetUserId) {
-      userInstagramAccountsMemory.set(targetUserId, connectedAccount);
-    } else {
-      connectedInstagramAccountMemory = connectedAccount;
-      cachedInstagramAccount = connectedAccount;
-      cachedInstagramAccountTimestamp = Date.now();
-    }
-
-    if (db) {
-      try {
-        console.log('[FIRESTORE_TOKEN_SAVE_CHECK] OAuth Callback writing unmasked token to Firestore:', {
-          isRealUnmaskedToken: Boolean(connectedAccount.access_token && !connectedAccount.access_token.includes('masked')),
-          startsWithIGAA: Boolean(connectedAccount.access_token && connectedAccount.access_token.startsWith('IGAA')),
-          tokenLength: connectedAccount.access_token ? connectedAccount.access_token.length : 0,
-          tokenPreview: connectedAccount.access_token ? `${connectedAccount.access_token.slice(0, 10)}...[LEN:${connectedAccount.access_token.length}]` : 'EMPTY',
-          containsMaskedSubstring: Boolean(connectedAccount.access_token && connectedAccount.access_token.includes('masked')),
-        });
-        if (targetUserId) {
-          await setDoc(doc(db, 'users', targetUserId, 'instagram_account', 'primary'), connectedAccount, { merge: true });
-        } else {
-          await setDoc(doc(db, 'instagram_account', 'primary'), connectedAccount, { merge: true });
-        }
-        console.log('[INSTAGRAM_OAUTH_SAVED_TO_FIRESTORE]', connectedAccount.username);
-      } catch (dbErr) {
-        console.error('[INSTAGRAM_OAUTH_FIRESTORE_SAVE_ERROR]', dbErr);
-      }
-    }
+    await persistServerInstagramAccount(targetUserId, connectedAccount);
+    cachedInstagramAccount = connectedAccount;
+    cachedInstagramAccountTimestamp = Date.now();
 
     if (connectedAccount.access_token) {
       // Trigger Webhook Subscribed Apps API Call!
@@ -1706,21 +1678,13 @@ async function startServer() {
             <img src="${profilePicUrl}" class="avatar" alt="${accountUsername}" />
             <div class="badge">Instagram Business API Connected</div>
             <h2 style="margin: 0 0 8px 0; color: #111827;">@${accountUsername} Connected!</h2>
-            <p style="color: #6b7280; margin-bottom: 24px; font-size: 14px;">Instagram Graph API access token exchanged & stored securely in Firestore.</p>
+            <p style="color: #6b7280; margin-bottom: 24px; font-size: 14px;">Meta verified the account successfully. OAuth credentials are stored server-side only.</p>
             <button onclick="navigateDashboard()">Go to Dashboard</button>
           </div>
           <script>
-            const accountData = ${JSON.stringify(connectedAccount)};
             function sendConnectMessage() {
-              try {
-                if ('${targetUserId}') {
-                  localStorage.setItem('autoreply_connected_instagram_account_${targetUserId}', JSON.stringify(accountData));
-                }
-                localStorage.removeItem('autoreply_connected_instagram_account');
-              } catch (e) {}
               if (window.opener) {
-                window.opener.postMessage({ type: 'ig_connected', account: accountData, userId: '${targetUserId}' }, '*');
-                window.opener.postMessage('ig_connected', '*');
+                window.opener.postMessage({ type: 'ig_connected' }, window.location.origin);
               }
             }
 
@@ -2570,35 +2534,8 @@ async function startServer() {
 
       let accessToken = '';
       if (userId) {
-        const cached = userInstagramAccountsMemory.get(userId);
-        if (cached?.access_token) {
-          accessToken = sanitizeAccessToken(cached.access_token);
-        }
-      }
-      if (!accessToken && userId && db) {
-        try {
-          const accSnap = await getDoc(doc(db, 'users', userId, 'instagram_account', 'primary'));
-          if (accSnap.exists()) {
-            const accData = accSnap.data() as InstagramAccount;
-            accessToken = sanitizeAccessToken(accData.access_token || '');
-          }
-        } catch (err) {
-          console.warn('[SEND_DM_DB_TOKEN_FETCH_WARN]', err);
-        }
-      }
-      if (!accessToken && !userId && db) {
-        try {
-          const accSnap = await getDoc(doc(db, 'instagram_account', 'primary'));
-          if (accSnap.exists()) {
-            const accData = accSnap.data() as InstagramAccount;
-            accessToken = sanitizeAccessToken(accData.access_token || '');
-          }
-        } catch (err) {
-          console.warn('[SEND_DM_DB_TOKEN_FETCH_WARN]', err);
-        }
-      }
-      if (!accessToken && !userId && connectedInstagramAccountMemory?.access_token) {
-        accessToken = sanitizeAccessToken(connectedInstagramAccountMemory.access_token);
+        const storedAccount = await loadServerInstagramAccount(userId);
+        accessToken = sanitizeAccessToken(storedAccount?.access_token || '');
       }
 
       let apiResult: any = null;

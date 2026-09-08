@@ -28,8 +28,8 @@ import { generateGeminiChatReply } from '../lib/geminiKeyRotator';
 
 const defaultMetaConfig: MetaConfig = {
   app_id: '2300969844066002',
-  app_secret: 'a8f9210c48e8312019b882',
-  webhook_verify_token: 'Nazha125',
+  app_secret: '',
+  webhook_verify_token: '',
   redirect_uri: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/api/auth/instagram/callback`,
 };
 
@@ -188,7 +188,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const saved = localStorage.getItem(`autoreply_connected_instagram_account_${activeUid}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (parsed && parsed.username) return parsed;
+          if (parsed && parsed.username) {
+            const { access_token: _legacyToken, ...safeParsed } = parsed;
+            return safeParsed as InstagramAccount;
+          }
         }
       }
     } catch {}
@@ -196,12 +199,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const setInstagramAccount = (acc: InstagramAccount | null) => {
-    setInstagramAccountState(acc);
+    const clientSafeAccount = (() => {
+      if (!acc) return null;
+      const { access_token: _serverOnlyToken, ...safe } = acc;
+      return safe as InstagramAccount;
+    })();
+
+    setInstagramAccountState(clientSafeAccount);
     try {
       const activeUid = firebaseUser?.uid || auth?.currentUser?.uid;
       if (activeUid) {
-        if (acc && acc.username) {
-          localStorage.setItem(`autoreply_connected_instagram_account_${activeUid}`, JSON.stringify(acc));
+        if (clientSafeAccount && clientSafeAccount.username) {
+          localStorage.setItem(
+            `autoreply_connected_instagram_account_${activeUid}`,
+            JSON.stringify(clientSafeAccount)
+          );
         } else {
           localStorage.removeItem(`autoreply_connected_instagram_account_${activeUid}`);
         }
@@ -481,7 +493,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubscribeAccount = subscribeToUserCollection<InstagramAccount>(uid, 'instagram_account', (data) => {
       if (data && data.length > 0 && data[0]?.username) {
-        setInstagramAccount(data[0]);
+        const { access_token: _serverOnlyToken, ...safeAccount } = data[0];
+        setInstagramAccount(safeAccount as InstagramAccount);
       } else {
         setInstagramAccount(null);
       }
@@ -571,12 +584,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data === 'ig_connected' || event.data?.type === 'ig_connected') {
-        if (event.data?.account && event.data.account.username) {
-          const formatted = { ...event.data.account, id: 'primary' };
-          setInstagramAccount(formatted);
-          saveUserDocument(uid, 'instagram_account', formatted).catch(() => {});
-        }
+        // OAuth credentials never cross postMessage. Always re-fetch safe metadata
+        // from our authenticated same-origin backend after Meta completes OAuth.
         fetchAccountData();
       }
     };
@@ -1106,50 +1117,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const connectChannel = async (accountInput: Partial<InstagramAccount> | string) => {
-    let cleanUsername = '';
-    let accountObj: Partial<InstagramAccount> = {};
-    if (typeof accountInput === 'string') {
-      cleanUsername = accountInput.replace(/^@/, '').trim();
-      accountObj = { username: cleanUsername };
-    } else {
-      cleanUsername = (accountInput.username || '').replace(/^@/, '').trim();
-      accountObj = accountInput;
-    }
-    if (!cleanUsername) return;
-
-    const uid = firebaseUser?.uid || user?.id || 'creator_primary';
-    const newAccount: InstagramAccount = {
-      id: 'primary',
-      ig_user_id: accountObj.ig_user_id || `ig_user_${cleanUsername}`,
-      username: cleanUsername,
-      profile_pic_url: accountObj.profile_pic_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanUsername}`,
-      followers_count: typeof accountObj.followers_count === 'number' ? accountObj.followers_count : 2480,
-      access_token: accountObj.access_token || '',
-      token_expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-      connected_at: new Date().toISOString(),
-      status: 'connected',
-    };
-
-    // 1. Immediately update UI state & local storage
-    setInstagramAccount(newAccount);
-
-    // 2. Persist to Firestore if user session is active
-    if (uid && firebaseUser) {
-      saveUserDocument(uid, 'instagram_account', newAccount).catch(console.warn);
-    }
-
-    // 3. Post to backend server
-    try {
-      await fetch('/api/instagram/account', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: newAccount, userId: uid }),
-      });
-    } catch (err) {
-      console.warn('[CONNECT_CHANNEL_API_ERR]', err);
-    }
-    setIsConnectModalOpen(false);
+  const connectChannel = async (_accountInput: Partial<InstagramAccount> | string) => {
+    throw new Error('Direct Instagram connection is disabled. Use the official Meta OAuth flow.');
   };
 
   const renewPlan = () => {
