@@ -48,7 +48,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
 
   const wasRedirectPending = (() => {
     try {
-      return typeof window !== 'undefined' && sessionStorage.getItem('firebase_redirect_pending') === 'true';
+      return typeof window !== 'undefined' && sessionStorage.getItem('supabase_redirect_pending') === 'true';
     } catch {
       return false;
     }
@@ -58,7 +58,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
     if (!firebaseUser) return;
     setIsGuestMode(false);
     try {
-      sessionStorage.removeItem('firebase_redirect_pending');
+      sessionStorage.removeItem('supabase_redirect_pending');
     } catch {}
     onSuccess?.();
   }, [firebaseUser, onSuccess, setIsGuestMode]);
@@ -94,16 +94,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
     if (forcedRedirect) {
       try {
         setGoogleAuthMode('redirect');
-        sessionStorage.setItem('firebase_redirect_pending', 'true');
+        sessionStorage.setItem('supabase_redirect_pending', 'true');
         await signInWithRedirect(auth, googleProvider);
         return;
       } catch (err: any) {
         try {
-          sessionStorage.removeItem('firebase_redirect_pending');
+          sessionStorage.removeItem('supabase_redirect_pending');
         } catch {}
         if (err?.code === 'auth/unauthorized-domain') {
           setUnauthorizedDomain(window.location.hostname);
-          setErrorMsg(`Domain "${window.location.hostname}" is not authorized in Firebase Console.`);
+          setErrorMsg(`Domain "${window.location.hostname}" is not allowed by Supabase Auth redirect settings.`);
         } else {
           setErrorMsg(err?.message || 'Could not start Google Sign-In redirect.');
         }
@@ -129,23 +129,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
       ) {
         try {
           setGoogleAuthMode('redirect');
-          sessionStorage.setItem('firebase_redirect_pending', 'true');
+          sessionStorage.setItem('supabase_redirect_pending', 'true');
           await signInWithRedirect(auth, googleProvider);
           return;
         } catch (redirectErr: any) {
           try {
-            sessionStorage.removeItem('firebase_redirect_pending');
+            sessionStorage.removeItem('supabase_redirect_pending');
           } catch {}
           if (redirectErr?.code === 'auth/unauthorized-domain') {
             setUnauthorizedDomain(window.location.hostname);
-            setErrorMsg(`Domain "${window.location.hostname}" is not authorized in Firebase Console.`);
+            setErrorMsg(`Domain "${window.location.hostname}" is not allowed by Supabase Auth redirect settings.`);
           } else {
             setErrorMsg('Google popup was blocked. Use the full-screen redirect option below.');
           }
         }
       } else if (err?.code === 'auth/unauthorized-domain') {
         setUnauthorizedDomain(window.location.hostname);
-        setErrorMsg(`Domain "${window.location.hostname}" is not authorized in Firebase Console.`);
+        setErrorMsg(`Domain "${window.location.hostname}" is not allowed by Supabase Auth redirect settings.`);
       } else if (err?.code === 'auth/popup-closed-by-user') {
         setErrorMsg('Google Sign-In was closed before completion.');
       } else {
@@ -210,7 +210,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
       } else if (err?.code === 'auth/weak-password') {
         setErrorMsg('Please choose a stronger password with at least 6 characters.');
       } else if (err?.code === 'auth/operation-not-allowed') {
-        setErrorMsg('Email/password authentication is not enabled in Firebase Console.');
+        setErrorMsg('Email/password authentication is not enabled in Supabase Auth.');
       } else {
         setErrorMsg(err?.message || (authMode === 'signup' ? 'Could not create account.' : 'Sign in failed.'));
       }
@@ -309,7 +309,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
               <span>Domain Authorization Required</span>
             </div>
             <p className="text-[11px] text-amber-700 leading-relaxed">
-              Add this deployed domain in Firebase Console → Authentication → Settings → Authorized domains.
+              Add this deployed domain in Supabase → Authentication → URL Configuration → Redirect URLs.
             </p>
             <div className="flex items-center justify-between gap-2 p-2 bg-white rounded-xl border border-amber-200/80 font-mono text-[11px] text-slate-800">
               <span className="truncate">{unauthorizedDomain}</span>

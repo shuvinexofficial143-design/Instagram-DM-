@@ -5,6 +5,22 @@ const SUPABASE_URL = viteEnv.VITE_SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.
 const SUPABASE_PUBLISHABLE_KEY =
   viteEnv.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Eae4_ClutOufXa5U2vo6MA_nhnOL8D7';
 
+const PRODUCTION_SITE_URL = 'https://shuvinex.online';
+
+function getAuthRedirectUrl(): string {
+  const configured = (viteEnv.VITE_SITE_URL || viteEnv.VITE_APP_URL || '').trim();
+  if (configured) return configured.replace(/\/+$/, '');
+
+  if (typeof window !== 'undefined') {
+    const { hostname, origin } = window.location;
+    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return origin.replace(/\/+$/, '');
+    }
+  }
+
+  return PRODUCTION_SITE_URL;
+}
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     persistSession: true,
@@ -81,7 +97,7 @@ export async function signInWithPopup(_auth: typeof auth, _provider: typeof goog
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: window.location.origin,
+      redirectTo: getAuthRedirectUrl(),
       queryParams: { prompt: 'select_account' },
     },
   });
@@ -114,7 +130,7 @@ export async function createUserWithEmailAndPassword(_auth: typeof auth, email: 
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: window.location.origin },
+    options: { emailRedirectTo: getAuthRedirectUrl() },
   });
   if (error) throw error;
   const user = toCompatUser(data.user, data.session);
@@ -125,7 +141,7 @@ export async function createUserWithEmailAndPassword(_auth: typeof auth, email: 
 
 export async function sendPasswordResetEmail(_auth: typeof auth, email: string) {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin,
+    redirectTo: getAuthRedirectUrl(),
   });
   if (error) throw error;
 }
