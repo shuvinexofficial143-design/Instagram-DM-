@@ -17,7 +17,7 @@ import {
   Firestore,
 } from 'firebase/firestore';
 import { Agent, setGlobalDispatcher } from 'undici';
-import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import {
   generateGeminiChatReply,
   generateGeminiChatStream,
@@ -70,13 +70,16 @@ setInterval(preWarmHttpConnections, 45000); // Periodic keep-alive pulse every 4
 // In Node server environment without user auth credentials, client-SDK Firestore writes are disabled to prevent unauthenticated PERMISSION_DENIED stream errors.
 const db: Firestore | null = null;
 
-let adminDb: ReturnType<typeof getAdminFirestore> | null = null;
-try {
-  // server-security-bootstrap.mjs initializes the Firebase Admin default app before server.ts.
-  // Admin Firestore bypasses client rules and keeps OAuth tokens out of browser-readable paths.
-  adminDb = getAdminFirestore();
-} catch (err) {
-  console.warn('[ADMIN_FIRESTORE_INIT_WARN] Server-only token persistence unavailable; using in-memory fallback.', err);
+const serverSupabaseUrl = process.env.SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.supabase.co';
+const serverSupabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const serverSupabase = serverSupabaseServiceKey
+  ? createSupabaseClient(serverSupabaseUrl, serverSupabaseServiceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  : null;
+
+if (!serverSupabase) {
+  console.warn('[SUPABASE_SERVICE_ROLE_MISSING] Instagram OAuth tokens will use in-memory fallback until SUPABASE_SERVICE_ROLE_KEY is configured.');
 }
 
 async function startServer() {
@@ -102,8 +105,7 @@ async function startServer() {
   let connectedInstagramAccountMemory: InstagramAccount | null = null;
   const userInstagramAccountsMemory = new Map<string, InstagramAccount>();
   const registeredUsersMemory = new Map<string, any>();
-  const SERVER_INSTAGRAM_TOKEN_COLLECTION = 'server_instagram_tokens';
-
+  
   function getInstagramRedirectUri(req: Request): string {
     const host = req.get('host') || 'localhost:3000';
     const proto = String(req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http')).split(',')[0].trim();
@@ -130,17 +132,26 @@ async function startServer() {
     userInstagramAccountsMemory.set(userId, cleanAccount);
     connectedInstagramAccountMemory = cleanAccount;
 
-    if (!adminDb) return;
+    if (!serverSupabase) return;
     try {
-      await Promise.all([
-        adminDb.collection(SERVER_INSTAGRAM_TOKEN_COLLECTION).doc(userId).set(cleanAccount, { merge: true }),
-        adminDb
-          .collection('users')
-          .doc(userId)
-          .collection('instagram_account')
-          .doc('primary')
-          .set(toClientSafeInstagramAccount(cleanAccount), { merge: true }),
-      ]);
+      const { error: tokenError } = await serverSupabase
+        .from('autoreply_instagram_tokens')
+        .upsert({ user_id: userId, account: cleanAccount }, { onConflict: 'user_id' });
+      if (tokenError) throw tokenError;
+
+      const safeAccount = toClientSafeInstagramAccount(cleanAccount);
+      const { error: metadataError } = await serverSupabase
+        .from('autoreply_documents')
+        .upsert(
+          {
+            user_id: userId,
+            collection: 'instagram_account',
+            id: 'primary',
+            data: safeAccount,
+          },
+          { onConflict: 'user_id,collection,id' }
+        );
+      if (metadataError) throw metadataError;
     } catch (err) {
       console.warn('[SERVER_IG_ACCOUNT_PERSIST_WARN]', err);
     }
@@ -149,12 +160,16 @@ async function startServer() {
   async function loadServerInstagramAccount(userId: string): Promise<InstagramAccount | null> {
     const cached = userInstagramAccountsMemory.get(userId);
     if (cached?.access_token) return cached;
-    if (!adminDb) return cached || null;
+    if (!serverSupabase) return cached || null;
 
     try {
-      const snap = await adminDb.collection(SERVER_INSTAGRAM_TOKEN_COLLECTION).doc(userId).get();
-      if (!snap.exists) return null;
-      const account = snap.data() as InstagramAccount;
+      const { data, error } = await serverSupabase
+        .from('autoreply_instagram_tokens')
+        .select('account')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (error) throw error;
+      const account = data?.account as InstagramAccount | undefined;
       if (!account?.username || !account?.access_token) return null;
       account.access_token = sanitizeAccessToken(account.access_token);
       userInstagramAccountsMemory.set(userId, account);
@@ -168,15 +183,21 @@ async function startServer() {
 
   async function deleteServerInstagramAccount(userId: string) {
     userInstagramAccountsMemory.delete(userId);
-    if (adminDb) {
-      try {
-        await Promise.all([
-          adminDb.collection(SERVER_INSTAGRAM_TOKEN_COLLECTION).doc(userId).delete(),
-          adminDb.collection('users').doc(userId).collection('instagram_account').doc('primary').delete(),
-        ]);
-      } catch (err) {
-        console.warn('[SERVER_IG_ACCOUNT_DELETE_WARN]', err);
-      }
+    if (!serverSupabase) return;
+    try {
+      const [{ error: tokenError }, { error: metadataError }] = await Promise.all([
+        serverSupabase.from('autoreply_instagram_tokens').delete().eq('user_id', userId),
+        serverSupabase
+          .from('autoreply_documents')
+          .delete()
+          .eq('user_id', userId)
+          .eq('collection', 'instagram_account')
+          .eq('id', 'primary'),
+      ]);
+      if (tokenError) throw tokenError;
+      if (metadataError) throw metadataError;
+    } catch (err) {
+      console.warn('[SERVER_IG_ACCOUNT_DELETE_WARN]', err);
     }
   }
 
