@@ -1,40 +1,182 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  browserLocalPersistence,
-  setPersistence,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signOut,
-  onAuthStateChanged,
-  updateProfile,
-  signInAnonymously,
-  User,
-} from 'firebase/auth';
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  getDocs,
-  deleteDoc,
-  onSnapshot,
-  getDocFromServer,
-  setLogLevel,
-  Firestore,
-} from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { createClient, type User as SupabaseUser, type Session } from '@supabase/supabase-js';
 
-// Configure log level to error to avoid benign gRPC idle disconnect noise
-try {
-  setLogLevel('error');
-} catch {}
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Eae4_ClutOufXa5U2vo6MA_nhnOL8D7';
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: 'autoreply_supabase_auth',
+  },
+});
+
+export type User = {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  emailVerified: boolean;
+  isAnonymous: boolean;
+  tenantId: string | null;
+  providerData: Array<{ providerId: string; email: string | null }>;
+  metadata: {
+    creationTime?: string;
+    lastSignInTime?: string;
+  };
+  getIdToken: () => Promise<string>;
+  __supabaseUser: SupabaseUser;
+};
+
+function toCompatUser(user: SupabaseUser | null, session?: Session | null): User | null {
+  if (!user) return null;
+  const meta = user.user_metadata || {};
+  const providers = Array.isArray(user.app_metadata?.providers)
+    ? user.app_metadata.providers
+    : user.app_metadata?.provider
+      ? [user.app_metadata.provider]
+      : [];
+
+  return {
+    uid: user.id,
+    email: user.email || null,
+    displayName: meta.full_name || meta.name || user.email?.split('@')[0] || null,
+    photoURL: meta.avatar_url || meta.picture || null,
+    emailVerified: Boolean(user.email_confirmed_at),
+    isAnonymous: Boolean(user.is_anonymous),
+    tenantId: null,
+    providerData: providers.map((provider: string) => ({
+      providerId: provider,
+      email: user.email || null,
+    })),
+    metadata: {
+      creationTime: user.created_at,
+      lastSignInTime: user.last_sign_in_at || undefined,
+    },
+    getIdToken: async () => {
+      if (session?.access_token) return session.access_token;
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      if (!data.session?.access_token) throw new Error('No active Supabase session');
+      return data.session.access_token;
+    },
+    __supabaseUser: user,
+  };
+}
+
+export const auth: { currentUser: User | null } = { currentUser: null };
+export const googleProvider = { providerId: 'google' } as const;
+export const db = supabase;
+export const isFirebaseInitialized = true;
+export const browserLocalPersistence = 'local';
+
+export async function setPersistence() {
+  return true;
+}
+
+export async function signInWithPopup(_auth: typeof auth, _provider: typeof googleProvider) {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+      queryParams: { prompt: 'select_account' },
+    },
+  });
+  if (error) throw error;
+  if (data.url) window.location.assign(data.url);
+  return { user: auth.currentUser };
+}
+
+export async function signInWithRedirect(_auth: typeof auth, _provider: typeof googleProvider) {
+  return signInWithPopup(_auth, _provider);
+}
+
+export async function getRedirectResult(_auth: typeof auth) {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const user = toCompatUser(data.session?.user || null, data.session);
+  auth.currentUser = user;
+  return user ? { user } : null;
+}
+
+export async function signInWithEmailAndPassword(_auth: typeof auth, email: string, password: string) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  const user = toCompatUser(data.user, data.session);
+  auth.currentUser = user;
+  return { user: user! };
+}
+
+export async function createUserWithEmailAndPassword(_auth: typeof auth, email: string, password: string) {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: window.location.origin },
+  });
+  if (error) throw error;
+  const user = toCompatUser(data.user, data.session);
+  auth.currentUser = user;
+  if (!user) throw new Error('Account was created, but no user session was returned. Check your email to confirm the account.');
+  return { user };
+}
+
+export async function sendPasswordResetEmail(_auth: typeof auth, email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin,
+  });
+  if (error) throw error;
+}
+
+export async function signOut(_auth?: typeof auth) {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+  auth.currentUser = null;
+}
+
+export function onAuthStateChanged(_auth: typeof auth, callback: (user: User | null) => void) {
+  let alive = true;
+
+  void supabase.auth.getSession().then(({ data }) => {
+    if (!alive) return;
+    const user = toCompatUser(data.session?.user || null, data.session);
+    auth.currentUser = user;
+    callback(user);
+  });
+
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (!alive) return;
+    const user = toCompatUser(session?.user || null, session);
+    auth.currentUser = user;
+    callback(user);
+  });
+
+  return () => {
+    alive = false;
+    data.subscription.unsubscribe();
+  };
+}
+
+export async function updateProfile(user: User, profile: { displayName?: string; photoURL?: string }) {
+  const { data, error } = await supabase.auth.updateUser({
+    data: {
+      ...(profile.displayName !== undefined ? { full_name: profile.displayName } : {}),
+      ...(profile.photoURL !== undefined ? { avatar_url: profile.photoURL } : {}),
+    },
+  });
+  if (error) throw error;
+  const next = toCompatUser(data.user, (await supabase.auth.getSession()).data.session);
+  if (next) auth.currentUser = next;
+}
+
+export async function signInAnonymously() {
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  const user = toCompatUser(data.user, data.session);
+  auth.currentUser = user;
+  return { user: user! };
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -49,314 +191,155 @@ export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
-  };
+  authInfo: { userId?: string | null; email?: string | null };
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth?.currentUser?.uid,
-      email: auth?.currentUser?.email,
-      emailVerified: auth?.currentUser?.emailVerified,
-      isAnonymous: auth?.currentUser?.isAnonymous,
-      tenantId: auth?.currentUser?.tenantId,
-      providerInfo:
-        auth?.currentUser?.providerData?.map((provider) => ({
-          providerId: provider.providerId,
-          email: provider.email,
-        })) || [],
-    },
+    authInfo: { userId: auth.currentUser?.uid, email: auth.currentUser?.email },
     operationType,
     path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  console.error('Supabase data error:', errInfo);
   throw new Error(JSON.stringify(errInfo));
 }
 
-let db: Firestore | null = null;
-let auth: ReturnType<typeof getAuth> | null = null;
-let googleProvider: GoogleAuthProvider | null = null;
-let isFirebaseInitialized = false;
-
-try {
-  const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  if (firebaseConfig.firestoreDatabaseId) {
-    db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-  } else {
-    db = getFirestore(app);
-  }
-  auth = getAuth(app);
-
-  // Guarantee browser persistence across reloads and redirects
-  try {
-    setPersistence(auth, browserLocalPersistence).catch((pErr) => {
-      console.warn('[FIREBASE_PERSISTENCE_WARN]', pErr);
-    });
-  } catch (persErr) {
-    console.warn('[FIREBASE_SET_PERSISTENCE_FAIL]', persErr);
-  }
-
-  googleProvider = new GoogleAuthProvider();
-  googleProvider.setCustomParameters({ prompt: 'select_account' });
-  isFirebaseInitialized = true;
-  console.log('[FIREBASE_INIT_SUCCESS] Initialized Auth & Firestore database:', firebaseConfig.firestoreDatabaseId);
-} catch (error) {
-  console.warn('[FIREBASE_INIT_WARN] Firebase initialization error:', error);
-}
-
-// Validate connection to Firestore on initial boot
-async function testConnection() {
-  if (!db || !isFirebaseInitialized) return;
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
-    }
+function ensureOwner(userId: string) {
+  if (!userId || auth.currentUser?.uid !== userId) {
+    throw new Error('Authenticated user does not own this workspace');
   }
 }
-testConnection();
 
-export {
-  db,
-  auth,
-  googleProvider,
-  isFirebaseInitialized,
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  browserLocalPersistence,
-  setPersistence,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signOut,
-  onAuthStateChanged,
-  updateProfile,
-  signInAnonymously,
-};
-export type { User };
+async function readCollection<T extends { id?: string }>(userId: string, collection: string): Promise<T[]> {
+  ensureOwner(userId);
+  const { data, error } = await supabase
+    .from('autoreply_documents')
+    .select('id,data')
+    .eq('user_id', userId)
+    .eq('collection', collection)
+    .order('updated_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((row: any) => ({ id: row.id, ...(row.data || {}) } as T));
+}
 
-/**
- * Subscribe to a user-scoped collection with real-time updates: users/{userId}/{subcollection}
- * STRICTLY ISOLATED: Only fetches documents belonging to the authenticated user.
- */
 export function subscribeToUserCollection<T extends { id?: string }>(
   userId: string,
   subcollectionName: string,
   onData: (data: T[]) => void,
   onError?: (err: Error) => void
 ) {
-  if (!db || !isFirebaseInitialized || !userId) {
-    return () => {};
-  }
+  if (!userId || auth.currentUser?.uid !== userId) return () => {};
+  let active = true;
 
-  // Guard: Only subscribe if the client is currently authenticated as this user
-  if (!auth?.currentUser || auth.currentUser.uid !== userId) {
-    return () => {};
-  }
+  const refresh = async () => {
+    try {
+      const rows = await readCollection<T>(userId, subcollectionName);
+      if (active) onData(rows);
+    } catch (error) {
+      if (active && onError) onError(error as Error);
+    }
+  };
 
-  const pathStr = `users/${userId}/${subcollectionName}`;
-
-  try {
-    const colRef = collection(db, 'users', userId, subcollectionName);
-    const unsubUser = onSnapshot(
-      colRef,
-      (snapshot) => {
-        const items: T[] = [];
-        snapshot.forEach((docSnap) => {
-          items.push({ id: docSnap.id, ...docSnap.data() } as T);
-        });
-        onData(items);
+  void refresh();
+  const channel = supabase
+    .channel(`autoreply:${userId}:${subcollectionName}:${Math.random().toString(36).slice(2)}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'autoreply_documents',
+        filter: `user_id=eq.${userId}`,
       },
-      (err) => {
-        if (
-          err?.message?.includes('CANCELLED') ||
-          err?.message?.includes('idle stream') ||
-          (err as any)?.code === 'cancelled'
-        ) {
-          return;
-        }
-        if (err?.message?.includes('Missing or insufficient permissions') || (err as any)?.code === 'permission-denied') {
-          try {
-            handleFirestoreError(err, OperationType.GET, pathStr);
-          } catch (rethrown) {
-            if (onError) onError(rethrown as Error);
-            return;
-          }
-        }
-        console.warn(`[FIRESTORE_SUB_ERR] Error in ${pathStr}:`, err);
-        if (onError) onError(err);
+      (payload: any) => {
+        const collection = payload?.new?.collection || payload?.old?.collection;
+        if (collection === subcollectionName) void refresh();
       }
-    );
+    )
+    .subscribe();
 
-    return () => {
-      unsubUser();
-    };
-  } catch (err: any) {
-    console.warn(`[FIRESTORE_SUB_FAIL] Failed to subscribe to ${pathStr}:`, err);
-    return () => {};
-  }
+  return () => {
+    active = false;
+    void supabase.removeChannel(channel);
+  };
 }
 
-/**
- * Save or update a document in a user-scoped collection: users/{userId}/{subcollection}/{docData.id}
- * STRICTLY ISOLATED: Only writes when authenticated as the owner.
- */
 export async function saveUserDocument<T extends { id: string }>(
   userId: string,
   subcollectionName: string,
   docData: T
 ) {
-  if (!db || !isFirebaseInitialized || !userId || !docData?.id) return;
-  // Guard: Only write if authenticated and user ID matches
-  if (!auth?.currentUser || auth.currentUser.uid !== userId) {
-    return;
-  }
-
-  const pathStr = `users/${userId}/${subcollectionName}/${docData.id}`;
-  try {
-    const docRef = doc(db, 'users', userId, subcollectionName, docData.id);
-    await setDoc(docRef, docData, { merge: true });
-  } catch (err: any) {
-    if (err?.message?.includes('Missing or insufficient permissions') || err?.code === 'permission-denied') {
-      handleFirestoreError(err, OperationType.WRITE, pathStr);
-    }
-    console.warn(`[SAVE_USER_DOC_ERR] ${pathStr}:`, err);
-  }
+  if (!docData?.id) return;
+  ensureOwner(userId);
+  const { id, ...data } = docData as any;
+  const { error } = await supabase.from('autoreply_documents').upsert(
+    {
+      user_id: userId,
+      collection: subcollectionName,
+      id,
+      data,
+    },
+    { onConflict: 'user_id,collection,id' }
+  );
+  if (error) throw error;
 }
 
-/**
- * Synchronize user profile document: users/{userId}
- * Uses client-authenticated Firebase SDK so it strictly satisfies isOwner(userId) in firestore.rules
- */
 export async function syncUserProfileDocument(userId: string, profileData: any) {
-  if (!db || !isFirebaseInitialized || !userId) return;
-  // Guard: Only write if authenticated as owner
-  if (!auth?.currentUser || auth.currentUser.uid !== userId) {
-    return;
-  }
-
-  const pathStr = `users/${userId}`;
-  try {
-    // Prime the ID token to ensure Firestore gRPC stream has active credentials
-    if (auth.currentUser) {
-      await auth.currentUser.getIdToken().catch(() => null);
-    }
-    const userDocRef = doc(db, 'users', userId);
-    await setDoc(userDocRef, profileData, { merge: true });
-  } catch (err: any) {
-    console.warn(`[SYNC_USER_PROFILE_FIRESTORE_ERR] ${pathStr}:`, err);
-    if (err?.message?.includes('Missing or insufficient permissions') || err?.code === 'permission-denied') {
-      try {
-        handleFirestoreError(err, OperationType.WRITE, pathStr);
-      } catch (rethrown) {
-        console.warn('[SILENT_FIRESTORE_WRITE_RETRY_SCHEDULED]', rethrown);
-      }
-    }
-  }
+  ensureOwner(userId);
+  const { error } = await supabase.from('autoreply_profiles').upsert(
+    {
+      user_id: userId,
+      email: profileData.email || auth.currentUser?.email || null,
+      display_name: profileData.displayName || profileData.name || auth.currentUser?.displayName || null,
+      avatar_url: profileData.photoURL || profileData.avatar_url || auth.currentUser?.photoURL || null,
+      role: profileData.role || 'user',
+      last_login_at: profileData.last_login_at || new Date().toISOString(),
+      last_active_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id' }
+  );
+  if (error) throw error;
 }
 
-/**
- * Save multiple documents in a user-scoped collection
- */
 export async function saveMultipleUserDocuments<T extends { id: string }>(
   userId: string,
   subcollectionName: string,
   docs: T[]
 ) {
-  if (!db || !isFirebaseInitialized || !userId || !docs?.length) return;
-  if (!auth?.currentUser || auth.currentUser.uid !== userId) {
-    return;
-  }
-
-  const pathStr = `users/${userId}/${subcollectionName}`;
-  try {
-    for (const item of docs) {
-      if (!item?.id) continue;
-      const docRef = doc(db, 'users', userId, subcollectionName, item.id);
-      await setDoc(docRef, item, { merge: true });
-    }
-  } catch (err: any) {
-    if (err?.message?.includes('Missing or insufficient permissions') || err?.code === 'permission-denied') {
-      handleFirestoreError(err, OperationType.WRITE, pathStr);
-    }
-    console.warn(`[SAVE_MULTIPLE_USER_DOCS_ERR] ${pathStr}:`, err);
-  }
+  for (const item of docs || []) await saveUserDocument(userId, subcollectionName, item);
 }
 
-/**
- * Delete a document from a user-scoped collection: users/{userId}/{subcollection}/{docId}
- */
-export async function removeUserDocument(
-  userId: string,
-  subcollectionName: string,
-  docId: string
-) {
-  if (!db || !isFirebaseInitialized || !userId || !docId) return;
-  if (!auth?.currentUser || auth.currentUser.uid !== userId) {
-    return;
-  }
-
-  const pathStr = `users/${userId}/${subcollectionName}/${docId}`;
-  try {
-    const docRef = doc(db, 'users', userId, subcollectionName, docId);
-    await deleteDoc(docRef);
-  } catch (err: any) {
-    if (err?.message?.includes('Missing or insufficient permissions') || err?.code === 'permission-denied') {
-      handleFirestoreError(err, OperationType.DELETE, pathStr);
-    }
-    console.warn(`[REMOVE_USER_DOC_ERR] ${pathStr}:`, err);
-  }
+export async function removeUserDocument(userId: string, subcollectionName: string, docId: string) {
+  ensureOwner(userId);
+  const { error } = await supabase
+    .from('autoreply_documents')
+    .delete()
+    .eq('user_id', userId)
+    .eq('collection', subcollectionName)
+    .eq('id', docId);
+  if (error) throw error;
 }
 
-/**
- * Get a specific user document
- */
 export async function getUserDocument<T>(
   userId: string,
   subcollectionName: string,
   docId: string
 ): Promise<T | null> {
-  if (!db || !isFirebaseInitialized || !userId || !docId) return null;
-  if (!auth?.currentUser || auth.currentUser.uid !== userId) {
-    return null;
-  }
-
-  const pathStr = `users/${userId}/${subcollectionName}/${docId}`;
-  try {
-    const docRef = doc(db, 'users', userId, subcollectionName, docId);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      return { id: snap.id, ...snap.data() } as T;
-    }
-    return null;
-  } catch (err: any) {
-    if (err?.message?.includes('Missing or insufficient permissions') || err?.code === 'permission-denied') {
-      handleFirestoreError(err, OperationType.GET, pathStr);
-    }
-    console.warn(`[GET_USER_DOC_ERR] ${pathStr}:`, err);
-    return null;
-  }
+  ensureOwner(userId);
+  const { data, error } = await supabase
+    .from('autoreply_documents')
+    .select('id,data')
+    .eq('user_id', userId)
+    .eq('collection', subcollectionName)
+    .eq('id', docId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return { id: data.id, ...((data as any).data || {}) } as T;
 }
 
-/**
- * Migration helper: If the primary user (or creator) logs in and their user-scoped collection is empty,
- * safely migrate any existing root collections (automations, contacts, inbox_messages, webhook_logs, instagram_account)
- * to their isolated users/{userId}/ space so existing data is never lost.
- */
 export async function checkAndMigrateExistingData(_userId: string, _userEmail?: string): Promise<boolean> {
-  // STRICT ISOLATION: Never copy global data to new users. Every user starts with their own isolated, clean space.
+  // Deliberately never copy another user's or legacy global data into a newly authenticated workspace.
   return false;
 }
