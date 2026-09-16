@@ -1,0 +1,26 @@
+name: Supabase TS diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/supabase-ts-diagnostics.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - name: Capture TypeScript errors
+        run: bun run lint > supabase-ts-errors.txt 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: supabase-ts-errors
+          path: supabase-ts-errors.txt
