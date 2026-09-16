@@ -5,7 +5,7 @@ const SUPABASE_URL = viteEnv.VITE_SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.
 const SUPABASE_PUBLISHABLE_KEY =
   viteEnv.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Eae4_ClutOufXa5U2vo6MA_nhnOL8D7';
 
-const PRODUCTION_SITE_URL = 'https://shuvinex.online';
+const PRODUCTION_SITE_URL = 'https://instagram-dm-sable.vercel.app';
 
 function getAuthRedirectUrl(): string {
   const configured = (viteEnv.VITE_SITE_URL || viteEnv.VITE_APP_URL || '').trim();
