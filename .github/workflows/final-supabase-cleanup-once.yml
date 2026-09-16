@@ -1,0 +1,41 @@
+name: Final Supabase cleanup once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/finalize_supabase_migration.py
+      - .github/workflows/final-supabase-cleanup-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove Firebase runtime and repoint Supabase adapter
+        run: python3 scripts/finalize_supabase_migration.py
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Refresh dependencies
+        run: bun install
+      - name: TypeScript check
+        run: bun run lint
+      - name: Production build
+        run: bun run build
+      - name: Commit final Supabase-only code
+        run: |
+          rm -f scripts/finalize_supabase_migration.py
+          rm -f .github/workflows/final-supabase-cleanup-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Complete Firebase to Supabase migration"
+          git push origin HEAD:main
