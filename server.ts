@@ -2,20 +2,6 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import { readFileSync } from 'fs';
 import { createServer as createViteServer } from 'vite';
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  Firestore,
-} from 'firebase/firestore';
 import { Agent, setGlobalDispatcher } from 'undici';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import {
@@ -66,9 +52,17 @@ function preWarmHttpConnections() {
 preWarmHttpConnections();
 setInterval(preWarmHttpConnections, 45000); // Periodic keep-alive pulse every 45s
 
-// Firestore operations are handled securely on the client-side with authenticated user sessions (auth.currentUser).
-// In Node server environment without user auth credentials, client-SDK Firestore writes are disabled to prevent unauthenticated PERMISSION_DENIED stream errors.
-const db: Firestore | null = null;
+// Legacy database branches are disabled. Active auth and user persistence use Supabase.
+const db: any = null;
+const collection = (..._args: any[]): any => ({});
+const doc = (..._args: any[]): any => ({});
+const setDoc = async (..._args: any[]): Promise<void> => {};
+const getDoc = async (..._args: any[]): Promise<any> => ({ exists: () => false, data: () => null });
+const getDocs = async (..._args: any[]): Promise<any> => ({ empty: true, size: 0, docs: [], forEach: (_fn: any) => {} });
+const updateDoc = async (..._args: any[]): Promise<void> => {};
+const deleteDoc = async (..._args: any[]): Promise<void> => {};
+const query = (...args: any[]): any => args[0];
+const where = (..._args: any[]): any => ({});
 
 const serverSupabaseUrl = process.env.SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.supabase.co';
 const serverSupabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -638,7 +632,7 @@ async function startServer() {
               if (meData.username) accountData.username = meData.username;
               if (typeof meData.followers_count === 'number') accountData.followers_count = meData.followers_count;
 
-              // Background update Firestore
+              // Background update legacy database
               if (db) {
                 const updatePayload = {
                   profile_pic_url: accountData.profile_pic_url,
@@ -744,7 +738,7 @@ async function startServer() {
     }
   });
 
-  // Diagnostic Endpoint: Inspect Firestore & Meta Graph API profile picture status
+  // Diagnostic Endpoint: Inspect legacy database & Meta Graph API profile picture status
   app.get('/api/instagram/debug-avatars', async (req: Request, res: Response) => {
     const diagnosticReport: any = {
       timestamp: new Date().toISOString(),
@@ -801,7 +795,7 @@ async function startServer() {
           }
         }
 
-        // Check contacts in Firestore
+        // Check contacts in legacy database
         const cSnap = await getDocs(collection(db, 'contacts'));
         diagnosticReport.firestore_contacts_count = cSnap.size;
         for (const cDoc of cSnap.docs) {
@@ -839,7 +833,7 @@ async function startServer() {
     });
   });
 
-  // 2. Synchronize user login and profile to registeredUsersMemory and Firestore users/{uid}
+  // 2. Synchronize user login and profile to registeredUsersMemory and legacy database users/{uid}
   app.post('/api/user/sync-profile', async (req: Request, res: Response) => {
     try {
       const { uid, email, displayName, photoURL, creationTime, lastSignInTime } = req.body || {};
@@ -871,7 +865,7 @@ async function startServer() {
           await setDoc(userDocRef, profileData, { merge: true });
           console.log(`[USER_PROFILE_SYNCED] Synced user ${cleanEmail} (${uid}), role: ${profileData.role}`);
         } catch (dbErr: any) {
-          // Multi-tenant Firestore rules strictly enforce isOwner(userId) for client authentication.
+          // Multi-tenant legacy database rules strictly enforce isOwner(userId) for client authentication.
           // The client's authenticated SDK session directly writes users/{userId}, so server permission denial is expected.
           if (dbErr?.code !== 'permission-denied') {
             console.warn('[USER_SYNC_PROFILE_DB_WARN]', dbErr?.message || dbErr);
@@ -1165,7 +1159,7 @@ async function startServer() {
       }
 
       // If no admin user document exists in 'users' collection yet, synthesize the primary owner row
-      // and seed it into Firestore so it persists permanently!
+      // and seed it into legacy database so it persists permanently!
       if (!foundAdminUser) {
         let rootIgUser: string | null = null;
         let rootIgConn: string | null = null;
@@ -1245,7 +1239,7 @@ async function startServer() {
           },
         };
 
-        // Seed to Firestore users collection
+        // Seed to legacy database users collection
         try {
           await setDoc(
             doc(db, 'users', 'owner_primary'),
@@ -1318,7 +1312,7 @@ async function startServer() {
     });
   });
 
-  // Contacts Deletion Endpoints (Permanently deletes from Firestore)
+  // Contacts Deletion Endpoints (Permanently deletes from legacy database)
   app.post('/api/contacts/delete', async (req: Request, res: Response) => {
     const { contactId, username, userId } = req.body || {};
     if (!contactId && !username) {
@@ -1393,7 +1387,7 @@ async function startServer() {
     return res.json({ success: true, deletedCount: ids.length });
   });
 
-  // Inbox Threads Deletion Endpoints (Permanently deletes thread messages from Firestore)
+  // Inbox Threads Deletion Endpoints (Permanently deletes thread messages from legacy database)
   app.post('/api/inbox/delete-thread', async (req: Request, res: Response) => {
     const { username, userId } = req.body || {};
     if (!username) {
@@ -1939,7 +1933,7 @@ async function startServer() {
       return cachedAutomations;
     }
 
-    // 2. Cold startup Firestore fetch with bounded 400ms timeout race
+    // 2. Cold startup legacy database fetch with bounded 400ms timeout race
     if (db) {
       try {
         const fetchPromise = getDocs(collection(db, 'automations')).catch(() => null);
@@ -2117,7 +2111,7 @@ async function startServer() {
     console.log(`⏱️ 4. Reply Prep Total:        ${reply_prep_duration_ms}ms (AI Gen: ${ai_gen_duration_ms}ms) -> "${replyText}"`);
 
     // STEP 4: ABSOLUTE TOP PRIORITY CRITICAL PATH — DISPATCH INSTAGRAM DM IMMEDIATELY!
-    // No logging, no profile fetching, no Firestore blocking before this line!
+    // No logging, no profile fetching, no legacy database blocking before this line!
     const t4_dispatch_start = Date.now();
     let apiSuccess = false;
     let apiLogResult: any = null;
@@ -2190,7 +2184,7 @@ async function startServer() {
     console.log(`🚀 TOTAL BACKEND EXECUTION:     ${totalProcessingDurationMs}ms (End-to-End Pipeline: ${totalPipelineDurationMs}ms)`);
     console.log(`==================================================================\n`);
 
-    // STEP 5: COMPLETELY DETACHED BACKGROUND WORKER (Profile Fetch + Firestore Writes in Parallel)
+    // STEP 5: COMPLETELY DETACHED BACKGROUND WORKER (Profile Fetch + legacy database Writes in Parallel)
     // Uses setImmediate so the HTTP loop and caller return instantly without awaiting!
     setImmediate(() => {
       (async () => {
@@ -2232,7 +2226,7 @@ async function startServer() {
         }
         const senderAvatar = fetchedProfilePic || '';
 
-        // 5B. Parallel Firestore Writes
+        // 5B. Parallel legacy database Writes
         if (db) {
           const nowIso = new Date().toISOString();
           const inMsgId = `msg_in_${Date.now()}`;
@@ -2395,7 +2389,7 @@ async function startServer() {
           }
 
           await Promise.all(dbTasks);
-          console.log(`✅ [BACKGROUND_ASYNC_FIRESTORE] Saved log and messages to Firestore.`);
+          console.log(`✅ [BACKGROUND_ASYNC_FIRESTORE] Saved log and messages to legacy database.`);
         }
       })().catch((bgErr) => console.error('[DETACHED_BACKGROUND_ERR]', bgErr));
     });
@@ -2543,11 +2537,11 @@ async function startServer() {
     });
   });
 
-  // Test Data Cleanup API Endpoint (deletes user_940977 and mock contacts from Firestore)
+  // Test Data Cleanup API Endpoint (deletes user_940977 and mock contacts from legacy database)
   app.post('/api/cleanup-test-data', async (_req: Request, res: Response) => {
     try {
       await cleanupTestArtifacts();
-      return res.json({ success: true, message: 'Test contacts and messages successfully purged from Firestore.' });
+      return res.json({ success: true, message: 'Test contacts and messages successfully purged from legacy database.' });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Cleanup failed' });
     }
@@ -2766,7 +2760,7 @@ async function startServer() {
     });
   }
 
-  // Clean up test contact artifacts (such as user_940977 and legacy mock data) from Firestore
+  // Clean up test contact artifacts (such as user_940977 and legacy mock data) from legacy database
   async function cleanupTestArtifacts() {
     if (!db) return;
     try {

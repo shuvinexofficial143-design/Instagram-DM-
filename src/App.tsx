@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
-import { auth, onAuthStateChanged } from './lib/firebase';
+import { auth, onAuthStateChanged } from './lib/supabase';
 import { Sidebar } from './components/Sidebar';
 import { PlanBanner } from './components/Common/PlanBanner';
 import { PlanRenewModal } from './components/Common/PlanRenewModal';
@@ -18,8 +18,8 @@ import { AdminPage } from './components/Admin/AdminPage';
 import { LoginPage } from './components/Auth/LoginPage';
 
 // Install once, before any provider effects run. Every same-origin /api request made by
-// an authenticated user carries a Firebase ID token. The server verifies that token and
-// replaces any client-supplied userId with the verified Firebase UID.
+// an authenticated user carries a Supabase access token. The server verifies that token and
+// replaces any client-supplied userId with the verified Supabase user ID.
 if (typeof window !== 'undefined' && !(window as any).__autoreplyAuthenticatedFetchInstalled) {
   const originalFetch = window.fetch.bind(window);
   (window as any).__autoreplyAuthenticatedFetchInstalled = true;
@@ -132,7 +132,7 @@ const AuthIsolatedApp: React.FC = () => {
 
     let identitySequence = 0;
 
-    // Remount the complete application provider whenever the Firebase identity changes.
+    // Remount the complete application provider whenever the Supabase identity changes.
     // This makes every in-memory collection and Instagram state belong to exactly one UID.
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       const runId = ++identitySequence;
@@ -146,7 +146,7 @@ const AuthIsolatedApp: React.FC = () => {
 
         if (currentUser) {
           // Establish the signed HttpOnly server session before the dashboard is usable.
-          // This guarantees Instagram OAuth opens already bound to the verified Firebase UID.
+          // This guarantees Instagram OAuth opens already bound to the verified Supabase user ID.
           try {
             await window.fetch(`/api/instagram/account?userId=${encodeURIComponent(currentUser.uid)}`, {
               method: 'GET',
@@ -163,7 +163,7 @@ const AuthIsolatedApp: React.FC = () => {
           return;
         }
 
-        // Firebase signed out: explicitly destroy the server-side signed session cookie
+        // Supabase signed out: explicitly destroy the server-side signed session cookie
         // before showing login/guest UI, so a previous Gmail can never leak into the next flow.
         try {
           await window.fetch('/api/instagram/account', {

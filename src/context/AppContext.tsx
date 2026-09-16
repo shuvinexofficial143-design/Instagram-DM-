@@ -22,8 +22,8 @@ import {
   removeUserDocument,
   syncUserProfileDocument,
   checkAndMigrateExistingData,
-  isFirebaseInitialized,
-} from '../lib/firebase';
+  isSupabaseInitialized,
+} from '../lib/supabase';
 import { generateGeminiChatReply } from '../lib/geminiKeyRotator';
 
 const defaultMetaConfig: MetaConfig = {
@@ -236,7 +236,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isConnectModalOpen, setIsConnectModalOpen] = useState<boolean>(false);
   const [isRenewModalOpen, setIsRenewModalOpen] = useState<boolean>(false);
 
-  // 1. Listen for Firebase Auth State Changes & Silent Background Init
+  // 1. Listen for Supabase Auth State Changes & Silent Background Init
   useEffect(() => {
     if (!auth) {
       setAuthLoading(false);
@@ -250,7 +250,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .then(async (result) => {
         if (!isMounted) return;
         if (result && result.user) {
-          console.log('[FIREBASE_REDIRECT_SUCCESS] Successfully authenticated via redirect:', result.user.email);
+          console.log('[SUPABASE_REDIRECT_SUCCESS] Successfully authenticated via redirect:', result.user.email);
           setFirebaseUser(result.user);
           setIsGuestMode(false);
           const userProfile: UserProfile = {
@@ -378,7 +378,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // 2. Multi-Tenant Firestore Synchronization (Strictly scoped by active authenticated user UID)
   useEffect(() => {
-    if (!isFirebaseInitialized) {
+    if (!isSupabaseInitialized) {
       return;
     }
 
@@ -508,7 +508,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribeKeys();
       unsubscribeAccount();
     };
-  }, [firebaseUser?.uid, isFirebaseInitialized]);
+  }, [firebaseUser?.uid, isSupabaseInitialized]);
 
   // AI Human Takeover state
   const isAiPausedForUser = (username: string): boolean => {

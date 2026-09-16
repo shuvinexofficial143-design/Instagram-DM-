@@ -19,7 +19,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
-} from '../../lib/firebase';
+} from '../../lib/supabase';
 import { useApp } from '../../context/AppContext';
 import { TermsModal } from './TermsModal';
 

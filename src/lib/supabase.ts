@@ -70,7 +70,7 @@ function toCompatUser(user: SupabaseUser | null, session?: Session | null): User
 export const auth: { currentUser: User | null } = { currentUser: null };
 export const googleProvider = { providerId: 'google' } as const;
 export const db = supabase;
-export const isFirebaseInitialized = true;
+export const isSupabaseInitialized = true;
 export const browserLocalPersistence = 'local';
 
 export async function setPersistence() {
@@ -188,15 +188,15 @@ export enum OperationType {
   WRITE = 'write',
 }
 
-export interface FirestoreErrorInfo {
+export interface DataStoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
   authInfo: { userId?: string | null; email?: string | null };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
+export function handleDataStoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: DataStoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: { userId: auth.currentUser?.uid, email: auth.currentUser?.email },
     operationType,
