@@ -1,15 +1,10 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import { getApps as getAdminApps, initializeApp as initializeAdminApp } from 'firebase-admin/app';
-import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 
-const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'causal-bounty-06rpq';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY =
+  process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Eae4_ClutOufXa5U2vo6MA_nhnOL8D7';
 
-if (getAdminApps().length === 0) {
-  initializeAdminApp({ projectId: FIREBASE_PROJECT_ID });
-}
-
-const adminAuth = getAdminAuth();
 const sessionSecret =
   process.env.AUTH_SESSION_SECRET ||
   process.env.INSTAGRAM_APP_SECRET ||
@@ -106,39 +101,46 @@ function clearSessionCookie(req, res) {
   res.append('Set-Cookie', cookie);
 }
 
+async function verifySupabaseAccessToken(accessToken) {
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  if (!response.ok) return null;
+  const user = await response.json();
+  if (!user?.id) return null;
+  return {
+    uid: String(user.id),
+    email: typeof user.email === 'string' ? user.email.toLowerCase() : '',
+  };
+}
+
 async function resolveAuthenticatedUser(req, res) {
   const authorization = String(req.headers?.authorization || '');
   const bearer = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
 
   if (bearer) {
     try {
-      // Signature, audience, issuer and expiry are verified using Firebase public keys.
-      // Revocation checking is intentionally not requested because it requires privileged
-      // Admin credentials on the deployment host.
-      const decoded = await adminAuth.verifyIdToken(bearer);
-      if (decoded?.uid) {
-        const email = typeof decoded.email === 'string' ? decoded.email.toLowerCase() : '';
-        writeSessionCookie(req, res, decoded.uid, email);
-        return { uid: decoded.uid, email };
+      const verified = await verifySupabaseAccessToken(bearer);
+      if (verified?.uid) {
+        writeSessionCookie(req, res, verified.uid, verified.email);
+        return verified;
       }
     } catch (error) {
-      console.warn('[SECURITY_INVALID_FIREBASE_TOKEN]', error?.code || error?.message || String(error));
+      console.warn('[SECURITY_INVALID_SUPABASE_TOKEN]', error?.message || String(error));
     }
   }
 
   const cookieSession = verifySession(readCookie(req, SESSION_COOKIE));
-  if (cookieSession?.uid) {
-    return cookieSession;
-  }
-
+  if (cookieSession?.uid) return cookieSession;
   return null;
 }
 
 function forceQueryValue(req, key, value) {
   try {
-    if (req.query && typeof req.query === 'object') {
-      req.query[key] = value;
-    }
+    if (req.query && typeof req.query === 'object') req.query[key] = value;
   } catch {}
 }
 
@@ -190,13 +192,11 @@ function buildSecurityMiddleware(mode) {
         return res.status(400).send('Invalid or expired Instagram OAuth state. Please reconnect from the dashboard.');
       }
 
-      // Ignore any userId supplied by the browser/Meta state and bind the callback to
-      // the server-signed Firebase session cookie instead.
       forceQueryValue(req, 'state', encodeURIComponent(JSON.stringify({ userId: uid, ts: timestamp })));
       return next();
     }
 
-    // Never trust a client-provided userId. The verified Firebase UID is authoritative.
+    // Never trust a browser supplied userId. Verified Supabase auth identity is authoritative.
     forceQueryValue(req, 'userId', uid);
     forceBodyValue(req, 'userId', uid);
 
@@ -207,7 +207,6 @@ function buildSecurityMiddleware(mode) {
     }
 
     if (mode === 'admin') {
-      // Admin checks must use the verified account email, never an arbitrary query/body email.
       forceQueryValue(req, 'email', email || '__no_verified_email__');
       forceBodyValue(req, 'email', email || '__no_verified_email__');
     }
@@ -221,18 +220,14 @@ for (const methodName of ['get', 'post', 'put', 'patch', 'delete']) {
   if (typeof original !== 'function') continue;
 
   express.application[methodName] = function patchedRouteRegistration(path, ...handlers) {
-    // Preserve Express setting getters such as app.get('env').
     if (handlers.length === 0 || typeof path !== 'string') {
       return original.call(this, path, ...handlers);
     }
 
     const mode = classifyProtectedRoute(path);
-    if (!mode) {
-      return original.call(this, path, ...handlers);
-    }
-
+    if (!mode) return original.call(this, path, ...handlers);
     return original.call(this, path, buildSecurityMiddleware(mode), ...handlers);
   };
 }
 
-console.log('[SERVER_SECURITY_BOOTSTRAP] Firebase-authenticated user isolation enabled.');
+console.log('[SERVER_SECURITY_BOOTSTRAP] Supabase-authenticated user isolation enabled.');
