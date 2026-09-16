@@ -1,0 +1,33 @@
+name: Commit Supabase TypeScript errors once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/commit-supabase-ts-errors-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - name: Capture TypeScript errors
+        run: bun run lint > supabase-ts-errors.txt 2>&1 || true
+      - name: Commit diagnostics and remove workflow
+        run: |
+          rm -f .github/workflows/commit-supabase-ts-errors-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase-ts-errors.txt .github/workflows/commit-supabase-ts-errors-once.yml bun.lock
+          git commit -m "Capture Supabase migration TypeScript diagnostics"
+          git push origin HEAD:main
