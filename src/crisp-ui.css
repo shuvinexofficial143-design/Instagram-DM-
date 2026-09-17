@@ -67,6 +67,25 @@ select {
   font: inherit;
 }
 
+/* Account/profile UI is intentionally hidden until Google Login is implemented. */
+aside > div:last-child > div:last-child {
+  display: none !important;
+}
+
+/* If the profile card was the only item in the sidebar footer, remove the empty footer too. */
+aside > div:last-child:has(> div:only-child) {
+  display: none !important;
+}
+
+/* Hide the Settings Account & Security / Gmail section without leaving a top gap. */
+div[class*="bg-[#F9F6FE]"][class*="max-w-5xl"][class*="space-y-8"] > div:first-child {
+  display: none !important;
+}
+
+div[class*="bg-[#F9F6FE]"][class*="max-w-5xl"][class*="space-y-8"] > div:nth-child(2) {
+  margin-top: 0 !important;
+}
+
 @media (max-width: 767px) {
   body {
     font-size: 16px;
