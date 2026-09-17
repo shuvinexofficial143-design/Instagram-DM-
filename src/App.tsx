@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
-import { auth, onAuthStateChanged } from './lib/supabase';
+import { auth, onAuthStateChanged, signInAnonymously } from './lib/supabase';
 import { Sidebar } from './components/Sidebar';
+import { Header } from './components/Header';
 import { PlanBanner } from './components/Common/PlanBanner';
 import { PlanRenewModal } from './components/Common/PlanRenewModal';
 import { ConnectChannelModal } from './components/Common/ConnectChannelModal';
@@ -15,7 +16,6 @@ import { InboxPage } from './components/Inbox/InboxPage';
 import { SettingsPage } from './components/Settings/SettingsPage';
 import { AboutUsPage } from './components/About/AboutUsPage';
 import { AdminPage } from './components/Admin/AdminPage';
-import { LoginPage } from './components/Auth/LoginPage';
 
 // Install once, before any provider effects run. Every same-origin /api request made by
 // an authenticated user carries a Supabase access token. The server verifies that token and
@@ -62,7 +62,7 @@ const MainContent: React.FC = () => {
   const { activeTab } = useApp();
 
   return (
-    <main className="flex-1 min-w-0 bg-[#F9F6FE]">
+    <main className="min-w-0 flex-1 bg-[#F7FAFF] pb-24 md:pb-0">
       <PlanBanner />
 
       <ErrorBoundary>
@@ -75,7 +75,6 @@ const MainContent: React.FC = () => {
         {activeTab === 'admin' && <AdminPage />}
       </ErrorBoundary>
 
-      {/* Modals & Overlays */}
       <ErrorBoundary>
         <AutomationBuilder />
         <ConnectChannelModal />
@@ -86,11 +85,10 @@ const MainContent: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const { firebaseUser, isGuestMode, authLoading } = useApp();
+  const { authLoading } = useApp();
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
-  // While Firebase is verifying the initial identity, do not render another user's state.
-  if (authLoading && !isGuestMode) {
+  if (authLoading) {
     return (
       <ErrorBoundary>
         <IntroSplash onComplete={() => {}} />
@@ -98,22 +96,17 @@ const AppShell: React.FC = () => {
     );
   }
 
-  const isAuthenticated = Boolean(firebaseUser || isGuestMode);
-
-  if (!isAuthenticated) {
-    return (
-      <ErrorBoundary>
-        <LoginPage onSuccess={() => setShowSplash(false)} />
-      </ErrorBoundary>
-    );
-  }
-
   return (
     <ErrorBoundary>
       {showSplash && <IntroSplash onComplete={() => setShowSplash(false)} />}
-      <div className="flex min-h-screen font-sans text-slate-900 bg-[#F9F6FE]">
-        <Sidebar />
-        <MainContent />
+      <div className="flex min-h-screen w-full overflow-x-hidden bg-[#F7FAFF] font-sans text-slate-900">
+        <div className="hidden shrink-0 md:block">
+          <Sidebar />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Header />
+          <MainContent />
+        </div>
       </div>
     </ErrorBoundary>
   );
@@ -125,15 +118,17 @@ const AuthIsolatedApp: React.FC = () => {
 
   useEffect(() => {
     if (!auth) {
-      setProviderKey('auth-unavailable');
+      setProviderKey('public-workspace');
       setIdentityReady(true);
       return;
     }
 
     let identitySequence = 0;
+    let anonymousAttempted = false;
 
-    // Remount the complete application provider whenever the Supabase identity changes.
-    // This makes every in-memory collection and Instagram state belong to exactly one UID.
+    // There is intentionally no Google/email login gate anymore. When no user session exists,
+    // create a silent anonymous Supabase identity so RLS/user separation can still work without
+    // showing a login screen. If anonymous auth is disabled, fall back to a clean public workspace.
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       const runId = ++identitySequence;
       setIdentityReady(false);
@@ -145,8 +140,6 @@ const AuthIsolatedApp: React.FC = () => {
         } catch {}
 
         if (currentUser) {
-          // Establish the signed HttpOnly server session before the dashboard is usable.
-          // This guarantees Instagram OAuth opens already bound to the verified Supabase user ID.
           try {
             await window.fetch(`/api/instagram/account?userId=${encodeURIComponent(currentUser.uid)}`, {
               method: 'GET',
@@ -158,13 +151,11 @@ const AuthIsolatedApp: React.FC = () => {
           }
 
           if (runId !== identitySequence) return;
-          setProviderKey(`firebase-user:${currentUser.uid}`);
+          setProviderKey(`supabase-user:${currentUser.uid}`);
           setIdentityReady(true);
           return;
         }
 
-        // Supabase signed out: explicitly destroy the server-side signed session cookie
-        // before showing login/guest UI, so a previous Gmail can never leak into the next flow.
         try {
           await window.fetch('/api/instagram/account', {
             method: 'GET',
@@ -176,8 +167,21 @@ const AuthIsolatedApp: React.FC = () => {
           console.warn('[AUTH_SESSION_CLEAR_WARN]', error);
         }
 
+        if (!anonymousAttempted) {
+          anonymousAttempted = true;
+          try {
+            await signInAnonymously();
+            return;
+          } catch (error) {
+            console.warn('[ANONYMOUS_AUTH_FALLBACK]', error);
+          }
+        }
+
         if (runId !== identitySequence) return;
-        setProviderKey('firebase-signed-out');
+        try {
+          localStorage.setItem('autoreply_guest_mode', 'true');
+        } catch {}
+        setProviderKey('public-workspace');
         setIdentityReady(true);
       })();
     });
