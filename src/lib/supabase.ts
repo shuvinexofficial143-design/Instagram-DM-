@@ -8,14 +8,16 @@ const SUPABASE_PUBLISHABLE_KEY =
 const PRODUCTION_SITE_URL = 'https://instagram-dm-sable.vercel.app';
 
 function getAuthRedirectUrl(): string {
-  const configured = (viteEnv.VITE_SITE_URL || viteEnv.VITE_APP_URL || '').trim();
-  if (configured) return configured.replace(/\/+$/, '');
-
   if (typeof window !== 'undefined') {
     const { hostname, origin } = window.location;
     if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
       return origin.replace(/\/+$/, '');
     }
+  }
+
+  const configured = (viteEnv.VITE_SITE_URL || viteEnv.VITE_APP_URL || '').trim();
+  if (configured && !/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/i.test(configured)) {
+    return configured.replace(/\/+$/, '');
   }
 
   return PRODUCTION_SITE_URL;
@@ -357,6 +359,5 @@ export async function getUserDocument<T>(
 }
 
 export async function checkAndMigrateExistingData(_userId: string, _userEmail?: string): Promise<boolean> {
-  // Deliberately never copy another user's or legacy global data into a newly authenticated workspace.
   return false;
 }
