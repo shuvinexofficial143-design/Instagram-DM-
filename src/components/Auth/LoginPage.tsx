@@ -6,16 +6,9 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
-  Copy,
-  ShieldAlert,
-  Smartphone,
-  Check,
 } from 'lucide-react';
 import {
   auth,
-  googleProvider,
-  signInWithPopup,
-  signInWithRedirect,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -30,7 +23,7 @@ interface LoginPageProps {
 type AuthMode = 'signin' | 'signup';
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
-  const { setIsGuestMode, firebaseUser, setFirebaseUser, authLoading } = useApp();
+  const { setIsGuestMode, firebaseUser, setFirebaseUser } = useApp();
 
   const [authMode, setAuthMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
@@ -38,122 +31,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [googleAuthMode, setGoogleAuthMode] = useState<'popup' | 'redirect'>('popup');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
-  const [copiedDomain, setCopiedDomain] = useState(false);
   const [termsModalType, setTermsModalType] = useState<'terms' | 'privacy' | null>(null);
-
-  const wasRedirectPending = (() => {
-    try {
-      return typeof window !== 'undefined' && sessionStorage.getItem('supabase_redirect_pending') === 'true';
-    } catch {
-      return false;
-    }
-  })();
 
   useEffect(() => {
     if (!firebaseUser) return;
     setIsGuestMode(false);
-    try {
-      sessionStorage.removeItem('supabase_redirect_pending');
-    } catch {}
     onSuccess?.();
   }, [firebaseUser, onSuccess, setIsGuestMode]);
 
   const resetMessages = () => {
     setErrorMsg(null);
     setSuccessMsg(null);
-    setUnauthorizedDomain(null);
   };
 
   const switchMode = (mode: AuthMode) => {
     setAuthMode(mode);
+    setPassword('');
     setConfirmPassword('');
     resetMessages();
-  };
-
-  const handleCopyDomain = () => {
-    if (!window.location.hostname) return;
-    navigator.clipboard.writeText(window.location.hostname);
-    setCopiedDomain(true);
-    setTimeout(() => setCopiedDomain(false), 2500);
-  };
-
-  const handleGoogleSignIn = async (forcedRedirect = false) => {
-    if (!auth || !googleProvider) {
-      setErrorMsg('Authentication service is not initialized. Please refresh and try again.');
-      return;
-    }
-
-    setIsGoogleLoading(true);
-    resetMessages();
-
-    if (forcedRedirect) {
-      try {
-        setGoogleAuthMode('redirect');
-        sessionStorage.setItem('supabase_redirect_pending', 'true');
-        await signInWithRedirect(auth, googleProvider);
-        return;
-      } catch (err: any) {
-        try {
-          sessionStorage.removeItem('supabase_redirect_pending');
-        } catch {}
-        if (err?.code === 'auth/unauthorized-domain') {
-          setUnauthorizedDomain(window.location.hostname);
-          setErrorMsg(`Domain "${window.location.hostname}" is not allowed by Supabase Auth redirect settings.`);
-        } else {
-          setErrorMsg(err?.message || 'Could not start Google Sign-In redirect.');
-        }
-        setIsGoogleLoading(false);
-        return;
-      }
-    }
-
-    try {
-      setGoogleAuthMode('popup');
-      const result = await signInWithPopup(auth, googleProvider);
-      if (result.user) {
-        setFirebaseUser(result.user);
-        setIsGuestMode(false);
-        setSuccessMsg(`Signed in as ${result.user.displayName || result.user.email}`);
-        onSuccess?.();
-      }
-    } catch (err: any) {
-      if (
-        err?.code === 'auth/popup-blocked' ||
-        err?.code === 'auth/cancelled-popup-request' ||
-        err?.code === 'auth/operation-not-supported-in-this-environment'
-      ) {
-        try {
-          setGoogleAuthMode('redirect');
-          sessionStorage.setItem('supabase_redirect_pending', 'true');
-          await signInWithRedirect(auth, googleProvider);
-          return;
-        } catch (redirectErr: any) {
-          try {
-            sessionStorage.removeItem('supabase_redirect_pending');
-          } catch {}
-          if (redirectErr?.code === 'auth/unauthorized-domain') {
-            setUnauthorizedDomain(window.location.hostname);
-            setErrorMsg(`Domain "${window.location.hostname}" is not allowed by Supabase Auth redirect settings.`);
-          } else {
-            setErrorMsg('Google popup was blocked. Use the full-screen redirect option below.');
-          }
-        }
-      } else if (err?.code === 'auth/unauthorized-domain') {
-        setUnauthorizedDomain(window.location.hostname);
-        setErrorMsg(`Domain "${window.location.hostname}" is not allowed by Supabase Auth redirect settings.`);
-      } else if (err?.code === 'auth/popup-closed-by-user') {
-        setErrorMsg('Google Sign-In was closed before completion.');
-      } else {
-        setErrorMsg(err?.message || 'Could not sign in with Google.');
-      }
-    } finally {
-      setIsGoogleLoading(false);
-    }
   };
 
   const handleEmailPasswordSubmit = async (e: React.FormEvent) => {
@@ -244,22 +141,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
     }
   };
 
-  if (wasRedirectPending && authLoading) {
-    return (
-      <div className="min-h-screen w-full bg-[#F8FAFC] flex flex-col justify-center items-center px-4 py-12">
-        <div className="bg-white rounded-3xl shadow-xl border border-slate-200/90 p-8 max-w-sm w-full text-center space-y-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center mx-auto text-blue-600">
-            <Loader2 className="w-6 h-6 animate-spin" />
-          </div>
-          <div>
-            <h3 className="text-base font-bold text-slate-900">Verifying Authentication</h3>
-            <p className="text-xs text-slate-500 mt-1">Completing secure Google authentication...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen w-full bg-[#F8FAFC] flex flex-col justify-center items-center px-4 py-12 select-none">
       <div className="flex items-center justify-center gap-3 mb-8">
@@ -296,8 +177,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
         </h1>
         <p className="text-xs text-slate-500 text-center mt-2 mb-6 leading-relaxed">
           {authMode === 'signup'
-            ? 'Sign up with Google or create an account with email and password'
-            : 'Continue with Google or sign in with your email and password'}
+            ? 'Create your account with email and password'
+            : 'Sign in with your email and password'}
         </p>
 
         {errorMsg && (
@@ -307,79 +188,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           </div>
         )}
 
-        {unauthorizedDomain && (
-          <div className="mb-5 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-2.5">
-            <div className="flex items-center gap-2 font-bold text-amber-800">
-              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>Domain Authorization Required</span>
-            </div>
-            <p className="text-[11px] text-amber-700 leading-relaxed">
-              Add this deployed domain in Supabase → Authentication → URL Configuration → Redirect URLs.
-            </p>
-            <div className="flex items-center justify-between gap-2 p-2 bg-white rounded-xl border border-amber-200/80 font-mono text-[11px] text-slate-800">
-              <span className="truncate">{unauthorizedDomain}</span>
-              <button
-                type="button"
-                onClick={handleCopyDomain}
-                className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
-              >
-                {copiedDomain ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                <span>{copiedDomain ? 'Copied' : 'Copy'}</span>
-              </button>
-            </div>
-          </div>
-        )}
-
         {successMsg && (
           <div className="mb-5 p-3 rounded-2xl bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-xs font-medium flex items-start gap-2.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
             <span className="leading-snug">{successMsg}</span>
           </div>
         )}
-
-        <button
-          type="button"
-          onClick={() => handleGoogleSignIn(false)}
-          disabled={isLoading || isGoogleLoading}
-          className="w-full py-3 px-4 bg-white hover:bg-slate-50 active:scale-[0.99] text-slate-700 font-semibold text-sm rounded-xl border border-slate-300 transition-all flex items-center justify-center gap-3 shadow-xs cursor-pointer disabled:opacity-60"
-        >
-          {isGoogleLoading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-              <span>{googleAuthMode === 'redirect' ? 'Redirecting to Google...' : 'Connecting to Google...'}</span>
-            </>
-          ) : (
-            <>
-              <img
-                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                alt="Google"
-                className="w-4 h-4 shrink-0"
-                referrerPolicy="no-referrer"
-              />
-              <span>Continue with Google</span>
-            </>
-          )}
-        </button>
-
-        <div className="mt-2 text-center">
-          <button
-            type="button"
-            onClick={() => handleGoogleSignIn(true)}
-            className="text-[11px] text-slate-400 hover:text-blue-600 font-medium transition-colors cursor-pointer inline-flex items-center gap-1"
-          >
-            <Smartphone className="w-3 h-3" />
-            <span>Popup blocked or on mobile? Use full-screen Google sign-in →</span>
-          </button>
-        </div>
-
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-200" />
-          </div>
-          <div className="relative flex justify-center text-xs">
-            <span className="bg-white px-3 text-slate-400 font-medium">Or use email</span>
-          </div>
-        </div>
 
         <form onSubmit={handleEmailPasswordSubmit} className="space-y-4">
           <div>
@@ -448,7 +262,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
 
           <button
             type="submit"
-            disabled={isLoading || isGoogleLoading}
+            disabled={isLoading}
             className="w-full mt-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
           >
             {isLoading ? (
