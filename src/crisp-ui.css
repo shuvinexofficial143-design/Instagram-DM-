@@ -1,0 +1,93 @@
+/* Global clarity + responsive safety pass.
+   The product should look crisp and solid instead of glassy/blurred. */
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+  background: #f7faff;
+}
+
+body {
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Remove glass/backdrop blur. It was making cards and text feel hazy on phones. */
+.backdrop-blur,
+.backdrop-blur-sm,
+.backdrop-blur-md,
+.backdrop-blur-lg,
+.backdrop-blur-xl,
+.backdrop-blur-2xl,
+.backdrop-blur-3xl {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Decorative glow blobs are visual-only; hide their heavy blur so the UI stays sharp. */
+.blur-3xl,
+.blur-2xl {
+  opacity: 0 !important;
+  filter: none !important;
+}
+
+/* Opaque cards read much more clearly than translucent glass cards. */
+[class*="bg-white/"] {
+  background-color: #ffffff !important;
+}
+
+/* Keep app content inside the mobile viewport instead of forcing browser zoom-out. */
+main,
+section,
+article,
+nav,
+header,
+aside {
+  min-width: 0;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+@media (max-width: 767px) {
+  body {
+    font-size: 16px;
+  }
+
+  main {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  /* Prevent desktop min-width utilities from shrinking the whole page on Android browsers. */
+  [class*="min-w-["] {
+    min-width: 0 !important;
+  }
+
+  [class*="max-w-"] {
+    max-width: 100%;
+  }
+
+  table {
+    width: 100%;
+  }
+}
