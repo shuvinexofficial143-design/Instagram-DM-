@@ -509,7 +509,9 @@ Answer only about the business.`
           
           {/* LEFT COLUMN: FORM BUILDER (65% width on Step 2, 100% on Step 1) */}
           <div className={`overflow-y-auto p-6 space-y-6 ${
-            currentStep === 2 ? 'w-full lg:w-[65%] flex-1' : 'w-full flex-1'
+            currentStep === 2
+              ? 'w-full lg:w-[65%] flex-1 automation-response-theme'
+              : 'w-full flex-1 bg-white'
           }`}>
             
             {/* ================= STEP 1: AUTOMATION DETAILS & MESSAGING CHANNEL ================= */}
@@ -1327,7 +1329,7 @@ Please rephrase your question or our support team will assist you.`}
 
           {/* ================= RIGHT 35% COLUMN: REAL-TIME MOBILE IG DM SIMULATOR (ONLY ON STEP 2) ================= */}
           {currentStep === 2 && (
-            <div className="hidden lg:flex lg:w-[35%] bg-slate-950 p-5 flex-col items-center justify-center shrink-0 border-l border-slate-800 space-y-3 overflow-y-auto lg:sticky lg:top-0 h-full">
+            <div className="hidden lg:flex lg:w-[35%] bg-gradient-to-b from-[#EEF4FF] via-[#F8F5FF] to-[#F3F0FF] p-5 flex-col items-center justify-center shrink-0 border-l border-indigo-100 space-y-3 overflow-y-auto lg:sticky lg:top-0 h-full">
               
               <div className="text-center">
                 <span className="text-[10px] uppercase tracking-wider font-black text-purple-400 bg-purple-950 px-3 py-1 rounded-full border border-purple-800 inline-flex items-center gap-1.5">

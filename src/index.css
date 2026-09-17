@@ -6,9 +6,9 @@
   }
 
   html, body {
-    -webkit-font-smoothing: auto;
-    -moz-osx-font-smoothing: auto;
-    text-rendering: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     color: #0f172a; /* slate-900 */
@@ -176,3 +176,59 @@
 }
 
 
+
+
+/* Human-style response builder theme */
+.automation-response-theme {
+  position: relative;
+  background:
+    radial-gradient(circle at 8% 8%, rgba(147, 197, 253, 0.22), transparent 28%),
+    radial-gradient(circle at 92% 18%, rgba(196, 181, 253, 0.25), transparent 30%),
+    linear-gradient(135deg, #f7faff 0%, #fbf9ff 52%, #f6f2ff 100%);
+}
+
+.automation-response-theme::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0));
+}
+
+.automation-response-theme > * {
+  position: relative;
+  z-index: 1;
+}
+
+.automation-response-theme [class*="bg-white"] {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+}
+
+.automation-response-theme [class*="text-slate-500"] {
+  color: #475569 !important;
+}
+
+.automation-response-theme [class*="text-slate-400"] {
+  color: #64748b !important;
+}
+
+.automation-response-theme input,
+.automation-response-theme textarea,
+.automation-response-theme select {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #c7d2fe !important;
+  box-shadow: 0 1px 3px rgba(79, 70, 229, 0.06);
+}
+
+.automation-response-theme input:focus,
+.automation-response-theme textarea:focus,
+.automation-response-theme select:focus {
+  border-color: #818cf8 !important;
+  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.14) !important;
+}
+
+#root {
+  min-height: 100vh;
+  color: #0f172a;
+}

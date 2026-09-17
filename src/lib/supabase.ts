@@ -10,16 +10,15 @@ const PRODUCTION_SITE_URL = 'https://instagram-dm-sable.vercel.app';
 function getAuthRedirectUrl(): string {
   if (typeof window !== 'undefined') {
     const { hostname, origin } = window.location;
-    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      return origin.replace(/\/+$/, '');
-    }
+
+    // Production must never inherit a stale localhost URL from deployment env.
+    if (hostname === 'instagram-dm-sable.vercel.app') return PRODUCTION_SITE_URL;
+
+    // Keep Vercel preview deployments on their own HTTPS origin when explicitly used.
+    if (hostname.endsWith('.vercel.app')) return origin.replace(/\/+$/, '');
   }
 
-  const configured = (viteEnv.VITE_SITE_URL || viteEnv.VITE_APP_URL || '').trim();
-  if (configured && !/^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/i.test(configured)) {
-    return configured.replace(/\/+$/, '');
-  }
-
+  // OAuth for this deployed app always returns to the live site.
   return PRODUCTION_SITE_URL;
 }
 
@@ -129,15 +128,29 @@ export async function signInWithEmailAndPassword(_auth: typeof auth, email: stri
 }
 
 export async function createUserWithEmailAndPassword(_auth: typeof auth, email: string, password: string) {
+  const cleanName = email.split('@')[0] || 'Account';
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: getAuthRedirectUrl() },
+    options: {
+      emailRedirectTo: getAuthRedirectUrl(),
+      data: { full_name: cleanName, name: cleanName },
+    },
   });
   if (error) throw error;
+
+  if (!data.session) {
+    auth.currentUser = null;
+    const confirmationError: any = new Error(
+      'Account created. Please confirm your email, then sign in.'
+    );
+    confirmationError.code = 'auth/email-confirmation-required';
+    throw confirmationError;
+  }
+
   const user = toCompatUser(data.user, data.session);
   auth.currentUser = user;
-  if (!user) throw new Error('Account was created, but no user session was returned. Check your email to confirm the account.');
+  if (!user) throw new Error('Account was created, but no authenticated user was returned.');
   return { user };
 }
 

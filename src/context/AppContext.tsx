@@ -173,7 +173,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [user, setUser] = useState<UserProfile>({
     id: '',
-    name: 'Creator',
+    name: 'Account',
     email: '',
     avatar_url: '',
     plan: 'pro',
@@ -257,7 +257,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             id: result.user.uid,
             name: result.user.displayName || result.user.email?.split('@')[0] || 'Creator Admin',
             email: result.user.email || 'admin@autoreply.io',
-            avatar_url: result.user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${result.user.uid}`,
+            avatar_url: result.user.photoURL || '',
             plan: 'pro',
             trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
             created_at: result.user.metadata.creationTime || new Date().toISOString(),
@@ -268,16 +268,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
       .catch((rErr: any) => {
         if (!isMounted) return;
-        console.warn('[FIREBASE_REDIRECT_CHECK_WARN]', rErr?.code, rErr?.message);
+        console.warn('[SUPABASE_REDIRECT_CHECK_WARN]', rErr?.code, rErr?.message);
         if (rErr?.code === 'auth/unauthorized-domain') {
           console.error(
-            `[UNAUTHORIZED_DOMAIN] Domain "${window.location.hostname}" is not authorized in Firebase Console -> Authentication -> Settings -> Authorized Domains!`
+            `[UNAUTHORIZED_DOMAIN] Domain "${window.location.hostname}" is not allowed by Supabase Auth redirect settings.`
           );
         }
       })
       .finally(() => {
         try {
-          sessionStorage.removeItem('firebase_redirect_pending');
+          sessionStorage.removeItem('supabase_redirect_pending');
         } catch {}
       });
 
@@ -290,7 +290,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           id: currUser.uid,
           name: currUser.displayName || currUser.email?.split('@')[0] || 'Creator Admin',
           email: currUser.email || 'admin@autoreply.io',
-          avatar_url: currUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currUser.uid}`,
+          avatar_url: currUser.photoURL || '',
           plan: 'pro',
           trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           created_at: currUser.metadata.creationTime || new Date().toISOString(),
@@ -304,6 +304,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         setFirebaseUser(null);
         setInstagramAccountState(null);
+        setUser({
+          id: '',
+          name: 'Account',
+          email: '',
+          avatar_url: '',
+          plan: 'pro',
+          trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          created_at: new Date().toISOString(),
+        });
       }
       setAuthLoading(false);
     });

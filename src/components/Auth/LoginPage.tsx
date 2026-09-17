@@ -199,7 +199,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
       setSuccessMsg(`Welcome back, ${cred.user.email}!`);
       onSuccess?.();
     } catch (err: any) {
-      if (err?.code === 'auth/email-already-in-use') {
+      if (err?.code === 'auth/email-confirmation-required') {
+        setSuccessMsg('Account created. Check your email to confirm it, then come back and Sign In.');
+        setAuthMode('signin');
+        setPassword('');
+        setConfirmPassword('');
+      } else if (err?.code === 'auth/email-already-in-use') {
         setErrorMsg('An account already exists with this email. Switch to Sign In.');
       } else if (err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential') {
         setErrorMsg('Email or password is incorrect. New users should choose Create account.');

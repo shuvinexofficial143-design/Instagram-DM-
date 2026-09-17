@@ -81,6 +81,10 @@ export const Sidebar: React.FC = () => {
     : baseNavItems;
 
   const isTrial = user?.plan === 'trial' || user?.plan === 'free';
+  const accountName =
+    firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || user?.name || 'Account';
+  const accountEmail = firebaseUser?.email || user?.email || '';
+  const accountPhoto = firebaseUser?.photoURL || user?.avatar_url || '';
 
   return (
     <aside
@@ -292,22 +296,18 @@ export const Sidebar: React.FC = () => {
               title="Account Settings"
             >
               <UserAvatar
-                src={instagramAccount?.profile_pic_url || user.avatar_url}
-                username={instagramAccount?.username || user.name}
-                showInstagramBadge={Boolean(instagramAccount?.username)}
+                src={accountPhoto}
+                name={accountName}
                 size="md"
               />
               {!isCollapsed && (
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-slate-900 truncate group-hover:text-indigo-600 transition-colors">
-                    {instagramAccount?.username ? `@${instagramAccount.username}` : user.name}
+                  <p className="text-xs font-black text-slate-950 truncate group-hover:text-indigo-600 transition-colors">
+                    {accountName}
                   </p>
-                  <div className="flex items-center gap-1 text-[10px] text-slate-500">
-                    <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />
-                    <span className="capitalize font-semibold text-emerald-700">
-                      {instagramAccount ? 'Live Channel' : `${user.plan} Plan`}
-                    </span>
-                  </div>
+                  <p className="mt-0.5 text-[10px] font-semibold text-slate-600 truncate" title={accountEmail}>
+                    {accountEmail || `${user.plan} plan`}
+                  </p>
                 </div>
               )}
             </button>
@@ -329,8 +329,8 @@ export const Sidebar: React.FC = () => {
           {/* Tooltip when collapsed */}
           {isCollapsed && (
             <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-50 flex flex-col gap-0.5">
-              <span>{user.name}</span>
-              <span className="text-[10px] text-emerald-400 font-normal capitalize">{user.plan} Plan</span>
+              <span>{accountName}</span>
+              <span className="text-[10px] text-slate-300 font-normal">{accountEmail || `${user.plan} Plan`}</span>
             </div>
           )}
         </div>
