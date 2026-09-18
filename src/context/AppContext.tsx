@@ -790,26 +790,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const commentReplyAction = matched.actions.find((a) => a.type === 'reply_comment');
 
     if (aiAction) {
-      // Limit context history to last 2 messages for ultra-fast processing
+      // Limit context history for fast DM replies while keeping the conversation coherent.
       const previousHistory = (inboxMessages || [])
         .filter((m) => m?.from_username?.toLowerCase() === cleanUser)
         .sort((a, b) => new Date(a?.timestamp || 0).getTime() - new Date(b?.timestamp || 0).getTime())
-        .slice(-2)
-        .map((m) => ({
-          role: (m.direction === 'in' ? 'user' : 'model') as 'user' | 'model',
-          text: m.message_text || '',
-        }));
+        .slice(-6);
 
       try {
-        const aiResponse = await generateGeminiChatReply({
-          history: previousHistory,
-          incomingText,
-          systemInstruction: aiAction.ai_system_instruction || 'You are a helpful and polite Instagram assistant. Reply directly in 1 short sentence.',
-          model: (aiAction.ai_model as any) || 'gemini-3.1-flash-lite',
-          maxOutputTokens: 60,
-        });
-        responseSummary = aiResponse.reply;
+        if (aiAction.ai_model === 'gpt-4o-mini') {
+          const openAiRes = await fetch('/api/openai/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              text: incomingText,
+              history: previousHistory.map((m) => ({
+                role: m.direction === 'in' ? 'user' : 'assistant',
+                content: m.message_text || '',
+              })),
+              systemInstruction:
+                aiAction.ai_system_instruction ||
+                'You are a helpful and polite Instagram assistant. Reply directly and briefly.',
+              maxReplyLength: 'Short',
+              language: 'Auto Detect',
+              personality: 'Friendly',
+              assistantName: 'AI Assistant',
+            }),
+          });
+
+          const payload = await openAiRes.json().catch(() => null);
+          if (!openAiRes.ok || !payload?.ok) {
+            throw new Error(payload?.error || 'GPT-4o mini request failed.');
+          }
+
+          responseSummary = String(payload.reply || '').trim();
+        } else {
+          const geminiHistory = previousHistory.map((m) => ({
+            role: (m.direction === 'in' ? 'user' : 'model') as 'user' | 'model',
+            text: m.message_text || '',
+          }));
+
+          const aiResponse = await generateGeminiChatReply({
+            history: geminiHistory,
+            incomingText,
+            systemInstruction:
+              aiAction.ai_system_instruction ||
+              'You are a helpful and polite Instagram assistant. Reply directly in 1 short sentence.',
+            model: (aiAction.ai_model as any) || 'gemini-3.1-flash-lite',
+            maxOutputTokens: 60,
+          });
+          responseSummary = aiResponse.reply;
+        }
+
+        if (!responseSummary) {
+          responseSummary = 'Thanks for your message! How can I help you today?';
+        }
       } catch (err: any) {
+        console.warn('[AI_REPLY_GENERATION_WARN]', err?.message || err);
         responseSummary = 'Thanks for your message! Our team will reach back out to you shortly.';
       }
     } else if (dmAction && dmAction.message_text) {
