@@ -82,8 +82,6 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
 }) => {
   const [imgFailed, setImgFailed] = useState<boolean>(false);
   const displayName = username || name || 'User';
-  const initial = getAvatarInitial(displayName);
-  const gradientClass = getDeterministicGradient(displayName);
   const sizeConfig = SIZE_MAP[size] || SIZE_MAP.md;
 
   // Reset failure state when src changes
@@ -114,7 +112,6 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
             src={src!}
             alt={alt || displayName}
             referrerPolicy="no-referrer"
-            crossOrigin="anonymous"
             loading="lazy"
             onError={() => {
               // Smoothly fallback to the deterministic colorful badge on broken/expired URLs (e.g. 403 from Meta CDN)
@@ -124,10 +121,10 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
           />
         ) : (
           <div
-            className={`w-full h-full bg-gradient-to-tr ${gradientClass} flex items-center justify-center shadow-inner`}
-            title={`@${displayName}`}
+            className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400"
+            title="Instagram profile photo unavailable"
           >
-            <span className={sizeConfig.text}>{initial}</span>
+            <User className={size === '2xl' ? 'h-7 w-7' : size === 'xl' ? 'h-6 w-6' : size === 'lg' ? 'h-5 w-5' : 'h-4 w-4'} />
           </div>
         )}
       </div>
