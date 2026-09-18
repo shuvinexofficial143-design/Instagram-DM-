@@ -36,7 +36,11 @@ function verifyMetaSignature(rawBody: Buffer, signatureHeader: string, appSecret
   }
 }
 
-async function forwardToLiveProcessor(event: any, openaiKey: string) {
+async function forwardToLiveProcessor(
+  event: any,
+  openaiKey: string,
+  relayReceivedAt: number
+) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
 
@@ -48,6 +52,7 @@ async function forwardToLiveProcessor(event: any, openaiKey: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event,
+          relayReceivedAt,
           // Server-to-server only. Never returned to the browser or logged.
           openaiKey,
         }),
@@ -113,6 +118,7 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method === 'POST') {
+    const relayReceivedAt = Date.now();
     let rawBody: Buffer;
 
     try {
@@ -154,7 +160,11 @@ export default async function handler(req: any, res: any) {
     }
 
     try {
-      const result = await forwardToLiveProcessor(event, openaiKey);
+      const result = await forwardToLiveProcessor(
+        event,
+        openaiKey,
+        relayReceivedAt
+      );
 
       console.log('[LIVE_DM_AI] Processor complete', {
         processed: result?.processed || 0,
