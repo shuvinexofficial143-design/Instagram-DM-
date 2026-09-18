@@ -13,6 +13,102 @@ const automationCache = new Map<
   { expiresAt: number; automation: any | null }
 >();
 
+type RedisConfig = { restUrl: string; restToken: string };
+let redisConfigCache: { expiresAt: number; value: RedisConfig | null } = {
+  expiresAt: 0,
+  value: null,
+};
+
+async function getRedisConfig(admin: any): Promise<RedisConfig | null> {
+  if (redisConfigCache.expiresAt > Date.now()) return redisConfigCache.value;
+
+  const { data, error } = await admin
+    .from("autoreply_integrations")
+    .select("config")
+    .eq("provider", "upstash_redis")
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[REDIS_CONFIG_LOAD_WARN]", error.message || error);
+    redisConfigCache = { expiresAt: Date.now() + 5_000, value: null };
+    return null;
+  }
+
+  const restUrl = String(data?.config?.rest_url || "").replace(/\/$/, "");
+  const restToken = String(data?.config?.rest_token || "").trim();
+  const value = restUrl && restToken ? { restUrl, restToken } : null;
+  redisConfigCache = { expiresAt: Date.now() + 60_000, value };
+  return value;
+}
+
+async function redisCommand(
+  admin: any,
+  command: Array<string | number>
+): Promise<{ available: boolean; result: any }> {
+  const config = await getRedisConfig(admin);
+  if (!config) return { available: false, result: null };
+
+  try {
+    const response = await fetch(config.restUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.restToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(command.map((part) => String(part))),
+    });
+
+    const payload: any = await response.json().catch(() => null);
+    if (!response.ok) {
+      console.warn("[REDIS_COMMAND_WARN]", response.status, payload?.error || "request failed");
+      return { available: false, result: null };
+    }
+    return { available: true, result: payload?.result ?? null };
+  } catch (err) {
+    console.warn("[REDIS_COMMAND_ERROR]", err);
+    return { available: false, result: null };
+  }
+}
+
+async function redisGetJson(admin: any, key: string) {
+  const response = await redisCommand(admin, ["GET", key]);
+  if (!response.available || typeof response.result !== "string") {
+    return { available: response.available, value: null };
+  }
+
+  try {
+    return { available: true, value: JSON.parse(response.result) };
+  } catch {
+    return { available: true, value: null };
+  }
+}
+
+async function redisSetJson(admin: any, key: string, value: any, ttlSeconds: number) {
+  return redisCommand(admin, [
+    "SET",
+    key,
+    JSON.stringify(value),
+    "EX",
+    Math.max(1, Math.floor(ttlSeconds)),
+  ]);
+}
+
+async function markOutboundMessage(
+  admin: any,
+  workspaceId: string,
+  messageId: string
+) {
+  if (!messageId) return;
+  await redisCommand(admin, [
+    "SET",
+    `ar:v1:msg:${workspaceId}:${messageId}`,
+    "out",
+    "EX",
+    "900",
+  ]);
+}
+
+
 function reply(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
@@ -142,6 +238,26 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   if (!candidates.length) return null;
 
+  const redisHits = await Promise.all(
+    candidates.map(async (candidate) => {
+      const cached = await redisGetJson(admin, `ar:v1:account:ig:${candidate}`);
+      return cached.value;
+    })
+  );
+
+  const redisMatched = redisHits.find(
+    (row: any) => row?.user_id && row?.account?.access_token
+  );
+  if (redisMatched) {
+    return {
+      ...redisMatched,
+      matchedInstagramId: String(
+        redisMatched?.account?.ig_user_id || candidates[0] || ""
+      ),
+      _cache: "redis",
+    };
+  }
+
   let rows = accountRowsCache.rows;
   if (Date.now() >= accountRowsCache.expiresAt || !rows.length) {
     const { data, error } = await admin
@@ -159,6 +275,19 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
       rows,
       expiresAt: Date.now() + 60_000,
     };
+
+    await Promise.all(
+      rows
+        .filter((row: any) => row?.user_id && row?.account?.access_token)
+        .map((row: any) =>
+          redisSetJson(
+            admin,
+            `ar:v1:account:ig:${String(row?.account?.ig_user_id || "")}`,
+            row,
+            60
+          )
+        )
+    );
   }
 
   const matched = rows.find((row: any) =>
@@ -169,6 +298,7 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
     return {
       ...matched,
       matchedInstagramId: String(matched?.account?.ig_user_id || ""),
+      _cache: "memory_or_db",
     };
   }
 
@@ -178,6 +308,11 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   if (usableRows.length === 1) {
     const only = usableRows[0];
+    await Promise.all(
+      candidates.map((candidate) =>
+        redisSetJson(admin, `ar:v1:account:ig:${candidate}`, only, 30)
+      )
+    );
     console.warn("[LIVE_DM_ACCOUNT_SINGLE_FALLBACK]", {
       candidates,
       using: only?.account?.ig_user_id || null,
@@ -185,6 +320,7 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
     return {
       ...only,
       matchedInstagramId: String(only?.account?.ig_user_id || ""),
+      _cache: "single_fallback",
     };
   }
 
@@ -203,6 +339,16 @@ async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
   const cached = automationCache.get(workspaceId);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.automation;
+  }
+
+  const redisCached = await redisGetJson(admin, `ar:v1:automation:${workspaceId}`);
+  if (redisCached.value) {
+    const automation = redisCached.value?._cache_none ? null : redisCached.value;
+    automationCache.set(workspaceId, {
+      automation,
+      expiresAt: Date.now() + 5_000,
+    });
+    return automation;
   }
 
   const { data, error } = await admin
@@ -257,6 +403,13 @@ async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
     expiresAt: Date.now() + 5_000,
   });
 
+  await redisSetJson(
+    admin,
+    `ar:v1:automation:${workspaceId}`,
+    automation || { _cache_none: true },
+    5
+  );
+
   return automation;
 }
 async function classifyMessageId(
@@ -265,6 +418,25 @@ async function classifyMessageId(
   messageId: string
 ): Promise<"new" | "outbound_echo" | "duplicate"> {
   if (!messageId) return "new";
+
+  const redisKey = `ar:v1:msg:${workspaceId}:${messageId}`;
+  const claimed = await redisCommand(admin, [
+    "SET",
+    redisKey,
+    "in",
+    "NX",
+    "EX",
+    "900",
+  ]);
+
+  if (claimed.available) {
+    if (claimed.result === "OK") return "new";
+
+    const existing = await redisCommand(admin, ["GET", redisKey]);
+    if (existing.available) {
+      return existing.result === "out" ? "outbound_echo" : "duplicate";
+    }
+  }
 
   const { data: rows, error } = await admin
     .from("autoreply_documents")
@@ -297,6 +469,10 @@ async function classifyMessageId(
   return "new";
 }
 async function loadHistory(admin: any, workspaceId: string, senderId: string) {
+  const key = `ar:v1:history:${workspaceId}:${senderId}`;
+  const cached = await redisGetJson(admin, key);
+  if (Array.isArray(cached.value)) return cached.value.slice(-10);
+
   const { data } = await admin
     .from("autoreply_documents")
     .select("data")
@@ -305,9 +481,12 @@ async function loadHistory(admin: any, workspaceId: string, senderId: string) {
     .eq("id", senderId)
     .maybeSingle();
 
-  return Array.isArray(data?.data?.messages)
+  const messages = Array.isArray(data?.data?.messages)
     ? data.data.messages.slice(-10)
     : [];
+
+  await redisSetJson(admin, key, messages, 3600);
+  return messages;
 }
 
 async function saveHistory(
@@ -316,17 +495,23 @@ async function saveHistory(
   senderId: string,
   history: any[]
 ) {
-  await admin
-    .from("autoreply_documents")
-    .upsert(
-      {
-        user_id: workspaceId,
-        collection: "dm_history",
-        id: senderId,
-        data: { messages: history.slice(-12), updated_at: new Date().toISOString() },
-      },
-      { onConflict: "user_id,collection,id" }
-    );
+  const messages = history.slice(-12);
+  const key = `ar:v1:history:${workspaceId}:${senderId}`;
+
+  await Promise.all([
+    redisSetJson(admin, key, messages, 3600),
+    admin
+      .from("autoreply_documents")
+      .upsert(
+        {
+          user_id: workspaceId,
+          collection: "dm_history",
+          id: senderId,
+          data: { messages, updated_at: new Date().toISOString() },
+        },
+        { onConflict: "user_id,collection,id" }
+      ),
+  ]);
 }
 
 async function logEvent(
@@ -741,15 +926,39 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    return reply(200, {
-      ok: true,
-      directMetaWebhookReady: Boolean(
-        acceptedVerifyTokens.size &&
-          cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"))
-      ),
-      verifyTokenConfigured: Boolean(configuredVerifyToken),
-      openaiConfigured: Boolean(cleanToken(Deno.env.get("OPENAI_API_KEY"))),
-    });
+    const visibleCustomEnvKeys = Object.keys(Deno.env.toObject())
+      .filter((key) =>
+        key.includes("INSTAGRAM") ||
+        key.includes("WEBHOOK") ||
+        key.includes("OPENAI")
+      )
+      .sort();
+
+    const healthAdmin = getAdminClient();
+    const redisPing = await redisCommand(healthAdmin, ["PING"]);
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        directMetaWebhookReady: Boolean(
+          acceptedVerifyTokens.size &&
+            cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"))
+        ),
+        verifyTokenConfigured: Boolean(configuredVerifyToken),
+        openaiConfigured: Boolean(cleanToken(Deno.env.get("OPENAI_API_KEY"))),
+        redisReady: redisPing.available && redisPing.result === "PONG",
+        visibleCustomEnvKeys,
+        deploymentId: Deno.env.get("DENO_DEPLOYMENT_ID") || null,
+        region: Deno.env.get("SB_REGION") || null,
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, max-age=0",
+        },
+      }
+    );
   }
 
   if (req.method !== "POST") {
@@ -989,6 +1198,15 @@ Deno.serve(async (req: Request) => {
         item.senderId,
         accessToken,
         responseText
+      );
+
+      // Mark the outbound message immediately. Meta can echo the Send API
+      // response back within milliseconds, so this Redis marker closes the
+      // race before slower profile/history persistence happens.
+      await markOutboundMessage(
+        admin,
+        workspaceId,
+        String(sendResult?.message_id || "")
       );
 
       const sendMs = Math.round(performance.now() - sendStart);
