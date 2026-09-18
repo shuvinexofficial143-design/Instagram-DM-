@@ -1,21 +1,20 @@
 import {
   deleteInstagramAccount,
-  getGuestWorkspaceId,
+  getAuthenticatedSupabaseUser,
   loadInstagramAccount,
   toClientSafeAccount,
 } from '../../src/server/instagramVercel';
 
-// Dedicated Vercel function for the browser's connected-account status.
+// Dedicated Vercel function for the authenticated user's connected Instagram account.
 export default async function handler(req: any, res: any) {
-  const workspaceId = getGuestWorkspaceId(req);
+  const user = await getAuthenticatedSupabaseUser(req);
+  if (!user?.id) {
+    return res.status(401).json({ success: false, account: null, error: 'Authentication required' });
+  }
 
   if (req.method === 'GET') {
-    if (!workspaceId) {
-      return res.status(200).json({ success: true, account: null });
-    }
-
     try {
-      const account = await loadInstagramAccount(workspaceId);
+      const account = await loadInstagramAccount(user.id);
       return res.status(200).json({
         success: true,
         account: toClientSafeAccount(account),
@@ -27,13 +26,9 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method === 'POST') {
-    if (!workspaceId) {
-      return res.status(200).json({ success: true, account: null });
-    }
-
     if (req.body && 'account' in req.body && req.body.account === null) {
       try {
-        await deleteInstagramAccount(workspaceId);
+        await deleteInstagramAccount(user.id);
         return res.status(200).json({ success: true, account: null });
       } catch (err) {
         console.error('[INSTAGRAM_ACCOUNT_DELETE_FAILED]', err);

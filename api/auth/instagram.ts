@@ -1,26 +1,30 @@
 import {
   createOAuthState,
+  getAuthenticatedSupabaseUser,
   getInstagramRedirectUri,
-  getOrCreateGuestWorkspaceId,
   metaAppId,
   metaAppSecret,
 } from '../../src/server/instagramVercel';
 
-export default function handler(req: any, res: any) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
-    return res.status(405).send('Method Not Allowed');
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   if (!metaAppId || !metaAppSecret) {
-    return res.status(503).send(
-      'Instagram OAuth is not configured. Set INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET in Vercel.'
-    );
+    return res.status(503).json({
+      error: 'Instagram OAuth is not configured. Set INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET in Vercel.',
+    });
   }
 
-  const workspaceId = getOrCreateGuestWorkspaceId(req, res);
+  const user = await getAuthenticatedSupabaseUser(req);
+  if (!user?.id) {
+    return res.status(401).json({ error: 'Sign in to AutoReply.io before connecting Instagram.' });
+  }
+
   const redirectUri = getInstagramRedirectUri(req);
-  const state = createOAuthState(workspaceId);
+  const state = createOAuthState(user.id);
   const scopes = [
     'instagram_business_basic',
     'instagram_business_manage_messages',
@@ -36,5 +40,7 @@ export default function handler(req: any, res: any) {
     state,
   });
 
-  return res.redirect(302, `https://www.instagram.com/oauth/authorize?${params.toString()}`);
+  return res.status(200).json({
+    url: `https://www.instagram.com/oauth/authorize?${params.toString()}`,
+  });
 }

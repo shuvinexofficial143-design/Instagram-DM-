@@ -24,32 +24,58 @@ export const ConnectChannelModal: React.FC = () => {
 
   if (!isConnectModalOpen) return null;
 
-  const handleOAuthLaunch = () => {
+  const handleOAuthLaunch = async () => {
     setFeedback(null);
     setIsLaunching(true);
 
-    const popupUrl = '/api/auth/instagram';
     const width = 600;
     const height = 720;
     const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
     const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
 
+    // Open synchronously from the click so mobile/desktop popup blockers do not reject it.
     const popup = window.open(
-      popupUrl,
+      '',
       'MetaInstagramOAuth',
       `width=${width},height=${height},left=${left},top=${top},status=no,toolbar=no,menubar=no`
     );
 
-    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-      window.location.assign(popupUrl);
-      return;
-    }
+    try {
+      // This same-origin fetch is automatically decorated with the active Supabase
+      // access token by App.tsx. The server then signs the OAuth state for this UID.
+      const response = await fetch('/api/auth/instagram', {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await response.json().catch(() => null);
 
-    setFeedback({
-      type: 'success',
-      message: 'Instagram authorization opened. Complete the Meta login and permission screen to connect your account.',
-    });
-    setTimeout(() => setIsLaunching(false), 1200);
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error || 'Could not start Instagram authorization.');
+      }
+
+      if (popup && !popup.closed) {
+        popup.location.assign(payload.url);
+      } else {
+        window.location.assign(payload.url);
+        return;
+      }
+
+      setFeedback({
+        type: 'success',
+        message: 'Instagram authorization opened. Complete the Meta login and permission screen to connect your account.',
+      });
+    } catch (err: any) {
+      try {
+        if (popup && !popup.closed) popup.close();
+      } catch {}
+      setFeedback({
+        type: 'error',
+        message: err?.message || 'Could not start Instagram authorization.',
+      });
+    } finally {
+      setIsLaunching(false);
+    }
   };
 
   const handleDisconnect = async () => {

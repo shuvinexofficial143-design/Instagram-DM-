@@ -14,18 +14,60 @@ export type StoredInstagramAccount = {
 };
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.supabase.co';
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const SUPABASE_PUBLISHABLE_KEY = String(process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
+const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 const PROD_ORIGIN = 'https://autoreplys.vercel.app';
 
 export const metaAppId = String(process.env.INSTAGRAM_APP_ID || '').trim();
 export const metaAppSecret = String(process.env.INSTAGRAM_APP_SECRET || '').trim();
+const OAUTH_STATE_SECRET = String(
+  process.env.AUTH_SESSION_SECRET || process.env.INSTAGRAM_APP_SECRET || ''
+).trim();
 
 function getSupabaseAdmin() {
   if (!SERVICE_ROLE_KEY) return null;
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+function getBearerToken(req: any): string {
+  const authorization = String(req?.headers?.authorization || '').trim();
+  if (!authorization.toLowerCase().startsWith('bearer ')) return '';
+  return authorization.slice(7).trim();
+}
+
+export async function getAuthenticatedSupabaseUser(
+  req: any
+): Promise<{ id: string; email: string | null } | null> {
+  const accessToken = getBearerToken(req);
+  if (!accessToken) return null;
+
+  const admin = getSupabaseAdmin();
+  if (admin) {
+    const { data, error } = await admin.auth.getUser(accessToken);
+    if (!error && data?.user?.id) {
+      return { id: String(data.user.id), email: data.user.email || null };
+    }
+  }
+
+  if (!SUPABASE_PUBLISHABLE_KEY) return null;
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!response.ok) return null;
+    const user: any = await response.json();
+    if (!user?.id) return null;
+    return { id: String(user.id), email: user.email || null };
+  } catch {
+    return null;
+  }
 }
 
 export function getInstagramRedirectUri(req: any): string {
@@ -86,24 +128,28 @@ export function getOrCreateGuestWorkspaceId(req: any, res: any): string {
   return workspaceId;
 }
 
-function stateSignature(workspaceId: string, ts: number): string {
-  if (!metaAppSecret) return '';
-  return createHmac('sha256', metaAppSecret)
-    .update(`${workspaceId}:${ts}`)
+function isSupabaseUserId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function stateSignature(userId: string, ts: number): string {
+  if (!OAUTH_STATE_SECRET) return '';
+  return createHmac('sha256', OAUTH_STATE_SECRET)
+    .update(`${userId}:${ts}`)
     .digest('hex');
 }
 
-export function createOAuthState(workspaceId: string): string {
+export function createOAuthState(userId: string): string {
   const ts = Date.now();
   return JSON.stringify({
-    workspaceId,
+    userId,
     ts,
-    sig: stateSignature(workspaceId, ts),
+    sig: stateSignature(userId, ts),
   });
 }
 
 export function verifyOAuthState(rawState: unknown): string {
-  if (!rawState || !metaAppSecret) return '';
+  if (!rawState || !OAUTH_STATE_SECRET) return '';
 
   let parsed: any = null;
   const raw = String(rawState);
@@ -117,13 +163,13 @@ export function verifyOAuthState(rawState: unknown): string {
     }
   }
 
-  const workspaceId = String(parsed?.workspaceId || '');
+  const userId = String(parsed?.userId || '');
   const ts = Number(parsed?.ts || 0);
   const sig = String(parsed?.sig || '');
-  if (!isGuestWorkspaceId(workspaceId) || !Number.isFinite(ts) || !sig) return '';
+  if (!isSupabaseUserId(userId) || !Number.isFinite(ts) || !sig) return '';
   if (Math.abs(Date.now() - ts) > 15 * 60 * 1000) return '';
 
-  const expected = stateSignature(workspaceId, ts);
+  const expected = stateSignature(userId, ts);
   try {
     const a = Buffer.from(sig, 'hex');
     const b = Buffer.from(expected, 'hex');
@@ -132,7 +178,7 @@ export function verifyOAuthState(rawState: unknown): string {
     return '';
   }
 
-  return workspaceId;
+  return userId;
 }
 
 export function sanitizeAccessToken(value: unknown): string {

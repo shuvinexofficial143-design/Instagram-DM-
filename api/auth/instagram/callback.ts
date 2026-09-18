@@ -45,8 +45,8 @@ export default async function handler(req: any, res: any) {
     );
   }
 
-  const workspaceId = verifyOAuthState(state);
-  if (!workspaceId) {
+  const userId = verifyOAuthState(state);
+  if (!userId) {
     return renderError(res, 'The Instagram login session expired or was invalid. Please try again.');
   }
 
@@ -160,7 +160,7 @@ export default async function handler(req: any, res: any) {
   };
 
   try {
-    await persistInstagramAccount(workspaceId, account);
+    await persistInstagramAccount(userId, account);
   } catch (err: any) {
     console.error('[INSTAGRAM_PERSIST_FAILED]', err);
     return renderError(

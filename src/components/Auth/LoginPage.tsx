@@ -12,6 +12,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  googleProvider,
+  signInWithPopup,
 } from '../../lib/supabase';
 import { useApp } from '../../context/AppContext';
 import { TermsModal } from './TermsModal';
@@ -51,6 +53,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
     setPassword('');
     setConfirmPassword('');
     resetMessages();
+  };
+
+  const handleGoogleSignIn = async () => {
+    resetMessages();
+    setIsLoading(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err: any) {
+      const message = String(err?.message || '');
+      if (message.toLowerCase().includes('provider') && message.toLowerCase().includes('disabled')) {
+        setErrorMsg('Google sign-in is not enabled in Supabase yet.');
+      } else {
+        setErrorMsg(message || 'Google sign-in failed.');
+      }
+      setIsLoading(false);
+    }
   };
 
   const handleEmailPasswordSubmit = async (e: React.FormEvent) => {
@@ -194,6 +212,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
             <span className="leading-snug">{successMsg}</span>
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={isLoading}
+          className="w-full mb-5 py-3 px-4 bg-white hover:bg-slate-50 text-slate-800 font-bold text-sm rounded-xl border border-slate-300 transition-all shadow-sm flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60"
+        >
+          <span className="w-5 h-5 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[11px] font-black text-blue-600">
+            G
+          </span>
+          <span>Continue with Google</span>
+        </button>
+
+        <div className="flex items-center gap-3 mb-5">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">or</span>
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
 
         <form onSubmit={handleEmailPasswordSubmit} className="space-y-4">
           <div>
