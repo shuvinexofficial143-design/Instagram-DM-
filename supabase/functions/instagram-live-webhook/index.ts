@@ -227,29 +227,32 @@ async function classifyMessageId(
 ): Promise<"new" | "outbound_echo" | "duplicate"> {
   if (!messageId) return "new";
 
-  const [inboxResult, eventResult] = await Promise.all([
-    admin
-      .from("autoreply_documents")
-      .select("data")
-      .eq("user_id", workspaceId)
-      .eq("collection", "inbox_messages")
-      .eq("id", messageId)
-      .maybeSingle(),
-    admin
-      .from("autoreply_documents")
-      .select("data")
-      .eq("user_id", workspaceId)
-      .eq("collection", "webhook_events")
-      .eq("id", messageId)
-      .maybeSingle(),
-  ]);
+  const { data: rows, error } = await admin
+    .from("autoreply_documents")
+    .select("collection,data")
+    .eq("user_id", workspaceId)
+    .eq("id", messageId)
+    .in("collection", ["inbox_messages", "webhook_events"]);
 
-  if (inboxResult?.data?.data?.direction === "out") {
-    return "outbound_echo";
+  if (error) {
+    console.warn("[LIVE_DM_MESSAGE_STATE_WARN]", error);
+    return "new";
   }
 
-  if (eventResult?.data?.data?.status === "sent") {
-    return "duplicate";
+  for (const row of rows || []) {
+    if (
+      row?.collection === "inbox_messages" &&
+      row?.data?.direction === "out"
+    ) {
+      return "outbound_echo";
+    }
+
+    if (
+      row?.collection === "webhook_events" &&
+      row?.data?.status === "sent"
+    ) {
+      return "duplicate";
+    }
   }
 
   return "new";
@@ -909,7 +912,6 @@ Deno.serve(async (req: Request) => {
           instagram_message_id: sendResult?.message_id || null,
           ai_ms: aiMs,
           send_ms: sendMs,
-          meta_delivery_ms: metaDeliveryMs,
           meta_delivery_ms: metaDeliveryMs,
           fast_path: instantReply ? "greeting" : null,
         }),
