@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
-import { auth, onAuthStateChanged, signInAnonymously } from './lib/supabase';
+import { auth } from './lib/supabase';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { PlanBanner } from './components/Common/PlanBanner';
@@ -8,6 +8,7 @@ import { PlanRenewModal } from './components/Common/PlanRenewModal';
 import { ConnectChannelModal } from './components/Common/ConnectChannelModal';
 import { IntroSplash } from './components/Common/IntroSplash';
 import { ErrorBoundary } from './components/Common/ErrorBoundary';
+import { LoginPage } from './components/Auth/LoginPage';
 import { HomePage } from './components/Home/HomePage';
 import { AutomationsPage } from './components/Automations/AutomationsPage';
 import { AutomationBuilder } from './components/Automations/AutomationBuilder';
@@ -85,13 +86,21 @@ const MainContent: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const { authLoading } = useApp();
+  const { authLoading, firebaseUser } = useApp();
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
   if (authLoading) {
     return (
       <ErrorBoundary>
         <IntroSplash onComplete={() => {}} />
+      </ErrorBoundary>
+    );
+  }
+
+  if (!firebaseUser) {
+    return (
+      <ErrorBoundary>
+        <LoginPage />
       </ErrorBoundary>
     );
   }
@@ -112,103 +121,10 @@ const AppShell: React.FC = () => {
   );
 };
 
-const AuthIsolatedApp: React.FC = () => {
-  const [providerKey, setProviderKey] = useState<string>('auth-boot');
-  const [identityReady, setIdentityReady] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!auth) {
-      setProviderKey('public-workspace');
-      setIdentityReady(true);
-      return;
-    }
-
-    let identitySequence = 0;
-    let anonymousAttempted = false;
-
-    // There is intentionally no Google/email login gate anymore. When no user session exists,
-    // create a silent anonymous Supabase identity so RLS/user separation can still work without
-    // showing a login screen. If anonymous auth is disabled, fall back to a clean public workspace.
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      const runId = ++identitySequence;
-      setIdentityReady(false);
-
-      void (async () => {
-        try {
-          localStorage.removeItem('autoreply_connected_instagram_account');
-          if (currentUser) localStorage.removeItem('autoreply_guest_mode');
-        } catch {}
-
-        if (currentUser) {
-          try {
-            await window.fetch(`/api/instagram/account?userId=${encodeURIComponent(currentUser.uid)}`, {
-              method: 'GET',
-              cache: 'no-store',
-              credentials: 'same-origin',
-            });
-          } catch (error) {
-            console.warn('[AUTH_SESSION_PRIME_WARN]', error);
-          }
-
-          if (runId !== identitySequence) return;
-          setProviderKey(`supabase-user:${currentUser.uid}`);
-          setIdentityReady(true);
-          return;
-        }
-
-        try {
-          await window.fetch('/api/instagram/account', {
-            method: 'GET',
-            headers: { 'X-AutoReply-Clear-Session': '1' },
-            cache: 'no-store',
-            credentials: 'same-origin',
-          });
-        } catch (error) {
-          console.warn('[AUTH_SESSION_CLEAR_WARN]', error);
-        }
-
-        if (!anonymousAttempted) {
-          anonymousAttempted = true;
-          try {
-            await signInAnonymously();
-            return;
-          } catch (error) {
-            console.warn('[ANONYMOUS_AUTH_FALLBACK]', error);
-          }
-        }
-
-        if (runId !== identitySequence) return;
-        try {
-          localStorage.setItem('autoreply_guest_mode', 'true');
-        } catch {}
-        setProviderKey('public-workspace');
-        setIdentityReady(true);
-      })();
-    });
-
-    return () => {
-      identitySequence += 1;
-      unsubscribe();
-    };
-  }, []);
-
-  if (!identityReady) {
-    return (
-      <ErrorBoundary>
-        <IntroSplash onComplete={() => {}} />
-      </ErrorBoundary>
-    );
-  }
-
-  return (
-    <ErrorBoundary>
-      <AppProvider key={providerKey}>
-        <AppShell />
-      </AppProvider>
-    </ErrorBoundary>
-  );
-};
-
 export default function App() {
-  return <AuthIsolatedApp />;
+  return (
+    <AppProvider>
+      <AppShell />
+    </AppProvider>
+  );
 }
