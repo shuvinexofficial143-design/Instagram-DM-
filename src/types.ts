@@ -33,6 +33,15 @@ export interface TriggerConfig {
   story_scope?: 'any_story' | 'specific_story';
   post_scope?: 'any_post' | 'specific_post';
   specific_post_url?: string;
+
+  // Content targeting. New comment/story automations are bound to one
+  // selected Instagram post, reel, or currently active story.
+  media_scope?: 'all_media' | 'specific_media';
+  selected_media_id?: string;
+  selected_media_type?: 'POST' | 'REEL' | 'STORY' | 'IMAGE' | 'VIDEO' | 'CAROUSEL_ALBUM' | string;
+  selected_media_permalink?: string;
+  selected_media_thumbnail_url?: string;
+  selected_media_caption?: string;
 }
 
 export type ActionType = 'send_dm' | 'auto_like_comment' | 'reply_comment' | 'add_delay' | 'add_tag' | 'ai_chatbot';
