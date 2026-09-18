@@ -355,11 +355,16 @@ Answer only about the business.`
     setCurrentStep(2);
   };
 
-  // Test AI Message Simulation
-  const handleSendTestMessage = () => {
-    if (!testInputText.trim()) return;
+  // Test the DM AI Conversation against the same GPT-4o mini API used by the app.
+  const handleSendTestMessage = async () => {
+    if (!testInputText.trim() || isAiTypingTest) return;
 
     const userText = testInputText.trim();
+    const historyForApi = testChatMessages.slice(-10).map((msg) => ({
+      role: msg.sender === 'ai' ? 'assistant' : 'user',
+      content: msg.text,
+    }));
+
     setTestChatMessages((prev) => [
       ...prev,
       { sender: 'user', text: userText, time: 'Just now' },
@@ -367,27 +372,52 @@ Answer only about the business.`
     setTestInputText('');
     setIsAiTypingTest(true);
 
-    setTimeout(() => {
-      let aiResponse = `Hey there! 👋 Thanks for messaging. `;
-      const lower = userText.toLowerCase();
-      if (lower.includes('price') || lower.includes('cost') || lower.includes('buy') || lower.includes('product')) {
-        aiResponse += `We offer high quality products with fast shipping! How can I help you choose the right product today?`;
-      } else if (lower.includes('delivery') || lower.includes('ship') || lower.includes('shipping') || lower.includes('time')) {
-        aiResponse += `We offer express shipping and orders are typically delivered within 3-5 business days!`;
-      } else if (lower.includes('return') || lower.includes('exchange') || lower.includes('refund')) {
-        aiResponse += `We have a customer-friendly 7-day hassle-free return and exchange policy.`;
-      } else if (lower.includes('contact') || lower.includes('support') || lower.includes('email') || lower.includes('number')) {
-        aiResponse += `You can chat with us directly here or reach out to our team at support.`;
-      } else {
-        aiResponse += `I'm ${aiAssistantName || 'Sales Assistant'}, configured with ${aiPersonality} tone. How can I assist you with your request today?`;
+    try {
+      const response = await fetch('/api/openai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          text: userText,
+          history: historyForApi,
+          systemInstruction: aiSystemPrompt,
+          assistantName: aiAssistantName,
+          personality:
+            aiPersonality === 'Custom' && customPersonality.trim()
+              ? customPersonality.trim()
+              : aiPersonality,
+          language: aiResponseLanguage,
+          maxReplyLength: aiMaxReplyLength,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || 'GPT-4o mini request failed.');
       }
 
       setTestChatMessages((prev) => [
         ...prev,
-        { sender: 'ai', text: aiResponse, time: 'Just now' },
+        {
+          sender: 'ai',
+          text: String(payload.reply || 'Thanks for your message!'),
+          time: 'Just now',
+        },
       ]);
+    } catch (err: any) {
+      setTestChatMessages((prev) => [
+        ...prev,
+        {
+          sender: 'ai',
+          text:
+            err?.message ||
+            'GPT-4o mini is not available yet. Check the OpenAI API key in Vercel.',
+          time: 'Just now',
+        },
+      ]);
+    } finally {
       setIsAiTypingTest(false);
-    }, 750);
+    }
   };
 
   // Save Draft (status = 'paused')
@@ -439,7 +469,7 @@ Answer only about the business.`
         id: `act_${Date.now()}_ai_conv`,
         type: 'ai_chatbot',
         ai_system_instruction: aiSystemPrompt,
-        ai_model: 'gemini-3.6-flash',
+        ai_model: 'gpt-4o-mini',
       });
       actionsList.push({
         id: `act_${Date.now()}_send_dm`,
@@ -844,7 +874,7 @@ Answer only about the business.`
                             <span>DM AI Conversation</span>
                           </div>
                           <p className="text-[11px] text-slate-500 font-normal mt-1 leading-relaxed">
-                            Multi-turn Gemini AI Assistant in Direct Messages.
+                            Multi-turn GPT-4o mini assistant in Direct Messages.
                           </p>
                         </div>
                       </button>
@@ -1174,6 +1204,20 @@ Answer only about the business.`
             {/* ================= STEP 2: BRAND NEW AI CONVERSATION PAGE ================= */}
             {currentStep === 2 && allOrKeywords === 'ai_conversation' && (
               <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-xl border border-indigo-100 bg-gradient-to-r from-blue-50/80 via-white to-violet-50/80 px-4 py-3 shadow-sm">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      DM AI Model
+                    </div>
+                    <div className="mt-0.5 text-sm font-black text-slate-900">
+                      GPT-4o mini
+                    </div>
+                  </div>
+                  <div className="rounded-full border border-indigo-100 bg-white px-3 py-1 text-[10px] font-black text-indigo-600 shadow-sm">
+                    OpenAI API
+                  </div>
+                </div>
+
                 {/* Section 1 – AI Assistant Name */}
                 <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-xs space-y-2.5">
                   <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
@@ -1421,7 +1465,7 @@ Please rephrase your question or our support team will assist you.`}
                     {isAiTypingTest && (
                       <div className="flex items-center gap-2 text-slate-400 text-xs italic py-1">
                         <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                        <span>{aiAssistantName || 'AI Assistant'} is typing...</span>
+                        <span>{aiAssistantName || 'AI Assistant'} · GPT-4o mini is typing...</span>
                       </div>
                     )}
                   </div>
