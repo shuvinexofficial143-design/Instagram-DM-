@@ -4,7 +4,6 @@ const PROD_ORIGIN = 'https://autoreplys.vercel.app';
 const SUPABASE_URL = String(
   process.env.SUPABASE_URL || 'https://mgibujqljahrfwlaafjy.supabase.co'
 ).replace(/\/$/, '');
-const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const META_APP_ID = String(process.env.INSTAGRAM_APP_ID || '').trim();
 const META_APP_SECRET = String(process.env.INSTAGRAM_APP_SECRET || '').trim();
 const OAUTH_STATE_SECRET = String(
@@ -136,64 +135,39 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000)
   }
 }
 
-function supabaseHeaders(extra: Record<string, string> = {}) {
-  if (!SERVICE_ROLE_KEY) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured in Vercel');
-  }
-
-  return {
-    apikey: SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-    'Content-Type': 'application/json',
-    ...extra,
-  };
-}
-
 async function persistInstagramAccount(
   workspaceId: string,
   account: StoredInstagramAccount
 ): Promise<void> {
-  const tokenUrl =
-    `${SUPABASE_URL}/rest/v1/autoreply_instagram_tokens?on_conflict=user_id`;
-  const tokenRes = await fetchWithTimeout(tokenUrl, {
-    method: 'POST',
-    headers: supabaseHeaders({
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    }),
-    body: JSON.stringify({ user_id: workspaceId, account }),
-  });
+  const response = await fetchWithTimeout(
+    `${SUPABASE_URL}/functions/v1/instagram-account-store`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save',
+        workspaceId,
+        accessToken: account.access_token,
+      }),
+    },
+    20000
+  );
 
-  if (!tokenRes.ok) {
-    const body = await tokenRes.text();
-    console.error('[INSTAGRAM_SUPABASE_TOKEN_SAVE_FAILED]', tokenRes.status, body);
-    throw new Error('Instagram token storage failed');
-  }
-
-  const safeAccount = { ...account } as any;
-  delete safeAccount.access_token;
-
-  const docUrl =
-    `${SUPABASE_URL}/rest/v1/autoreply_documents?on_conflict=user_id,collection,id`;
-  const docRes = await fetchWithTimeout(docUrl, {
-    method: 'POST',
-    headers: supabaseHeaders({
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    }),
-    body: JSON.stringify({
-      user_id: workspaceId,
-      collection: 'instagram_account',
-      id: 'primary',
-      data: safeAccount,
-    }),
-  });
-
-  if (!docRes.ok) {
-    const body = await docRes.text();
-    console.error('[INSTAGRAM_SUPABASE_DOC_SAVE_FAILED]', docRes.status, body);
-    throw new Error('Instagram account storage failed');
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.ok) {
+    console.error(
+      '[INSTAGRAM_EDGE_STORE_FAILED]',
+      response.status,
+      payload?.error || payload,
+      payload?.detail || ''
+    );
+    throw new Error(
+      payload?.detail ||
+        payload?.error ||
+        `Instagram account storage failed (HTTP ${response.status})`
+    );
   }
 }
-
 async function subscribeInstagramApp(igUserId: string, accessToken: string): Promise<void> {
   const token = sanitizeAccessToken(accessToken);
   if (!token || !igUserId) return;
@@ -240,7 +214,8 @@ export default async function handler(req: any, res: any) {
         callbackRuntime: 'ready',
         instagramAppConfigured: Boolean(META_APP_ID && META_APP_SECRET),
         stateSecretConfigured: Boolean(OAUTH_STATE_SECRET),
-        supabaseConfigured: Boolean(SERVICE_ROLE_KEY && SUPABASE_URL),
+        supabaseConfigured: Boolean(SUPABASE_URL),
+        storageMode: 'supabase-edge-function',
         redirectUri: getRedirectUri(req),
       });
     }
@@ -403,9 +378,8 @@ export default async function handler(req: any, res: any) {
       console.error('[INSTAGRAM_PERSIST_FAILED]', err);
       return renderError(
         res,
-        err?.message?.includes('SUPABASE_SERVICE_ROLE_KEY')
-          ? 'Instagram login worked, but secure server storage is not configured in Vercel yet.'
-          : 'Instagram login worked, but the account could not be saved securely.',
+        'Instagram login worked, but the account could not be saved securely: ' +
+          (err?.message || 'unknown storage error'),
         500
       );
     }
