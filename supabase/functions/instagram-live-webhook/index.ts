@@ -609,7 +609,7 @@ async function generateReply(
           { role: "user", content: incomingText },
         ],
         temperature: 0.3,
-        max_tokens: 60,
+        max_tokens: 160,
       }),
       signal: controller.signal,
     });
