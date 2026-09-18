@@ -57,6 +57,18 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000)
   }
 }
 
+class StoreError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status = 500, code?: string) {
+    super(message);
+    this.name = 'StoreError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function callStore(action: string, workspaceId: string, extra: any = {}) {
   const response = await fetchWithTimeout(
     `${SUPABASE_URL}/functions/v1/instagram-account-store`,
@@ -76,10 +88,12 @@ async function callStore(action: string, workspaceId: string, extra: any = {}) {
       payload?.error || payload,
       payload?.detail || ''
     );
-    throw new Error(
+    throw new StoreError(
       payload?.detail ||
         payload?.error ||
-        `Automation storage failed (HTTP ${response.status})`
+        `Automation storage failed (HTTP ${response.status})`,
+      response.status,
+      payload?.code
     );
   }
 
@@ -109,6 +123,9 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({
         ok: true,
         automation: payload?.automation || automation,
+        pausedAutomationIds: Array.isArray(payload?.pausedAutomationIds)
+          ? payload.pausedAutomationIds
+          : [],
       });
     }
 
@@ -129,8 +146,16 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   } catch (err: any) {
     console.error('[GUEST_AUTOMATION_API_FATAL]', err);
-    return res.status(500).json({
+    const status =
+      err?.name === 'AbortError'
+        ? 504
+        : err instanceof StoreError
+        ? err.status
+        : 500;
+
+    return res.status(status).json({
       ok: false,
+      code: err instanceof StoreError ? err.code : undefined,
       error:
         err?.name === 'AbortError'
           ? 'Automation storage request timed out.'
