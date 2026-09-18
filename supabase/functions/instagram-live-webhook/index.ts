@@ -708,11 +708,35 @@ Deno.serve(async (req: Request) => {
     const mode = String(url.searchParams.get("hub.mode") || "");
     const token = String(url.searchParams.get("hub.verify_token") || "");
     const challenge = String(url.searchParams.get("hub.challenge") || "");
-    const verifyToken = cleanToken(Deno.env.get("WEBHOOK_VERIFY_TOKEN"));
+    const configuredVerifyToken = cleanToken(
+      Deno.env.get("WEBHOOK_VERIFY_TOKEN")
+    );
+    // Compatibility fallback for the existing Meta webhook token already used
+    // by this project. The verify token only protects the GET handshake; POST
+    // webhook authenticity is still enforced with the Meta app-secret HMAC.
+    const acceptedVerifyTokens = new Set(
+      [configuredVerifyToken, "nazha12"].filter(Boolean)
+    );
 
-    if (mode === "subscribe" && verifyToken && token === verifyToken) {
+    if (
+      mode === "subscribe" &&
+      token &&
+      acceptedVerifyTokens.has(token)
+    ) {
       return new Response(challenge, {
         status: 200,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
+    if (mode === "subscribe") {
+      console.warn("[DIRECT_META_VERIFY_FAILED]", {
+        tokenLength: token.length,
+        configured: Boolean(configuredVerifyToken),
+        challengePresent: Boolean(challenge),
+      });
+      return new Response("Forbidden", {
+        status: 403,
         headers: { "Content-Type": "text/plain; charset=utf-8" },
       });
     }
@@ -720,9 +744,10 @@ Deno.serve(async (req: Request) => {
     return reply(200, {
       ok: true,
       directMetaWebhookReady: Boolean(
-        verifyToken &&
+        acceptedVerifyTokens.size &&
           cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"))
       ),
+      verifyTokenConfigured: Boolean(configuredVerifyToken),
       openaiConfigured: Boolean(cleanToken(Deno.env.get("OPENAI_API_KEY"))),
     });
   }
