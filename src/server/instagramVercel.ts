@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 export type StoredInstagramAccount = {
   id: string;
@@ -24,8 +23,12 @@ const OAUTH_STATE_SECRET = String(
   process.env.AUTH_SESSION_SECRET || process.env.INSTAGRAM_APP_SECRET || ''
 ).trim();
 
-function getSupabaseAdmin() {
+async function getSupabaseAdmin() {
   if (!SERVICE_ROLE_KEY) return null;
+
+  // Lazy-load Supabase only when a database operation is actually needed.
+  // This keeps Vercel OAuth functions from failing during module startup.
+  const { createClient } = await import('@supabase/supabase-js');
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -169,7 +172,7 @@ export async function persistInstagramAccount(
   workspaceId: string,
   account: StoredInstagramAccount
 ): Promise<void> {
-  const admin = getSupabaseAdmin();
+  const admin = await getSupabaseAdmin();
   if (!admin) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured in Vercel');
   }
@@ -196,7 +199,7 @@ export async function persistInstagramAccount(
 export async function loadInstagramAccount(
   workspaceId: string
 ): Promise<StoredInstagramAccount | null> {
-  const admin = getSupabaseAdmin();
+  const admin = await getSupabaseAdmin();
   if (!admin) return null;
 
   const { data, error } = await admin
@@ -213,7 +216,7 @@ export async function loadInstagramAccount(
 }
 
 export async function deleteInstagramAccount(workspaceId: string): Promise<void> {
-  const admin = getSupabaseAdmin();
+  const admin = await getSupabaseAdmin();
   if (!admin) return;
 
   const [{ error: tokenError }, { error: docError }] = await Promise.all([
