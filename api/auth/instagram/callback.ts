@@ -1,14 +1,36 @@
-import {
-  escapeHtml,
-  getInstagramRedirectUri,
-  metaAppId,
-  metaAppSecret,
-  persistInstagramAccount,
-  sanitizeAccessToken,
-  subscribeInstagramApp,
-  verifyOAuthState,
-  type StoredInstagramAccount,
-} from '../../../src/server/instagramVercel';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+const PROD_ORIGIN = 'https://autoreplys.vercel.app';
+const SUPABASE_URL = String(
+  process.env.SUPABASE_URL || 'https://mgibujqljahrfwlaafjy.supabase.co'
+).replace(/\/$/, '');
+const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const META_APP_ID = String(process.env.INSTAGRAM_APP_ID || '').trim();
+const META_APP_SECRET = String(process.env.INSTAGRAM_APP_SECRET || '').trim();
+const OAUTH_STATE_SECRET = String(
+  process.env.AUTH_SESSION_SECRET || process.env.INSTAGRAM_APP_SECRET || ''
+).trim();
+
+type StoredInstagramAccount = {
+  id: string;
+  ig_user_id: string;
+  username: string;
+  profile_pic_url?: string;
+  followers_count?: number;
+  access_token: string;
+  token_expires_at?: string;
+  connected_at: string;
+  status: 'connected';
+};
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
 
 function renderError(res: any, message: string, status = 400) {
   return res.status(status).send(`<!doctype html>
@@ -27,156 +49,372 @@ function renderError(res: any, message: string, status = 400) {
 </html>`);
 }
 
+function getRedirectUri(req: any): string {
+  const configured = String(process.env.REDIRECT_URI || '').trim();
+  const host = String(req?.headers?.host || '').trim().toLowerCase();
+  const proto = String(req?.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
+
+  if (host === 'autoreplys.vercel.app') {
+    return `${PROD_ORIGIN}/api/auth/instagram/callback`;
+  }
+
+  if (configured && !configured.includes('localhost')) return configured;
+  if (host) return `${proto}://${host}/api/auth/instagram/callback`;
+  return `${PROD_ORIGIN}/api/auth/instagram/callback`;
+}
+
+function isWorkspaceId(value: string): boolean {
+  return /^guest_[a-f0-9-]{16,}$/i.test(value);
+}
+
+function verifyOAuthState(rawState: unknown): string {
+  if (!rawState || !OAUTH_STATE_SECRET) return '';
+
+  let parsed: any;
+  const raw = String(rawState);
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    try {
+      parsed = JSON.parse(decodeURIComponent(raw));
+    } catch {
+      return '';
+    }
+  }
+
+  const workspaceId = String(parsed?.workspaceId || '');
+  const ts = Number(parsed?.ts || 0);
+  const sig = String(parsed?.sig || '');
+
+  if (!isWorkspaceId(workspaceId) || !Number.isFinite(ts) || !sig) return '';
+  if (Math.abs(Date.now() - ts) > 15 * 60 * 1000) return '';
+
+  const expected = createHmac('sha256', OAUTH_STATE_SECRET)
+    .update(`${workspaceId}:${ts}`)
+    .digest('hex');
+
+  try {
+    const a = Buffer.from(sig, 'hex');
+    const b = Buffer.from(expected, 'hex');
+    if (a.length !== b.length || !timingSafeEqual(a, b)) return '';
+  } catch {
+    return '';
+  }
+
+  return workspaceId;
+}
+
+function sanitizeAccessToken(value: unknown): string {
+  if (!value) return '';
+
+  let token = String(value).trim();
+  if (
+    (token.startsWith('"') && token.endsWith('"')) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    token = token.slice(1, -1).trim();
+  }
+
+  try {
+    let previous = '';
+    while (token.includes('%') && token !== previous) {
+      previous = token;
+      token = decodeURIComponent(token);
+    }
+  } catch {}
+
+  return token.trim();
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function supabaseHeaders(extra: Record<string, string> = {}) {
+  if (!SERVICE_ROLE_KEY) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured in Vercel');
+  }
+
+  return {
+    apikey: SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+    'Content-Type': 'application/json',
+    ...extra,
+  };
+}
+
+async function persistInstagramAccount(
+  workspaceId: string,
+  account: StoredInstagramAccount
+): Promise<void> {
+  const tokenUrl =
+    `${SUPABASE_URL}/rest/v1/autoreply_instagram_tokens?on_conflict=user_id`;
+  const tokenRes = await fetchWithTimeout(tokenUrl, {
+    method: 'POST',
+    headers: supabaseHeaders({
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    }),
+    body: JSON.stringify({ user_id: workspaceId, account }),
+  });
+
+  if (!tokenRes.ok) {
+    const body = await tokenRes.text();
+    console.error('[INSTAGRAM_SUPABASE_TOKEN_SAVE_FAILED]', tokenRes.status, body);
+    throw new Error('Instagram token storage failed');
+  }
+
+  const safeAccount = { ...account } as any;
+  delete safeAccount.access_token;
+
+  const docUrl =
+    `${SUPABASE_URL}/rest/v1/autoreply_documents?on_conflict=user_id,collection,id`;
+  const docRes = await fetchWithTimeout(docUrl, {
+    method: 'POST',
+    headers: supabaseHeaders({
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    }),
+    body: JSON.stringify({
+      user_id: workspaceId,
+      collection: 'instagram_account',
+      id: 'primary',
+      data: safeAccount,
+    }),
+  });
+
+  if (!docRes.ok) {
+    const body = await docRes.text();
+    console.error('[INSTAGRAM_SUPABASE_DOC_SAVE_FAILED]', docRes.status, body);
+    throw new Error('Instagram account storage failed');
+  }
+}
+
+async function subscribeInstagramApp(igUserId: string, accessToken: string): Promise<void> {
+  const token = sanitizeAccessToken(accessToken);
+  if (!token || !igUserId) return;
+
+  const fields =
+    'messages,messaging_postbacks,message_deliveries,message_reads,comments,mentions';
+  const urls = [
+    `https://graph.instagram.com/v21.0/${encodeURIComponent(igUserId)}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`,
+    `https://graph.instagram.com/v21.0/me/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        },
+        10000
+      );
+      if (response.ok) return;
+
+      const body = await response.text();
+      console.warn('[INSTAGRAM_SUBSCRIBE_WARN]', response.status, body);
+    } catch (err) {
+      console.warn('[INSTAGRAM_SUBSCRIBE_ERROR]', err);
+    }
+  }
+}
+
 export default async function handler(req: any, res: any) {
   try {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET');
-    return res.status(405).send('Method Not Allowed');
-  }
-
-  if (!metaAppId || !metaAppSecret) {
-    return renderError(res, 'Instagram OAuth server credentials are missing.', 503);
-  }
-
-  const { code, error, error_reason, error_description, state } = req.query || {};
-  if (error || error_reason) {
-    return renderError(
-      res,
-      String(error_description || error_reason || error || 'Meta authorization was cancelled.')
-    );
-  }
-
-  const workspaceId = verifyOAuthState(state);
-  if (!workspaceId) {
-    return renderError(res, 'The Instagram login session expired or was invalid. Please try again.');
-  }
-
-  if (!code) {
-    return renderError(res, 'Instagram did not return an authorization code.');
-  }
-
-  const redirectUri = getInstagramRedirectUri(req);
-
-  let shortToken = '';
-  let longToken = '';
-  let igUserId = '';
-
-  try {
-    const form = new URLSearchParams();
-    form.set('client_id', metaAppId);
-    form.set('client_secret', metaAppSecret);
-    form.set('grant_type', 'authorization_code');
-    form.set('redirect_uri', redirectUri);
-    form.set('code', String(code));
-
-    const tokenRes = await fetch('https://api.instagram.com/oauth/access_token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-    });
-
-    if (!tokenRes.ok) {
-      const body = await tokenRes.text();
-      console.error('[INSTAGRAM_TOKEN_EXCHANGE_FAILED]', tokenRes.status, body);
-      return renderError(res, 'Meta could not complete the Instagram token exchange.');
+    if (req.method !== 'GET') {
+      res.setHeader('Allow', 'GET');
+      return res.status(405).send('Method Not Allowed');
     }
 
-    const tokenData: any = await tokenRes.json();
-    shortToken = sanitizeAccessToken(tokenData?.access_token);
-    igUserId = tokenData?.user_id ? String(tokenData.user_id) : '';
-  } catch (err) {
-    console.error('[INSTAGRAM_TOKEN_EXCHANGE_ERROR]', err);
-    return renderError(res, 'Instagram token exchange failed unexpectedly.');
-  }
-
-  if (!shortToken) {
-    return renderError(res, 'Meta did not return a valid Instagram access token.');
-  }
-
-  try {
-    const longParams = new URLSearchParams({
-      grant_type: 'ig_exchange_token',
-      client_secret: metaAppSecret,
-      access_token: shortToken,
-    });
-    const longRes = await fetch(
-      `https://graph.instagram.com/access_token?${longParams.toString()}`
-    );
-    if (longRes.ok) {
-      const longData: any = await longRes.json();
-      longToken = sanitizeAccessToken(longData?.access_token);
+    // This gives us a direct way to verify that the callback function itself
+    // can boot on Vercel without consuming a one-time Instagram OAuth code.
+    if (String(req.query?.health || '') === '1') {
+      return res.status(200).json({
+        ok: true,
+        callbackRuntime: 'ready',
+        instagramAppConfigured: Boolean(META_APP_ID && META_APP_SECRET),
+        stateSecretConfigured: Boolean(OAUTH_STATE_SECRET),
+        supabaseConfigured: Boolean(SERVICE_ROLE_KEY && SUPABASE_URL),
+        redirectUri: getRedirectUri(req),
+      });
     }
-  } catch (err) {
-    console.warn('[INSTAGRAM_LONG_TOKEN_WARN]', err);
-  }
 
-  const accessToken = sanitizeAccessToken(longToken || shortToken);
+    if (!META_APP_ID || !META_APP_SECRET) {
+      return renderError(res, 'Instagram OAuth server credentials are missing.', 503);
+    }
 
-  let username = '';
-  let profilePicUrl = '';
-  let followersCount = 0;
+    if (!OAUTH_STATE_SECRET) {
+      return renderError(res, 'Instagram OAuth session secret is missing.', 503);
+    }
 
-  try {
-    const meParams = new URLSearchParams({
-      fields: 'id,username,name,profile_picture_url,followers_count',
+    const { code, error, error_reason, error_description, state } = req.query || {};
+
+    if (error || error_reason) {
+      return renderError(
+        res,
+        String(error_description || error_reason || error || 'Meta authorization was cancelled.')
+      );
+    }
+
+    const workspaceId = verifyOAuthState(state);
+    if (!workspaceId) {
+      return renderError(
+        res,
+        'The Instagram login session expired or was invalid. Please connect Instagram again.'
+      );
+    }
+
+    if (!code) {
+      return renderError(res, 'Instagram did not return an authorization code.');
+    }
+
+    const redirectUri = getRedirectUri(req);
+
+    let shortToken = '';
+    let longToken = '';
+    let igUserId = '';
+
+    try {
+      const form = new URLSearchParams();
+      form.set('client_id', META_APP_ID);
+      form.set('client_secret', META_APP_SECRET);
+      form.set('grant_type', 'authorization_code');
+      form.set('redirect_uri', redirectUri);
+      form.set('code', String(code));
+
+      const tokenRes = await fetchWithTimeout(
+        'https://api.instagram.com/oauth/access_token',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: form.toString(),
+        },
+        15000
+      );
+
+      if (!tokenRes.ok) {
+        const body = await tokenRes.text();
+        console.error('[INSTAGRAM_TOKEN_EXCHANGE_FAILED]', tokenRes.status, body);
+        return renderError(
+          res,
+          'Meta could not complete the Instagram token exchange. Please connect Instagram again.'
+        );
+      }
+
+      const tokenData: any = await tokenRes.json();
+      shortToken = sanitizeAccessToken(tokenData?.access_token);
+      igUserId = tokenData?.user_id ? String(tokenData.user_id) : '';
+    } catch (err) {
+      console.error('[INSTAGRAM_TOKEN_EXCHANGE_ERROR]', err);
+      return renderError(res, 'Instagram token exchange failed unexpectedly.');
+    }
+
+    if (!shortToken) {
+      return renderError(res, 'Meta did not return a valid Instagram access token.');
+    }
+
+    try {
+      const longParams = new URLSearchParams({
+        grant_type: 'ig_exchange_token',
+        client_secret: META_APP_SECRET,
+        access_token: shortToken,
+      });
+
+      const longRes = await fetchWithTimeout(
+        `https://graph.instagram.com/access_token?${longParams.toString()}`,
+        {},
+        15000
+      );
+
+      if (longRes.ok) {
+        const longData: any = await longRes.json();
+        longToken = sanitizeAccessToken(longData?.access_token);
+      } else {
+        const body = await longRes.text();
+        console.warn('[INSTAGRAM_LONG_TOKEN_WARN]', longRes.status, body);
+      }
+    } catch (err) {
+      console.warn('[INSTAGRAM_LONG_TOKEN_ERROR]', err);
+    }
+
+    const accessToken = sanitizeAccessToken(longToken || shortToken);
+
+    let username = '';
+    let profilePicUrl = '';
+    let followersCount = 0;
+
+    try {
+      const meParams = new URLSearchParams({
+        fields: 'id,username,name,profile_picture_url,followers_count',
+        access_token: accessToken,
+      });
+
+      const meRes = await fetchWithTimeout(
+        `https://graph.instagram.com/v21.0/me?${meParams.toString()}`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+        15000
+      );
+
+      if (!meRes.ok) {
+        const body = await meRes.text();
+        console.error('[INSTAGRAM_ME_FAILED]', meRes.status, body);
+        return renderError(res, 'Meta did not verify a professional Instagram account.');
+      }
+
+      const me: any = await meRes.json();
+      igUserId = me?.id ? String(me.id) : igUserId;
+      username = String(me?.username || '').trim();
+      profilePicUrl = String(me?.profile_picture_url || '').trim();
+      followersCount = Number(me?.followers_count || 0);
+    } catch (err) {
+      console.error('[INSTAGRAM_ME_ERROR]', err);
+      return renderError(res, 'Could not read the Instagram account profile from Meta.');
+    }
+
+    if (!igUserId || !username) {
+      return renderError(res, 'Meta did not return a verified Instagram professional account.');
+    }
+
+    const account: StoredInstagramAccount = {
+      id: 'primary',
+      ig_user_id: igUserId,
+      username,
+      profile_pic_url:
+        profilePicUrl ||
+        `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(username)}`,
+      followers_count: followersCount,
       access_token: accessToken,
-    });
-    const meRes = await fetch(
-      `https://graph.instagram.com/v21.0/me?${meParams.toString()}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+      token_expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+      connected_at: new Date().toISOString(),
+      status: 'connected',
+    };
 
-    if (!meRes.ok) {
-      const body = await meRes.text();
-      console.error('[INSTAGRAM_ME_FAILED]', meRes.status, body);
-      return renderError(res, 'Meta did not verify a professional Instagram account.');
+    try {
+      await persistInstagramAccount(workspaceId, account);
+    } catch (err: any) {
+      console.error('[INSTAGRAM_PERSIST_FAILED]', err);
+      return renderError(
+        res,
+        err?.message?.includes('SUPABASE_SERVICE_ROLE_KEY')
+          ? 'Instagram login worked, but secure server storage is not configured in Vercel yet.'
+          : 'Instagram login worked, but the account could not be saved securely.',
+        500
+      );
     }
 
-    const me: any = await meRes.json();
-    igUserId = me?.id ? String(me.id) : igUserId;
-    username = String(me?.username || '').trim();
-    profilePicUrl = String(me?.profile_picture_url || '').trim();
-    followersCount = Number(me?.followers_count || 0);
-  } catch (err) {
-    console.error('[INSTAGRAM_ME_ERROR]', err);
-    return renderError(res, 'Could not read the Instagram account profile from Meta.');
-  }
+    // Do not hold up the OAuth success page on webhook subscription.
+    void subscribeInstagramApp(igUserId, accessToken);
 
-  if (!igUserId || !username) {
-    return renderError(res, 'Meta did not return a verified Instagram professional account.');
-  }
-
-  const account: StoredInstagramAccount = {
-    id: 'primary',
-    ig_user_id: igUserId,
-    username,
-    profile_pic_url:
-      profilePicUrl ||
-      `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(username)}`,
-    followers_count: followersCount,
-    access_token: accessToken,
-    token_expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-    connected_at: new Date().toISOString(),
-    status: 'connected',
-  };
-
-  try {
-    await persistInstagramAccount(workspaceId, account);
-  } catch (err: any) {
-    console.error('[INSTAGRAM_PERSIST_FAILED]', err);
-    return renderError(
-      res,
-      err?.message?.includes('SUPABASE_SERVICE_ROLE_KEY')
-        ? 'Instagram login worked, but secure server storage is not configured in Vercel yet.'
-        : 'Instagram login worked, but the account could not be saved securely.',
-      500
-    );
-  }
-
-  void subscribeInstagramApp(igUserId, accessToken);
-
-  const safeUsername = escapeHtml(username);
-  return res.status(200).send(`<!doctype html>
+    const safeUsername = escapeHtml(username);
+    return res.status(200).send(`<!doctype html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -186,7 +424,7 @@ export default async function handler(req: any, res: any) {
   <div style="max-width:440px;background:white;border:1px solid #e2e8f0;border-radius:20px;padding:28px;box-shadow:0 12px 40px rgba(15,23,42,.08);text-align:center">
     <div style="font-size:42px">✅</div>
     <h2 style="margin:8px 0;color:#0f172a">@${safeUsername} connected</h2>
-    <p style="color:#64748b;line-height:1.6;font-size:14px">Meta verified the Instagram account successfully.</p>
+    <p style="color:#64748b;line-height:1.6;font-size:14px">Meta verified and saved the Instagram account successfully.</p>
     <p style="color:#94a3b8;font-size:12px">You can close this window.</p>
   </div>
   <script>
@@ -213,5 +451,4 @@ export default async function handler(req: any, res: any) {
       500
     );
   }
-
 }
