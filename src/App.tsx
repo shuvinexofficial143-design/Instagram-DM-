@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
-import { auth } from './lib/supabase';
+import { auth, onAuthStateChanged, signInAnonymously } from './lib/supabase';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { PlanBanner } from './components/Common/PlanBanner';
@@ -8,7 +8,6 @@ import { PlanRenewModal } from './components/Common/PlanRenewModal';
 import { ConnectChannelModal } from './components/Common/ConnectChannelModal';
 import { IntroSplash } from './components/Common/IntroSplash';
 import { ErrorBoundary } from './components/Common/ErrorBoundary';
-import { LoginPage } from './components/Auth/LoginPage';
 import { HomePage } from './components/Home/HomePage';
 import { AutomationsPage } from './components/Automations/AutomationsPage';
 import { AutomationBuilder } from './components/Automations/AutomationBuilder';
@@ -19,8 +18,7 @@ import { AboutUsPage } from './components/About/AboutUsPage';
 import { AdminPage } from './components/Admin/AdminPage';
 
 // Install once, before any provider effects run. Every same-origin /api request made by
-// an authenticated user carries a Supabase access token. The server verifies that token and
-// replaces any client-supplied userId with the verified Supabase user ID.
+// an authenticated user carries a Supabase access token.
 if (typeof window !== 'undefined' && !(window as any).__autoreplyAuthenticatedFetchInstalled) {
   const originalFetch = window.fetch.bind(window);
   (window as any).__autoreplyAuthenticatedFetchInstalled = true;
@@ -86,21 +84,13 @@ const MainContent: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const { authLoading, firebaseUser } = useApp();
+  const { authLoading } = useApp();
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
   if (authLoading) {
     return (
       <ErrorBoundary>
         <IntroSplash onComplete={() => {}} />
-      </ErrorBoundary>
-    );
-  }
-
-  if (!firebaseUser) {
-    return (
-      <ErrorBoundary>
-        <LoginPage />
       </ErrorBoundary>
     );
   }
@@ -121,10 +111,74 @@ const AppShell: React.FC = () => {
   );
 };
 
-export default function App() {
+const AuthIsolatedApp: React.FC = () => {
+  const [providerKey, setProviderKey] = useState<string>('auth-boot');
+  const [identityReady, setIdentityReady] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!auth) {
+      setProviderKey('public-workspace');
+      setIdentityReady(true);
+      return;
+    }
+
+    let identitySequence = 0;
+    let anonymousAttempted = false;
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      const runId = ++identitySequence;
+      setIdentityReady(false);
+
+      void (async () => {
+        if (currentUser) {
+          if (runId !== identitySequence) return;
+          setProviderKey(`supabase-user:${currentUser.uid}`);
+          setIdentityReady(true);
+          return;
+        }
+
+        if (!anonymousAttempted) {
+          anonymousAttempted = true;
+          try {
+            await signInAnonymously();
+            return;
+          } catch (error) {
+            console.warn('[ANONYMOUS_AUTH_FALLBACK]', error);
+          }
+        }
+
+        if (runId !== identitySequence) return;
+        try {
+          localStorage.setItem('autoreply_guest_mode', 'true');
+        } catch {}
+        setProviderKey('public-workspace');
+        setIdentityReady(true);
+      })();
+    });
+
+    return () => {
+      identitySequence += 1;
+      unsubscribe();
+    };
+  }, []);
+
+  if (!identityReady) {
+    return (
+      <ErrorBoundary>
+        <IntroSplash onComplete={() => {}} />
+      </ErrorBoundary>
+    );
+  }
+
   return (
-    <AppProvider>
-      <AppShell />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider key={providerKey}>
+        <AppShell />
+      </AppProvider>
+    </ErrorBoundary>
   );
+};
+
+export default function App() {
+  return <AuthIsolatedApp />;
 }
