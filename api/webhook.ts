@@ -46,7 +46,7 @@ async function forwardToLiveProcessor(
 
   try {
     const response = await fetch(
-      `${SUPABASE_URL}/functions/v1/instagram-live-webhook`,
+      `${SUPABASE_URL}/functions/v1/instagram-live-webhook?forceFunctionRegion=ap-south-1`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
