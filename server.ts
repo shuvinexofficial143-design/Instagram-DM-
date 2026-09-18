@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import { readFileSync } from 'fs';
+import { randomUUID } from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { Agent, setGlobalDispatcher } from 'undici';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
@@ -93,7 +94,7 @@ async function startServer() {
       '',
     redirect_uri:
       process.env.REDIRECT_URI ||
-      `${process.env.APP_URL || 'http://localhost:3000'}/api/auth/instagram/callback`,
+      `${process.env.APP_URL || (process.env.VERCEL ? 'https://autoreplys.vercel.app' : 'http://localhost:3000')}/api/auth/instagram/callback`,
   };
 
   let connectedInstagramAccountMemory: InstagramAccount | null = null;
@@ -103,6 +104,12 @@ async function startServer() {
   function getInstagramRedirectUri(req: Request): string {
     const host = req.get('host') || 'localhost:3000';
     const proto = String(req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http')).split(',')[0].trim();
+
+    // Production must always return to the live AutoReply deployment, never localhost.
+    if (host === 'autoreplys.vercel.app') {
+      return 'https://autoreplys.vercel.app/api/auth/instagram/callback';
+    }
+
     const autoRedirectUri = `${proto}://${host}/api/auth/instagram/callback`;
     const configured = String(metaConfigStore.redirect_uri || '').trim();
     const configuredLooksInvalid =
@@ -111,6 +118,44 @@ async function startServer() {
       configured.includes('your-app-url') ||
       (configured.includes('localhost') && !host.includes('localhost'));
     return configuredLooksInvalid ? autoRedirectUri : configured;
+  }
+
+  const GUEST_WORKSPACE_COOKIE = 'autoreply_guest_workspace';
+
+  function getCookieValue(req: Request, name: string): string {
+    const rawCookie = String(req.headers.cookie || '');
+    const parts = rawCookie.split(';');
+    for (const part of parts) {
+      const idx = part.indexOf('=');
+      if (idx === -1) continue;
+      const key = part.slice(0, idx).trim();
+      if (key !== name) continue;
+      try {
+        return decodeURIComponent(part.slice(idx + 1).trim());
+      } catch {
+        return part.slice(idx + 1).trim();
+      }
+    }
+    return '';
+  }
+
+  function getGuestWorkspaceId(req: Request): string {
+    const value = getCookieValue(req, GUEST_WORKSPACE_COOKIE);
+    return /^guest_[a-f0-9-]{16,}$/i.test(value) ? value : '';
+  }
+
+  function getOrCreateGuestWorkspaceId(req: Request, res: Response): string {
+    const existing = getGuestWorkspaceId(req);
+    if (existing) return existing;
+
+    const workspaceId = `guest_${randomUUID()}`;
+    const proto = String(req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http')).split(',')[0].trim();
+    const securePart = proto === 'https' ? '; Secure' : '';
+    res.append(
+      'Set-Cookie',
+      `${GUEST_WORKSPACE_COOKIE}=${encodeURIComponent(workspaceId)}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${securePart}`
+    );
+    return workspaceId;
   }
 
   function toClientSafeInstagramAccount(account: InstagramAccount): InstagramAccount {
@@ -578,10 +623,13 @@ async function startServer() {
 
   // Instagram Account status REST endpoints (Strictly user-scoped, no cross-account leakage)
   app.get('/api/instagram/account', async (req: Request, res: Response) => {
-    const userId = req.query.userId as string | undefined;
+    const explicitUserId = req.query.userId as string | undefined;
+    const userId =
+      getGuestWorkspaceId(req) ||
+      (explicitUserId && explicitUserId !== 'null' && explicitUserId !== 'undefined' ? explicitUserId : '');
     let accountData: InstagramAccount | null = null;
 
-    if (!userId || userId === 'null' || userId === 'undefined') {
+    if (!userId) {
       return res.json({ success: true, account: null });
     }
 
@@ -1296,9 +1344,12 @@ async function startServer() {
   app.get('/api/admin/users-overview', handleAdminDashboardOverview);
 
   app.post('/api/instagram/account', async (req: Request, res: Response) => {
-    const userId = req.body?.userId as string | undefined;
-    if (!userId || userId === 'null' || userId === 'undefined') {
-      return res.status(400).json({ success: false, error: 'userId is required for Instagram account operations' });
+    const explicitUserId = req.body?.userId as string | undefined;
+    const userId =
+      getGuestWorkspaceId(req) ||
+      (explicitUserId && explicitUserId !== 'null' && explicitUserId !== 'undefined' ? explicitUserId : '');
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'No Instagram workspace session found' });
     }
 
     if (req.body && 'account' in req.body && req.body.account === null) {
@@ -1456,7 +1507,10 @@ async function startServer() {
   });
 
   app.post('/api/instagram/subscribe', async (req: Request, res: Response) => {
-    const userId = (req.body?.userId || req.query?.userId) as string | undefined;
+    const explicitUserId = (req.body?.userId || req.query?.userId) as string | undefined;
+    const userId =
+      getGuestWorkspaceId(req) ||
+      (explicitUserId && explicitUserId !== 'null' && explicitUserId !== 'undefined' ? explicitUserId : '');
     let accessToken = '';
     let igUserId = '';
     if (userId) {
@@ -1492,7 +1546,7 @@ async function startServer() {
   // 3. Instagram Meta OAuth Auth Flow Endpoint (Instagram Business Login)
   app.get('/api/auth/instagram', (req: Request, res: Response) => {
     const appId = metaConfigStore.app_id;
-    const clientUserId = (req.query.userId as string) || '';
+    const clientUserId = getOrCreateGuestWorkspaceId(req, res);
     const redirectUri = getInstagramRedirectUri(req);
 
     if (!appId || !metaConfigStore.app_secret) {
@@ -1521,11 +1575,13 @@ async function startServer() {
   app.get('/api/auth/instagram/callback', async (req: Request, res: Response) => {
     const { code, error, error_reason, error_description, state } = req.query;
 
-    let targetUserId = '';
+    let targetUserId = getGuestWorkspaceId(req);
     if (state) {
       try {
         const decodedState = JSON.parse(decodeURIComponent(String(state)));
-        if (decodedState?.userId) targetUserId = String(decodedState.userId);
+        if (decodedState?.userId && /^guest_[a-f0-9-]{16,}$/i.test(String(decodedState.userId))) {
+          targetUserId = String(decodedState.userId);
+        }
       } catch {}
     }
 
