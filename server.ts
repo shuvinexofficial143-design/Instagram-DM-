@@ -66,7 +66,7 @@ const deleteDoc = async (..._args: any[]): Promise<void> => {};
 const query = (...args: any[]): any => args[0];
 const where = (..._args: any[]): any => ({});
 
-const serverSupabaseUrl = process.env.SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.supabase.co';
+const serverSupabaseUrl = process.env.SUPABASE_URL || 'https://mgibujqljahrfwlaafjy.supabase.co';
 const serverSupabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const serverSupabase = serverSupabaseServiceKey
   ? createSupabaseClient(serverSupabaseUrl, serverSupabaseServiceKey, {
