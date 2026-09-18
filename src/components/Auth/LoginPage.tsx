@@ -9,8 +9,6 @@ import {
 } from 'lucide-react';
 import {
   auth,
-  googleProvider,
-  signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -24,15 +22,6 @@ interface LoginPageProps {
 
 type AuthMode = 'signin' | 'signup';
 
-const GoogleIcon = () => (
-  <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true">
-    <path fill="#4285F4" d="M21.6 12.227c0-.709-.064-1.391-.182-2.045H12v3.868h5.382a4.6 4.6 0 0 1-1.996 3.018v2.509h3.227c1.889-1.74 2.987-4.305 2.987-7.35Z" />
-    <path fill="#34A853" d="M12 22c2.7 0 4.964-.895 6.613-2.423l-3.227-2.509c-.895.6-2.041.955-3.386.955-2.605 0-4.809-1.759-5.6-4.123H3.064v2.591A9.996 9.996 0 0 0 12 22Z" />
-    <path fill="#FBBC05" d="M6.4 13.9A6.014 6.014 0 0 1 6.086 12c0-.659.114-1.3.314-1.9V7.509H3.064A9.996 9.996 0 0 0 2 12c0 1.614.386 3.141 1.064 4.491L6.4 13.9Z" />
-    <path fill="#EA4335" d="M12 5.977c1.468 0 2.786.505 3.823 1.495l2.864-2.863C16.959 2.995 14.695 2 12 2a9.996 9.996 0 0 0-8.936 5.509L6.4 10.1C7.191 7.736 9.395 5.977 12 5.977Z" />
-  </svg>
-);
-
 export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   const { setIsGuestMode, firebaseUser, setFirebaseUser } = useApp();
 
@@ -42,7 +31,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [termsModalType, setTermsModalType] = useState<'terms' | 'privacy' | null>(null);
@@ -63,30 +51,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
     setPassword('');
     setConfirmPassword('');
     resetMessages();
-  };
-
-  const handleGoogleSignIn = async () => {
-    resetMessages();
-
-    if (!auth) {
-      setErrorMsg('Authentication service is not available.');
-      return;
-    }
-
-    setGoogleLoading(true);
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (err: any) {
-      setGoogleLoading(false);
-      const message = String(err?.message || '');
-      if (message.toLowerCase().includes('provider') || message.toLowerCase().includes('google')) {
-        setErrorMsg('Google Sign-In is not enabled correctly in Supabase yet.');
-      } else if (message.toLowerCase().includes('redirect')) {
-        setErrorMsg('Google Sign-In redirect URL is not allowed in Supabase yet.');
-      } else {
-        setErrorMsg(message || 'Google Sign-In failed. Please try again.');
-      }
-    }
   };
 
   const handleEmailPasswordSubmit = async (e: React.FormEvent) => {
@@ -213,8 +177,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
         </h1>
         <p className="text-xs text-slate-500 text-center mt-2 mb-6 leading-relaxed">
           {authMode === 'signup'
-            ? 'Create your account with Google or email'
-            : 'Sign in with Google or your email'}
+            ? 'Create your account with email and password'
+            : 'Sign in with your email and password'}
         </p>
 
         {errorMsg && (
@@ -230,31 +194,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
             <span className="leading-snug">{successMsg}</span>
           </div>
         )}
-
-        <button
-          type="button"
-          onClick={handleGoogleSignIn}
-          disabled={googleLoading || isLoading}
-          className="w-full py-3 px-4 bg-white hover:bg-slate-50 text-slate-800 font-semibold text-sm rounded-xl transition-all border border-slate-300 shadow-sm flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60"
-        >
-          {googleLoading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Opening Google...</span>
-            </>
-          ) : (
-            <>
-              <GoogleIcon />
-              <span>Continue with Google</span>
-            </>
-          )}
-        </button>
-
-        <div className="flex items-center gap-3 my-5">
-          <div className="h-px bg-slate-200 flex-1" />
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">or</span>
-          <div className="h-px bg-slate-200 flex-1" />
-        </div>
 
         <form onSubmit={handleEmailPasswordSubmit} className="space-y-4">
           <div>
@@ -323,7 +262,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
 
           <button
             type="submit"
-            disabled={isLoading || googleLoading}
+            disabled={isLoading}
             className="w-full mt-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
           >
             {isLoading ? (
