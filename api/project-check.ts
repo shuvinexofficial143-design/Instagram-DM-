@@ -20,7 +20,7 @@ export default async function handler(req: any, res: any) {
   return res.status(200).json({
     ok: true,
     serverSupabaseProjectRef: projectRefFromUrl(serverUrl),
-    serverSupabaseSource: process.env.SUPABASE_URL ? 'SUPABASE_URL env' : 'code fallback',
+    serverSupabaseSource: 'fixed production project',
     viteSupabaseProjectRef: viteUrl ? projectRefFromUrl(viteUrl) : null,
     viteSupabaseSource: viteUrl ? 'VITE_SUPABASE_URL env' : 'not set at runtime',
     expectedRepoFallbackRef: 'dwgxmmftybxwpurgsxkx',

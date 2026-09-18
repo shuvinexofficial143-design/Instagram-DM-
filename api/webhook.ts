@@ -1,8 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-const SUPABASE_URL = String(
-  process.env.SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co'
-).replace(/\/$/, '');
+const SUPABASE_URL = 'https://dwgxmmftybxwpurgsxkx.supabase.co';
 
 export const config = {
   api: {
