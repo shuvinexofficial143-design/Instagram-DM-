@@ -30,8 +30,8 @@ const ItemList: React.FC<{
 }> = ({ items, dotClass = 'bg-indigo-500' }) => (
   <ul className="mt-2 space-y-1.5">
     {(items || []).map((item, idx) => (
-      <li key={idx} className="flex items-start gap-2 text-[11px] leading-5 text-slate-600">
-        <span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} />
+      <li key={idx} className="flex items-start gap-2.5 text-[13px] leading-6 text-slate-650">
+        <span className={`mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} />
         <span>{item}</span>
       </li>
     ))}
@@ -121,22 +121,22 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
           )}
         </button>
 
-        <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/85 px-3 py-1.5 text-[10px] font-black text-indigo-700 shadow-sm">
+        <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-gradient-to-r from-blue-50 to-violet-50 px-3 py-1.5 text-[11px] font-black text-indigo-700 shadow-sm">
           <Zap className="h-3 w-3" />
           GPT-4o mini Prompt Analyzer
         </div>
       </div>
 
       {error && (
-        <div className="flex items-start justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50/85 px-3.5 py-3 text-xs font-semibold text-rose-700">
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-indigo-200 bg-gradient-to-r from-blue-50 via-indigo-50 to-violet-50 px-3.5 py-3 text-[13px] font-semibold text-indigo-700 shadow-sm">
           <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <AlertCircle className="mt-0.5 h-4.5 w-4.5 shrink-0 text-violet-600" />
             <span>{error}</span>
           </div>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="shrink-0 text-[10px] font-black uppercase tracking-wide text-rose-600"
+            className="shrink-0 text-[11px] font-black uppercase tracking-wide text-violet-600"
           >
             Close
           </button>
@@ -154,15 +154,15 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-sm font-black text-slate-900">AI ने आपके prompt को ऐसे समझा</h4>
-                    <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[9px] font-black text-emerald-700">
+                    <h4 className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-base font-black text-transparent">AI ने आपके prompt को ऐसे समझा</h4>
+                    <span className="rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[10px] font-black text-violet-700">
                       {analysisResult.quality_score}/100
                     </span>
                   </div>
-                  <p className="mt-1 max-w-3xl text-[11px] leading-5 text-slate-600">
+                  <p className="mt-1.5 max-w-3xl text-[13px] leading-6 text-slate-600">
                     {analysisResult.analysis_summary}
                   </p>
-                  <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-indigo-400">
+                  <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-500">
                     Engine: {provider === 'gpt-4o-mini' ? 'GPT-4o mini' : 'Smart fallback analyzer'}
                   </p>
                 </div>
@@ -171,7 +171,7 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
               <button
                 type="button"
                 onClick={handleApplyPrompt}
-                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-3.5 py-2 text-[11px] font-black text-white shadow-md shadow-indigo-500/15"
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2.5 text-[12px] font-black text-white shadow-md shadow-indigo-500/15"
               >
                 {applied ? <Check className="h-3.5 w-3.5" /> : <ArrowRight className="h-3.5 w-3.5" />}
                 {applied ? 'Applied' : 'Use Structured Prompt'}
@@ -180,66 +180,66 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
           </div>
 
           <div className="relative grid gap-3 p-3.5 md:grid-cols-2">
-            <section className="rounded-xl border border-white/90 bg-white/80 p-3.5 shadow-sm backdrop-blur-sm">
+            <section className="rounded-xl border border-blue-100/90 bg-gradient-to-br from-blue-50/95 via-white/85 to-indigo-50/80 p-4 shadow-[0_10px_28px_rgba(78,104,219,0.07)] backdrop-blur-sm">
               <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-indigo-600" />
-                <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800">1. Role & Audience</h5>
+                <User className="h-5 w-5 text-indigo-600" />
+                <h5 className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-[13px] font-black uppercase tracking-wider text-transparent">1. Role & Audience</h5>
               </div>
-              <p className="mt-2 text-xs font-black text-slate-900">{analysisResult.role_identity.role}</p>
-              <p className="mt-1 text-[11px] leading-5 text-slate-600">
-                <span className="font-bold text-slate-700">Style:</span> {analysisResult.role_identity.persona}
+              <p className="mt-2 text-[14px] font-black text-blue-900">{analysisResult.role_identity.role}</p>
+              <p className="mt-1 text-[13px] leading-6 text-slate-600">
+                <span className="font-black text-indigo-700">Style:</span> {analysisResult.role_identity.persona}
               </p>
-              <p className="text-[11px] leading-5 text-slate-600">
-                <span className="font-bold text-slate-700">For:</span> {analysisResult.role_identity.target_audience}
+              <p className="text-[13px] leading-6 text-slate-600">
+                <span className="font-black text-indigo-700">For:</span> {analysisResult.role_identity.target_audience}
               </p>
             </section>
 
-            <section className="rounded-xl border border-white/90 bg-white/80 p-3.5 shadow-sm backdrop-blur-sm">
+            <section className="rounded-xl border border-violet-100/90 bg-gradient-to-br from-violet-50/90 via-white/85 to-blue-50/80 p-4 shadow-[0_10px_28px_rgba(124,91,214,0.07)] backdrop-blur-sm">
               <div className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-blue-600" />
-                <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800">2. Reply Style</h5>
+                <MessageSquare className="h-5 w-5 text-blue-600" />
+                <h5 className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-[13px] font-black uppercase tracking-wider text-transparent">2. Reply Style</h5>
               </div>
-              <p className="mt-2 text-xs font-black text-slate-900">{analysisResult.behavior_tone.tone}</p>
+              <p className="mt-2 text-[14px] font-black text-violet-900">{analysisResult.behavior_tone.tone}</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {(analysisResult.behavior_tone.style_guidelines || []).map((item, idx) => (
-                  <span key={idx} className="rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[9px] font-bold text-blue-700">
+                  <span key={idx} className="rounded-full border border-indigo-100 bg-gradient-to-r from-blue-50 to-violet-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
                     {item}
                   </span>
                 ))}
               </div>
-              <p className="mt-2 text-[10px] leading-4 text-slate-500">
+              <p className="mt-2 text-[12px] leading-5 text-slate-600">
                 {analysisResult.behavior_tone.reply_length_guideline}
               </p>
             </section>
 
-            <section className="rounded-xl border border-white/90 bg-white/80 p-3.5 shadow-sm backdrop-blur-sm">
+            <section className="rounded-xl border border-emerald-100/90 bg-gradient-to-br from-emerald-50/75 via-white/85 to-blue-50/75 p-4 shadow-[0_10px_28px_rgba(16,185,129,0.06)] backdrop-blur-sm">
               <div className="flex items-center gap-2">
-                <Target className="h-4 w-4 text-emerald-600" />
-                <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800">3. What AI Will Do</h5>
+                <Target className="h-5 w-5 text-emerald-600" />
+                <h5 className="bg-gradient-to-r from-blue-600 to-emerald-600 bg-clip-text text-[13px] font-black uppercase tracking-wider text-transparent">3. What AI Will Do</h5>
               </div>
               <ItemList items={analysisResult.primary_objectives || []} dotClass="bg-emerald-500" />
             </section>
 
-            <section className="rounded-xl border border-white/90 bg-white/80 p-3.5 shadow-sm backdrop-blur-sm">
+            <section className="rounded-xl border border-violet-100/90 bg-gradient-to-br from-violet-50/80 via-white/85 to-fuchsia-50/65 p-4 shadow-[0_10px_28px_rgba(168,85,247,0.06)] backdrop-blur-sm">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-rose-500" />
-                <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800">4. What AI Must Not Do</h5>
+                <ShieldCheck className="h-5 w-5 text-violet-600" />
+                <h5 className="bg-gradient-to-r from-violet-600 to-fuchsia-600 bg-clip-text text-[13px] font-black uppercase tracking-wider text-transparent">4. What AI Must Not Do</h5>
               </div>
               <ItemList items={analysisResult.guardrails_constraints || []} dotClass="bg-rose-500" />
             </section>
 
-            <section className="rounded-xl border border-white/90 bg-white/80 p-3.5 shadow-sm backdrop-blur-sm md:col-span-2">
+            <section className="rounded-xl border border-indigo-100/90 bg-gradient-to-r from-blue-50/80 via-indigo-50/65 to-violet-50/80 p-4 shadow-[0_10px_30px_rgba(78,104,219,0.07)] backdrop-blur-sm md:col-span-2">
               <div className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-violet-600" />
-                <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800">5. Business Knowledge Found</h5>
+                <BookOpen className="h-5 w-5 text-violet-600" />
+                <h5 className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-[13px] font-black uppercase tracking-wider text-transparent">5. Business Knowledge Found</h5>
               </div>
               <div className="mt-2 grid gap-3 sm:grid-cols-2">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Products / Services</p>
+                  <p className="text-[11px] font-black uppercase tracking-wide text-indigo-500">Products / Services</p>
                   {(analysisResult.knowledge_context.products_or_services || []).length ? (
                     <ItemList items={analysisResult.knowledge_context.products_or_services} dotClass="bg-violet-500" />
                   ) : (
-                    <p className="mt-2 text-[11px] text-slate-500">Prompt में specific products/services नहीं मिले.</p>
+                    <p className="mt-2 text-[12px] leading-5 text-slate-600">Prompt में specific products/services नहीं मिले.</p>
                   )}
                 </div>
                 <div>
@@ -253,10 +253,10 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
               </div>
             </section>
 
-            <section className="rounded-xl border border-amber-100 bg-amber-50/70 p-3.5 md:col-span-2">
+            <section className="rounded-xl border border-violet-100 bg-gradient-to-r from-blue-50/75 via-violet-50/85 to-fuchsia-50/65 p-4 shadow-[0_10px_30px_rgba(124,91,214,0.06)] md:col-span-2">
               <div className="flex items-center gap-2">
-                <Lightbulb className="h-4 w-4 text-amber-600" />
-                <h5 className="text-[11px] font-black uppercase tracking-wider text-amber-900">6. Prompt में क्या Improve करें</h5>
+                <Lightbulb className="h-4.5 w-4.5 text-violet-600" />
+                <h5 className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-[13px] font-black uppercase tracking-wider text-transparent">6. Prompt में क्या Improve करें</h5>
               </div>
               <ItemList items={analysisResult.suggestions || []} dotClass="bg-amber-500" />
             </section>
@@ -267,7 +267,7 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
               <button
                 type="button"
                 onClick={() => setShowStructuredPrompt((prev) => !prev)}
-                className="text-[11px] font-black text-indigo-700"
+                className="text-[12px] font-black text-indigo-700"
               >
                 {showStructuredPrompt ? 'Hide structured prompt' : 'Show full structured prompt'}
               </button>
@@ -276,7 +276,7 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
                 <button
                   type="button"
                   onClick={handleCopyPrompt}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-white px-3 py-1.5 text-[10px] font-black text-indigo-700 shadow-sm"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50/80 px-3 py-1.5 text-[11px] font-black text-indigo-700 shadow-sm"
                 >
                   {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                   {copied ? 'Copied' : 'Copy'}
@@ -284,7 +284,7 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
                 <button
                   type="button"
                   onClick={handleApplyPrompt}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-3 py-1.5 text-[10px] font-black text-white"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-3 py-1.5 text-[11px] font-black text-white"
                 >
                   <ArrowRight className="h-3.5 w-3.5" />
                   Apply
@@ -293,7 +293,7 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
             </div>
 
             {showStructuredPrompt && (
-              <pre className="mt-3 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl bg-slate-950 p-3.5 text-[10px] leading-5 text-slate-100">
+              <pre className="mt-3 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl border border-indigo-100 bg-gradient-to-br from-blue-50 via-indigo-50/80 to-violet-50 p-4 text-[12px] leading-6 text-slate-700 shadow-inner">
                 {analysisResult.enhanced_structured_prompt}
               </pre>
             )}
