@@ -70,6 +70,60 @@ async function redisCommand(
   }
 }
 
+async function redisPipeline(
+  admin: any,
+  commands: Array<Array<string | number>>
+): Promise<{ available: boolean; results: any[] }> {
+  const config = await getRedisConfig(admin);
+  if (!config) return { available: false, results: [] };
+
+  try {
+    const response = await fetch(`${config.restUrl}/pipeline`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.restToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        commands.map((command) => command.map((part) => String(part)))
+      ),
+    });
+
+    const payload: any = await response.json().catch(() => null);
+    if (!response.ok || !Array.isArray(payload)) {
+      console.warn("[REDIS_PIPELINE_WARN]", response.status);
+      return { available: false, results: [] };
+    }
+
+    return {
+      available: true,
+      results: payload.map((item: any) => item?.result ?? null),
+    };
+  } catch (err) {
+    console.warn("[REDIS_PIPELINE_ERROR]", err);
+    return { available: false, results: [] };
+  }
+}
+
+function textFingerprint(value: string) {
+  let hash = 2166136261;
+  const text = String(value || "").trim().toLocaleLowerCase();
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function runInBackground(task: Promise<unknown>) {
+  const edgeRuntime = (globalThis as any).EdgeRuntime;
+  if (edgeRuntime?.waitUntil) {
+    edgeRuntime.waitUntil(task);
+  } else {
+    task.catch((err) => console.warn("[BACKGROUND_TASK_WARN]", err));
+  }
+}
+
 async function redisGetJson(admin: any, key: string) {
   const response = await redisCommand(admin, ["GET", key]);
   if (!response.available || typeof response.result !== "string") {
@@ -105,6 +159,22 @@ async function markOutboundMessage(
     "out",
     "EX",
     "900",
+  ]);
+}
+
+async function markPendingOutbound(
+  admin: any,
+  workspaceId: string,
+  responseText: string,
+  recipientId: string
+) {
+  if (!responseText || !recipientId) return;
+  await redisCommand(admin, [
+    "SET",
+    `ar:v1:pendingout:${workspaceId}:${textFingerprint(responseText)}`,
+    recipientId,
+    "EX",
+    "20",
   ]);
 }
 
@@ -238,12 +308,20 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   if (!candidates.length) return null;
 
-  const redisHits = await Promise.all(
-    candidates.map(async (candidate) => {
-      const cached = await redisGetJson(admin, `ar:v1:account:ig:${candidate}`);
-      return cached.value;
-    })
+  const redisKeys = candidates.map(
+    (candidate) => `ar:v1:account:ig:${candidate}`
   );
+  const redisBatch = await redisCommand(admin, ["MGET", ...redisKeys]);
+  const redisHits = Array.isArray(redisBatch.result)
+    ? redisBatch.result.map((raw: any) => {
+        if (typeof raw !== "string") return null;
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      })
+    : [];
 
   const redisMatched = redisHits.find(
     (row: any) => row?.user_id && row?.account?.access_token
@@ -276,17 +354,19 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
       expiresAt: Date.now() + 60_000,
     };
 
-    await Promise.all(
-      rows
-        .filter((row: any) => row?.user_id && row?.account?.access_token)
-        .map((row: any) =>
-          redisSetJson(
-            admin,
-            `ar:v1:account:ig:${String(row?.account?.ig_user_id || "")}`,
-            row,
-            60
+    runInBackground(
+      Promise.all(
+        rows
+          .filter((row: any) => row?.user_id && row?.account?.access_token)
+          .map((row: any) =>
+            redisSetJson(
+              admin,
+              `ar:v1:account:ig:${String(row?.account?.ig_user_id || "")}`,
+              row,
+              60
+            )
           )
-        )
+      )
     );
   }
 
@@ -308,9 +388,11 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   if (usableRows.length === 1) {
     const only = usableRows[0];
-    await Promise.all(
-      candidates.map((candidate) =>
-        redisSetJson(admin, `ar:v1:account:ig:${candidate}`, only, 30)
+    runInBackground(
+      Promise.all(
+        candidates.map((candidate) =>
+          redisSetJson(admin, `ar:v1:account:ig:${candidate}`, only, 30)
+        )
       )
     );
     console.warn("[LIVE_DM_ACCOUNT_SINGLE_FALLBACK]", {
@@ -403,11 +485,13 @@ async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
     expiresAt: Date.now() + 5_000,
   });
 
-  await redisSetJson(
-    admin,
-    `ar:v1:automation:${workspaceId}`,
-    automation || { _cache_none: true },
-    5
+  runInBackground(
+    redisSetJson(
+      admin,
+      `ar:v1:automation:${workspaceId}`,
+      automation || { _cache_none: true },
+      5
+    )
   );
 
   return automation;
@@ -415,22 +499,35 @@ async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
 async function classifyMessageId(
   admin: any,
   workspaceId: string,
-  messageId: string
+  item: any
 ): Promise<"new" | "outbound_echo" | "duplicate"> {
+  const messageId = String(item?.messageId || "");
   if (!messageId) return "new";
 
   const redisKey = `ar:v1:msg:${workspaceId}:${messageId}`;
-  const claimed = await redisCommand(admin, [
-    "SET",
-    redisKey,
-    "in",
-    "NX",
-    "EX",
-    "900",
+  const pendingKey =
+    `ar:v1:pendingout:${workspaceId}:${textFingerprint(String(item?.text || ""))}`;
+
+  const pipeline = await redisPipeline(admin, [
+    ["SET", redisKey, "in", "NX", "EX", "900"],
+    ["GET", pendingKey],
   ]);
 
-  if (claimed.available) {
-    if (claimed.result === "OK") return "new";
+  if (pipeline.available) {
+    const claimed = pipeline.results[0];
+    const pendingRecipient = String(pipeline.results[1] || "");
+
+    if (
+      pendingRecipient &&
+      pendingRecipient !== String(item?.senderId || "")
+    ) {
+      runInBackground(
+        redisCommand(admin, ["SET", redisKey, "out", "EX", "900"])
+      );
+      return "outbound_echo";
+    }
+
+    if (claimed === "OK") return "new";
 
     const existing = await redisCommand(admin, ["GET", redisKey]);
     if (existing.available) {
@@ -485,7 +582,7 @@ async function loadHistory(admin: any, workspaceId: string, senderId: string) {
     ? data.data.messages.slice(-10)
     : [];
 
-  await redisSetJson(admin, key, messages, 3600);
+  runInBackground(redisSetJson(admin, key, messages, 3600));
   return messages;
 }
 
@@ -888,6 +985,7 @@ async function sendInstagramText(
 }
 
 Deno.serve(async (req: Request) => {
+  const edgeReceivedAt = Date.now();
   if (req.method === "GET") {
     const url = new URL(req.url);
     const mode = String(url.searchParams.get("hub.mode") || "");
@@ -980,6 +1078,7 @@ Deno.serve(async (req: Request) => {
 
   let event: any;
   let openaiKey = "";
+  let relayReceivedAt = 0;
 
   if (metaSignature) {
     const appSecret = cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"));
@@ -1007,6 +1106,7 @@ Deno.serve(async (req: Request) => {
   } else {
     // Backward-compatible architecture used by the current Vercel webhook.
     event = payload?.event;
+    relayReceivedAt = Number(payload?.relayReceivedAt || 0);
     openaiKey = cleanToken(
       payload?.openaiKey || Deno.env.get("OPENAI_API_KEY")
     );
@@ -1023,11 +1123,13 @@ Deno.serve(async (req: Request) => {
 
   for (const item of messages) {
     const totalStart = performance.now();
+    const accountStart = performance.now();
 
     const accountRow = await findWorkspaceByInstagramIds(admin, [
       item.entryId,
       item.recipientId,
     ]);
+    const accountLookupMs = Math.round(performance.now() - accountStart);
 
     if (!accountRow?.user_id || !accountRow?.account?.access_token) {
       results.push({
@@ -1049,11 +1151,13 @@ Deno.serve(async (req: Request) => {
     );
     const accessToken = cleanToken(account?.access_token);
 
+    const dedupeStart = performance.now();
     const messageState = await classifyMessageId(
       admin,
       workspaceId,
-      item.messageId
+      item
     );
+    const dedupeMs = Math.round(performance.now() - dedupeStart);
 
     if (messageState === "outbound_echo") {
       console.log("[LIVE_DM_OUTBOUND_ECHO_IGNORED]", {
@@ -1080,11 +1184,9 @@ Deno.serve(async (req: Request) => {
       continue;
     }
 
-    // Profile lookup + Inbox/Contacts persistence is intentionally outside the
-    // reply critical path. It runs in parallel while we load automation/history
-    // and ask GPT-4o mini for the response.
-    const profilePersistPromise = getSenderProfile(item.senderId, accessToken)
-      .then(async (profile) => {
+    const loadAndPersistProfile = async () => {
+      try {
+        const profile = await getSenderProfile(item.senderId, accessToken);
         await persistInboundMessage(
           admin,
           workspaceId,
@@ -1092,8 +1194,7 @@ Deno.serve(async (req: Request) => {
           profile
         );
         return profile;
-      })
-      .catch(async (err) => {
+      } catch (err) {
         console.warn("[LIVE_DM_PROFILE_PERSIST_WARN]", err);
         const fallbackProfile = {
           username: item.senderId,
@@ -1106,12 +1207,18 @@ Deno.serve(async (req: Request) => {
           fallbackProfile
         );
         return fallbackProfile;
-      });
+      }
+    };
 
+    const automationStart = performance.now();
     const automation = await loadActiveDmAiAutomation(admin, workspaceId);
+    const automationLookupMs = Math.round(
+      performance.now() - automationStart
+    );
+
 
     if (!automation) {
-      const senderProfile = await profilePersistPromise;
+      const senderProfile = await loadAndPersistProfile();
       await persistWebhookLog(
         admin,
         workspaceId,
@@ -1184,10 +1291,31 @@ Deno.serve(async (req: Request) => {
       aiMs = Math.round(performance.now() - aiStart);
     }
 
+    const pendingMarkStart = performance.now();
+    await markPendingOutbound(
+      admin,
+      workspaceId,
+      responseText,
+      item.senderId
+    );
+    const pendingMarkMs = Math.round(
+      performance.now() - pendingMarkStart
+    );
+
+    const sendStartEpoch = Date.now();
     const metaDeliveryMs = Math.max(
       0,
-      Date.now() - Number(item.timestamp || Date.now())
+      sendStartEpoch - Number(item.timestamp || sendStartEpoch)
     );
+    const metaToRelayMs =
+      relayReceivedAt > 0
+        ? Math.max(0, relayReceivedAt - Number(item.timestamp || relayReceivedAt))
+        : null;
+    const relayToEdgeMs =
+      relayReceivedAt > 0
+        ? Math.max(0, edgeReceivedAt - relayReceivedAt)
+        : null;
+    const edgePreSendMs = Math.max(0, sendStartEpoch - edgeReceivedAt);
     const sendStart = performance.now();
 
     try {
@@ -1200,17 +1328,17 @@ Deno.serve(async (req: Request) => {
         responseText
       );
 
-      // Mark the outbound message immediately. Meta can echo the Send API
-      // response back within milliseconds, so this Redis marker closes the
-      // race before slower profile/history persistence happens.
-      await markOutboundMessage(
-        admin,
-        workspaceId,
-        String(sendResult?.message_id || "")
+      const sendMs = Math.round(performance.now() - sendStart);
+
+      runInBackground(
+        markOutboundMessage(
+          admin,
+          workspaceId,
+          String(sendResult?.message_id || "")
+        )
       );
 
-      const sendMs = Math.round(performance.now() - sendStart);
-      const senderProfile = await profilePersistPromise;
+      const senderProfile = await loadAndPersistProfile();
 
       const nextHistory = [
         ...history,
@@ -1254,6 +1382,13 @@ Deno.serve(async (req: Request) => {
           ai_ms: aiMs,
           send_ms: sendMs,
           meta_delivery_ms: metaDeliveryMs,
+          meta_to_relay_ms: metaToRelayMs,
+          relay_to_edge_ms: relayToEdgeMs,
+          edge_pre_send_ms: edgePreSendMs,
+          account_lookup_ms: accountLookupMs,
+          dedupe_ms: dedupeMs,
+          automation_lookup_ms: automationLookupMs,
+          pending_marker_ms: pendingMarkMs,
           fast_path: instantReply ? "greeting" : null,
         }),
       ]);
@@ -1267,6 +1402,13 @@ Deno.serve(async (req: Request) => {
         aiMs,
         sendMs,
         metaDeliveryMs,
+        metaToRelayMs,
+        relayToEdgeMs,
+        edgePreSendMs,
+        accountLookupMs,
+        dedupeMs,
+        automationLookupMs,
+        pendingMarkMs,
         fastPath: instantReply ? "greeting" : null,
         totalMs: Math.round(performance.now() - totalStart),
       });
@@ -1275,7 +1417,7 @@ Deno.serve(async (req: Request) => {
       const sendError = err instanceof Error ? err.message : String(err);
       console.error("[LIVE_DM_SEND_FAILED]", sendError);
 
-      const senderProfile = await profilePersistPromise;
+      const senderProfile = await loadAndPersistProfile();
 
       await Promise.all([
         persistWebhookLog(
@@ -1300,6 +1442,14 @@ Deno.serve(async (req: Request) => {
           send_error: sendError,
           ai_ms: aiMs,
           send_ms: sendMs,
+          meta_delivery_ms: metaDeliveryMs,
+          meta_to_relay_ms: metaToRelayMs,
+          relay_to_edge_ms: relayToEdgeMs,
+          edge_pre_send_ms: edgePreSendMs,
+          account_lookup_ms: accountLookupMs,
+          dedupe_ms: dedupeMs,
+          automation_lookup_ms: automationLookupMs,
+          pending_marker_ms: pendingMarkMs,
         }),
       ]);
 
