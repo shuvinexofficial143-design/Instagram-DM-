@@ -419,36 +419,119 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const uid = firebaseUser?.uid;
     if (!uid) {
-      // No Google/app login is required. Guest workspaces use the same secure
-      // HttpOnly workspace cookie as the connected Instagram account.
+      // Guest workspaces use the same secure HttpOnly cookie as Instagram OAuth.
+      // Poll the server-side workspace feed so live webhook DMs appear in Inbox
+      // and Contacts even without Google/Firebase authentication.
       let cancelled = false;
+      let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-      setContacts([]);
-      setInboxMessages([]);
-      setLogs([]);
       setGeminiKeys([]);
 
-      fetch('/api/automations', { credentials: 'same-origin' })
-        .then(async (res) => {
+      const loadGuestWorkspace = async () => {
+        try {
+          const res = await fetch('/api/workspace-data', {
+            credentials: 'same-origin',
+            cache: 'no-store',
+          });
           const payload = await res.json().catch(() => null);
+
           if (!res.ok || !payload?.ok) {
-            throw new Error(payload?.error || 'Could not load automations');
+            throw new Error(payload?.error || 'Could not load workspace data');
           }
-          if (!cancelled) {
-            setAutomations(
-              (Array.isArray(payload?.automations) ? payload.automations : []).map(
-                sanitizeAutomationRecord
-              )
-            );
-          }
-        })
-        .catch((err) => {
-          console.warn('[GUEST_AUTOMATIONS_LOAD_WARN]', err?.message || err);
-          if (!cancelled) setAutomations([]);
-        });
+
+          if (cancelled) return;
+
+          setAutomations(
+            (Array.isArray(payload?.automations) ? payload.automations : []).map(
+              sanitizeAutomationRecord
+            )
+          );
+
+          const guestContacts: Contact[] = (
+            Array.isArray(payload?.contacts) ? payload.contacts : []
+          ).map((contact: any) => ({
+            ...contact,
+            id: contact.id || contact.ig_user_id || `contact_${Date.now()}`,
+            ig_username:
+              contact.ig_username || contact.ig_user_id || 'instagram_user',
+            ig_user_id: contact.ig_user_id || '',
+            avatar_url:
+              contact.avatar_url &&
+              !String(contact.avatar_url).includes('api.dicebear.com')
+                ? contact.avatar_url
+                : '',
+            first_interaction_at:
+              contact.first_interaction_at || new Date().toISOString(),
+            last_interaction_at:
+              contact.last_interaction_at || new Date().toISOString(),
+            interactions: {
+              comments: Number(contact.interactions?.comments) || 0,
+              dms: Number(contact.interactions?.dms) || 0,
+              stories: Number(contact.interactions?.stories) || 0,
+            },
+            tags: Array.isArray(contact.tags) ? contact.tags : [],
+            status: contact.status || 'lead',
+          }));
+          setContacts(filterOutMockContacts(guestContacts));
+
+          const guestMessages: InboxMessage[] = (
+            Array.isArray(payload?.inboxMessages) ? payload.inboxMessages : []
+          ).map((message: any) => ({
+            ...message,
+            id: message.id || `msg_${Date.now()}`,
+            from_ig_id: message.from_ig_id || '',
+            from_username:
+              message.from_username ||
+              message.from_ig_id ||
+              'instagram_user',
+            from_avatar:
+              message.from_avatar &&
+              !String(message.from_avatar).includes('api.dicebear.com')
+                ? message.from_avatar
+                : '',
+            message_text: message.message_text || '',
+            direction: message.direction === 'out' ? 'out' : 'in',
+            timestamp: message.timestamp || new Date().toISOString(),
+          }));
+
+          setInboxMessages(
+            filterOutMockMessages(guestMessages).sort(
+              (a, b) =>
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            )
+          );
+
+          const guestLogs: WebhookLogEvent[] = (
+            Array.isArray(payload?.logs) ? payload.logs : []
+          ).map((log: any) => ({
+            ...log,
+            id: log.id || `log_${Date.now()}`,
+            timestamp: log.timestamp || new Date().toISOString(),
+            trigger_type: log.trigger_type || 'dm_ai_conversation',
+            from_username: log.from_username || 'instagram_user',
+            incoming_text: log.incoming_text || '',
+            status: log.status || 'triggered',
+          }));
+
+          setLogs(
+            guestLogs.sort(
+              (a, b) =>
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            )
+          );
+        } catch (err: any) {
+          console.warn('[GUEST_WORKSPACE_LOAD_WARN]', err?.message || err);
+        }
+      };
+
+      void loadGuestWorkspace();
+      pollTimer = setInterval(() => {
+        void loadGuestWorkspace();
+      }, 4000);
 
       return () => {
         cancelled = true;
+        if (pollTimer) clearInterval(pollTimer);
       };
     }
 
