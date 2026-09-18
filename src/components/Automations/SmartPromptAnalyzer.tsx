@@ -12,10 +12,9 @@ import {
   MessageSquare,
   BookOpen,
   User,
-  ChevronDown,
-  ChevronUp,
   ArrowRight,
   Zap,
+  Bot,
 } from 'lucide-react';
 import { PromptAnalysisResult } from '../../types';
 
@@ -25,21 +24,35 @@ interface SmartPromptAnalyzerProps {
   onUpdatePersonality?: (personality: string) => void;
 }
 
+const ItemList: React.FC<{
+  items: string[];
+  dotClass?: string;
+}> = ({ items, dotClass = 'bg-indigo-500' }) => (
+  <ul className="mt-2 space-y-1.5">
+    {(items || []).map((item, idx) => (
+      <li key={idx} className="flex items-start gap-2 text-[11px] leading-5 text-slate-600">
+        <span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} />
+        <span>{item}</span>
+      </li>
+    ))}
+  </ul>
+);
+
 export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
   currentPrompt,
   onApplyStructuredPrompt,
 }) => {
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<PromptAnalysisResult | null>(null);
+  const [provider, setProvider] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const [isExpanded, setIsExpanded] = useState<boolean>(true);
-  const [copied, setCopied] = useState<boolean>(false);
-  const [applied, setApplied] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'preview'>('overview');
+  const [copied, setCopied] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const [showStructuredPrompt, setShowStructuredPrompt] = useState(false);
 
   const handleAnalyzePrompt = async () => {
     if (!currentPrompt.trim()) {
-      setError('Please type or paste a prompt in the textarea first to analyze.');
+      setError('पहले System Prompt में instructions लिखें, फिर Analyze करें.');
       return;
     }
 
@@ -48,26 +61,25 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
     setApplied(false);
 
     try {
-      const res = await fetch('/api/gemini/analyze-prompt', {
+      const res = await fetch('/api/openai/analyze-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ prompt: currentPrompt }),
       });
 
-      if (!res.ok) {
-        throw new Error(`Failed to analyze prompt (HTTP ${res.status})`);
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.analysis) {
+        throw new Error(data?.error || `Prompt analysis failed (HTTP ${res.status})`);
       }
 
-      const data = await res.json();
-      if (data.analysis) {
-        setAnalysisResult(data.analysis);
-        setIsExpanded(true);
-      } else {
-        throw new Error('Analysis response was empty');
-      }
+      setAnalysisResult(data.analysis);
+      setProvider(String(data?.provider || 'gpt-4o-mini'));
+      setShowStructuredPrompt(false);
     } catch (err: any) {
       console.error('[PROMPT_ANALYZER_CLIENT_ERROR]', err);
-      setError(err?.message || 'Could not analyze prompt. Please try again.');
+      setError(err?.message || 'Prompt analyze नहीं हो पाया. कृपया दोबारा कोशिश करें.');
     } finally {
       setIsAnalyzing(false);
     }
@@ -77,350 +89,215 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
     if (!analysisResult?.enhanced_structured_prompt) return;
     onApplyStructuredPrompt(analysisResult.enhanced_structured_prompt);
     setApplied(true);
-    setTimeout(() => setApplied(false), 3000);
+    setTimeout(() => setApplied(false), 2500);
   };
 
-  const handleCopyPrompt = () => {
+  const handleCopyPrompt = async () => {
     if (!analysisResult?.enhanced_structured_prompt) return;
-    navigator.clipboard.writeText(analysisResult.enhanced_structured_prompt);
+    await navigator.clipboard.writeText(analysisResult.enhanced_structured_prompt);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    setTimeout(() => setCopied(false), 2200);
   };
 
   return (
     <div className="space-y-3">
-      {/* Top Action Bar with Prominent Button */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
           onClick={handleAnalyzePrompt}
           disabled={isAnalyzing || !currentPrompt.trim()}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-500/20 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group active:scale-98"
-          title="Analyze and split raw prompt into structured categories"
+          className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-4 py-2.5 text-xs font-black text-white shadow-lg shadow-indigo-500/15 transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
         >
           {isAnalyzing ? (
             <>
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
-              <span>Analyzing Prompt with Gemini...</span>
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              <span>Prompt समझ रहा हूँ...</span>
             </>
           ) : (
             <>
-              <Sparkles className="w-3.5 h-3.5 text-yellow-300 fill-yellow-300/40 group-hover:rotate-12 transition-transform" />
+              <Sparkles className="h-3.5 w-3.5" />
               <span>Analyze & Structure Prompt</span>
             </>
           )}
         </button>
 
-        <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
-          <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-md border border-indigo-100">
-            <Zap className="w-3 h-3 text-indigo-600" />
-            Gemini 3.8 Flash
-          </span>
-          <span className="hidden sm:inline text-slate-400">•</span>
-          <span className="hidden sm:inline text-slate-500">Smart Prompt Decomposer</span>
+        <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/85 px-3 py-1.5 text-[10px] font-black text-indigo-700 shadow-sm">
+          <Zap className="h-3 w-3" />
+          GPT-4o mini Prompt Analyzer
         </div>
       </div>
 
-      {/* Error Message */}
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-semibold flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50/85 px-3.5 py-3 text-xs font-semibold text-rose-700">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="text-xs font-bold text-rose-700 hover:underline cursor-pointer"
+            className="shrink-0 text-[10px] font-black uppercase tracking-wide text-rose-600"
           >
-            Dismiss
+            Close
           </button>
         </div>
       )}
 
-      {/* Structured Analysis Results Container */}
       {analysisResult && (
-        <div className="bg-gradient-to-b from-slate-50 to-white rounded-xl border border-indigo-200/80 shadow-sm overflow-hidden transition-all duration-300">
-          {/* Header Bar */}
-          <div className="bg-gradient-to-r from-indigo-50/80 via-white to-blue-50/80 px-4 py-3 border-b border-indigo-100 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-xs">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="text-xs font-black text-slate-900 tracking-tight">
-                    Smart Prompt Analyzer Breakdown
-                  </h4>
-                  <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200">
-                    Quality: {analysisResult.quality_score}/100
-                  </span>
+        <div className="relative overflow-hidden rounded-2xl border border-indigo-100/90 bg-gradient-to-br from-blue-50/70 via-white/95 to-violet-50/75 shadow-[0_14px_40px_rgba(73,92,160,0.08)]">
+          <div className="pointer-events-none absolute -right-12 -top-16 h-36 w-36 rounded-full bg-violet-200/25 blur-3xl" />
+          <div className="relative border-b border-indigo-100/70 px-4 py-3.5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-md shadow-indigo-500/15">
+                  <Bot className="h-4 w-4" />
                 </div>
-                <p className="text-[11px] text-slate-500 line-clamp-1">
-                  {analysisResult.analysis_summary}
-                </p>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-black text-slate-900">AI ने आपके prompt को ऐसे समझा</h4>
+                    <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[9px] font-black text-emerald-700">
+                      {analysisResult.quality_score}/100
+                    </span>
+                  </div>
+                  <p className="mt-1 max-w-3xl text-[11px] leading-5 text-slate-600">
+                    {analysisResult.analysis_summary}
+                  </p>
+                  <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-indigo-400">
+                    Engine: {provider === 'gpt-4o-mini' ? 'GPT-4o mini' : 'Smart fallback analyzer'}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={handleApplyPrompt}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
-                title="Replace textarea with this formatted prompt"
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-3.5 py-2 text-[11px] font-black text-white shadow-md shadow-indigo-500/15"
               >
-                {applied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Applied!</span>
-                  </>
-                ) : (
-                  <>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                    <span>Apply Structured Prompt</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                title={isExpanded ? 'Collapse' : 'Expand'}
-              >
-                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                {applied ? <Check className="h-3.5 w-3.5" /> : <ArrowRight className="h-3.5 w-3.5" />}
+                {applied ? 'Applied' : 'Use Structured Prompt'}
               </button>
             </div>
           </div>
 
-          {/* Collapsible Content */}
-          {isExpanded && (
-            <div className="p-4 space-y-4">
-              {/* Category Navigation Pills */}
-              <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-3">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('overview')}
-                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                    activeTab === 'overview'
-                      ? 'bg-indigo-600 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  All Categories
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('categories')}
-                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                    activeTab === 'categories'
-                      ? 'bg-indigo-600 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Deep Breakdown
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('preview')}
-                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                    activeTab === 'preview'
-                      ? 'bg-indigo-600 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Markdown Output
-                </button>
+          <div className="relative grid gap-3 p-3.5 md:grid-cols-2">
+            <section className="rounded-xl border border-white/90 bg-white/80 p-3.5 shadow-sm backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-indigo-600" />
+                <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800">1. Role & Audience</h5>
               </div>
+              <p className="mt-2 text-xs font-black text-slate-900">{analysisResult.role_identity.role}</p>
+              <p className="mt-1 text-[11px] leading-5 text-slate-600">
+                <span className="font-bold text-slate-700">Style:</span> {analysisResult.role_identity.persona}
+              </p>
+              <p className="text-[11px] leading-5 text-slate-600">
+                <span className="font-bold text-slate-700">For:</span> {analysisResult.role_identity.target_audience}
+              </p>
+            </section>
 
-              {/* TAB 1: OVERVIEW GRID */}
-              {activeTab === 'overview' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* Category 1: Role & Persona */}
-                  <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 space-y-1.5 shadow-2xs">
-                    <div className="flex items-center gap-2 text-indigo-700">
-                      <User className="w-4 h-4 text-indigo-600" />
-                      <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                        1. Role & Identity
-                      </h5>
-                    </div>
-                    <p className="text-xs font-bold text-slate-900">
-                      {analysisResult.role_identity.role}
-                    </p>
-                    <p className="text-[11px] text-slate-600">
-                      <span className="font-semibold text-slate-700">Persona:</span>{' '}
-                      {analysisResult.role_identity.persona}
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      <span className="font-semibold text-slate-700">Audience:</span>{' '}
-                      {analysisResult.role_identity.target_audience}
-                    </p>
-                  </div>
+            <section className="rounded-xl border border-white/90 bg-white/80 p-3.5 shadow-sm backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-blue-600" />
+                <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800">2. Reply Style</h5>
+              </div>
+              <p className="mt-2 text-xs font-black text-slate-900">{analysisResult.behavior_tone.tone}</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {(analysisResult.behavior_tone.style_guidelines || []).map((item, idx) => (
+                  <span key={idx} className="rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[9px] font-bold text-blue-700">
+                    {item}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] leading-4 text-slate-500">
+                {analysisResult.behavior_tone.reply_length_guideline}
+              </p>
+            </section>
 
-                  {/* Category 2: Behavior & Conversational Tone */}
-                  <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 space-y-1.5 shadow-2xs">
-                    <div className="flex items-center gap-2 text-blue-700">
-                      <MessageSquare className="w-4 h-4 text-blue-600" />
-                      <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                        2. Behavior & Tone
-                      </h5>
-                    </div>
-                    <p className="text-xs font-bold text-slate-900">
-                      {analysisResult.behavior_tone.tone}
-                    </p>
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {analysisResult.behavior_tone.style_guidelines.map((style, idx) => (
-                        <span
-                          key={idx}
-                          className="text-[10px] font-semibold bg-blue-50 text-blue-800 px-2 py-0.5 rounded-md border border-blue-100"
-                        >
-                          {style}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-slate-500 pt-0.5">
-                      Emoji rule: {analysisResult.behavior_tone.emoji_usage} •{' '}
-                      {analysisResult.behavior_tone.reply_length_guideline}
-                    </p>
-                  </div>
+            <section className="rounded-xl border border-white/90 bg-white/80 p-3.5 shadow-sm backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <Target className="h-4 w-4 text-emerald-600" />
+                <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800">3. What AI Will Do</h5>
+              </div>
+              <ItemList items={analysisResult.primary_objectives || []} dotClass="bg-emerald-500" />
+            </section>
 
-                  {/* Category 3: Primary Objectives & Actions */}
-                  <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 space-y-2 shadow-2xs">
-                    <div className="flex items-center gap-2 text-emerald-700">
-                      <Target className="w-4 h-4 text-emerald-600" />
-                      <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                        3. Primary Objectives
-                      </h5>
-                    </div>
-                    <ul className="space-y-1">
-                      {analysisResult.primary_objectives.map((obj, idx) => (
-                        <li key={idx} className="flex items-start gap-1.5 text-xs text-slate-700 font-medium">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>{obj}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+            <section className="rounded-xl border border-white/90 bg-white/80 p-3.5 shadow-sm backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-rose-500" />
+                <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800">4. What AI Must Not Do</h5>
+              </div>
+              <ItemList items={analysisResult.guardrails_constraints || []} dotClass="bg-rose-500" />
+            </section>
 
-                  {/* Category 4: Guardrails & Safety Rules */}
-                  <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 space-y-2 shadow-2xs">
-                    <div className="flex items-center gap-2 text-rose-700">
-                      <ShieldCheck className="w-4 h-4 text-rose-600" />
-                      <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                        4. Safety Guardrails
-                      </h5>
-                    </div>
-                    <ul className="space-y-1">
-                      {analysisResult.guardrails_constraints.map((guard, idx) => (
-                        <li key={idx} className="flex items-start gap-1.5 text-xs text-slate-700 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0 mt-1.5" />
-                          <span>{guard}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: DEEP BREAKDOWN & RECOMMENDATIONS */}
-              {activeTab === 'categories' && (
-                <div className="space-y-3">
-                  {/* Knowledge & Context */}
-                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
-                    <div className="flex items-center gap-2 text-purple-700">
-                      <BookOpen className="w-4 h-4 text-purple-600" />
-                      <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                        5. Business Knowledge & Context Extracted
-                      </h5>
-                    </div>
-                    {analysisResult.knowledge_context.business_name_or_type && (
-                      <p className="text-xs text-slate-700">
-                        <span className="font-bold">Business Profile:</span>{' '}
-                        {analysisResult.knowledge_context.business_name_or_type}
-                      </p>
-                    )}
-                    {analysisResult.knowledge_context.products_or_services?.length > 0 && (
-                      <div>
-                        <span className="text-[11px] font-bold text-slate-600">Identified Offerings:</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {analysisResult.knowledge_context.products_or_services.map((p, i) => (
-                            <span key={i} className="text-[10px] bg-purple-50 text-purple-800 px-2 py-0.5 rounded border border-purple-100 font-medium">
-                              {p}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* AI Recommendations Box */}
-                  {analysisResult.suggestions?.length > 0 && (
-                    <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 space-y-2">
-                      <div className="flex items-center gap-2 text-amber-900">
-                        <Lightbulb className="w-4 h-4 text-amber-600 shrink-0" />
-                        <h5 className="text-xs font-bold uppercase tracking-wider">
-                          AI Recommendations for Better Conversion
-                        </h5>
-                      </div>
-                      <ul className="space-y-1 pl-1">
-                        {analysisResult.suggestions.map((tip, idx) => (
-                          <li key={idx} className="flex items-start gap-2 text-xs text-amber-950 font-medium">
-                            <span className="text-amber-600 font-bold">•</span>
-                            <span>{tip}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+            <section className="rounded-xl border border-white/90 bg-white/80 p-3.5 shadow-sm backdrop-blur-sm md:col-span-2">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-violet-600" />
+                <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-800">5. Business Knowledge Found</h5>
+              </div>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Products / Services</p>
+                  {(analysisResult.knowledge_context.products_or_services || []).length ? (
+                    <ItemList items={analysisResult.knowledge_context.products_or_services} dotClass="bg-violet-500" />
+                  ) : (
+                    <p className="mt-2 text-[11px] text-slate-500">Prompt में specific products/services नहीं मिले.</p>
                   )}
                 </div>
-              )}
-
-              {/* TAB 3: STRUCTURED MARKDOWN OUTPUT PREVIEW */}
-              {activeTab === 'preview' && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-slate-600">
-                    <span className="font-bold">Synthesized Markdown Prompt:</span>
-                    <button
-                      type="button"
-                      onClick={handleCopyPrompt}
-                      className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-bold cursor-pointer"
-                    >
-                      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copied ? 'Copied' : 'Copy Text'}</span>
-                    </button>
-                  </div>
-                  <pre className="p-3 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">
-                    {analysisResult.enhanced_structured_prompt}
-                  </pre>
-                </div>
-              )}
-
-              {/* Bottom Quick Apply Bar */}
-              <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[11px] text-slate-500">
-                  Ready to deploy? Apply this structured prompt to your system prompt textarea with 1 click.
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCopyPrompt}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
-                  >
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copied ? 'Copied!' : 'Copy'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleApplyPrompt}
-                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  >
-                    {applied ? <Check className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5" />}
-                    <span>{applied ? 'Applied to Prompt!' : 'Apply to System Prompt'}</span>
-                  </button>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">FAQs / Policies</p>
+                  {(analysisResult.knowledge_context.faqs_or_policies || []).length ? (
+                    <ItemList items={analysisResult.knowledge_context.faqs_or_policies} dotClass="bg-blue-500" />
+                  ) : (
+                    <p className="mt-2 text-[11px] text-slate-500">Delivery, return, pricing या FAQ rules अभी नहीं मिले.</p>
+                  )}
                 </div>
               </div>
+            </section>
+
+            <section className="rounded-xl border border-amber-100 bg-amber-50/70 p-3.5 md:col-span-2">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-amber-600" />
+                <h5 className="text-[11px] font-black uppercase tracking-wider text-amber-900">6. Prompt में क्या Improve करें</h5>
+              </div>
+              <ItemList items={analysisResult.suggestions || []} dotClass="bg-amber-500" />
+            </section>
+          </div>
+
+          <div className="relative border-t border-indigo-100/70 bg-white/55 px-3.5 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setShowStructuredPrompt((prev) => !prev)}
+                className="text-[11px] font-black text-indigo-700"
+              >
+                {showStructuredPrompt ? 'Hide structured prompt' : 'Show full structured prompt'}
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyPrompt}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-white px-3 py-1.5 text-[10px] font-black text-indigo-700 shadow-sm"
+                >
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyPrompt}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-3 py-1.5 text-[10px] font-black text-white"
+                >
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  Apply
+                </button>
+              </div>
             </div>
-          )}
+
+            {showStructuredPrompt && (
+              <pre className="mt-3 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl bg-slate-950 p-3.5 text-[10px] leading-5 text-slate-100">
+                {analysisResult.enhanced_structured_prompt}
+              </pre>
+            )}
+          </div>
         </div>
       )}
     </div>
