@@ -560,10 +560,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const fetchAccountData = async () => {
       try {
-        const accountUrl = uid
-          ? `/api/instagram/account?userId=${encodeURIComponent(uid)}`
-          : '/api/instagram/account';
-        const res = await fetch(accountUrl, { credentials: 'same-origin' });
+        const res = await fetch('/api/instagram/account', { credentials: 'same-origin' });
         if (res.ok) {
           const data = await res.json();
           if (data && data.account && data.account.username) {
@@ -1121,7 +1118,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify(uid ? { account: null, userId: uid } : { account: null }),
+        body: JSON.stringify({ account: null }),
       });
     } catch (err) {
       console.warn('[DISCONNECT_CHANNEL_ERR]', err);
