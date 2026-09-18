@@ -12,6 +12,33 @@ const automationCache = new Map<
   string,
   { expiresAt: number; automation: any | null }
 >();
+const pendingOutboundMemory = new Map<
+  string,
+  { recipientId: string; expiresAt: number }
+>();
+
+async function resolveDmContext(
+  admin: any,
+  candidates: string[],
+  messageId: string
+) {
+  const cleanCandidates = [...new Set(
+    (candidates || []).map((id) => String(id || "").trim()).filter(Boolean)
+  )];
+
+  const { data, error } = await admin.rpc("autoreply_resolve_dm_context", {
+    p_candidates: cleanCandidates,
+    p_message_id: String(messageId || ""),
+  });
+
+  if (error) {
+    console.error("[LIVE_DM_CONTEXT_RPC_FAILED]", error);
+    throw new Error("Could not resolve DM context");
+  }
+
+  return data || null;
+}
+
 
 type RedisConfig = { restUrl: string; restToken: string };
 let redisConfigCache: { expiresAt: number; value: RedisConfig | null } = {
@@ -1108,25 +1135,35 @@ Deno.serve(async (req: Request) => {
 
   for (const item of messages) {
     const totalStart = performance.now();
-    const accountStart = performance.now();
+    const contextStart = performance.now();
 
-    const accountRow = await findWorkspaceByInstagramIds(admin, [
-      item.entryId,
-      item.recipientId,
-    ]);
-    const accountLookupMs = Math.round(performance.now() - accountStart);
+    const context = await resolveDmContext(
+      admin,
+      [item.entryId, item.recipientId],
+      item.messageId
+    );
+    const contextLookupMs = Math.round(
+      performance.now() - contextStart
+    );
 
-    if (!accountRow?.user_id || !accountRow?.account?.access_token) {
+    if (!context?.user_id || !context?.account?.access_token) {
       results.push({
         messageId: item.messageId,
         ok: false,
         reason: "connected_account_not_found",
+        contextLookupMs,
         totalMs: Math.round(performance.now() - totalStart),
       });
       continue;
     }
 
-    const workspaceId = String(accountRow.user_id);
+    const workspaceId = String(context.user_id);
+    const accountRow = {
+      user_id: context.user_id,
+      account: context.account,
+      matchedInstagramId: String(context?.account?.ig_user_id || ""),
+      _cache: context?.match_type || "rpc",
+    };
     const account = accountRow.account;
     const igUserId = String(
       account?.ig_user_id ||
@@ -1135,20 +1172,28 @@ Deno.serve(async (req: Request) => {
         item.recipientId
     );
     const accessToken = cleanToken(account?.access_token);
+    const automation = context?.automation || null;
 
-    const dedupeStart = performance.now();
-    const automationStart = performance.now();
+    let messageState = String(context?.message_state || "new");
 
-    const [messageState, automation] = await Promise.all([
-      classifyMessageId(admin, workspaceId, item),
-      loadActiveDmAiAutomation(admin, workspaceId),
-    ]);
+    // Very early outbound echoes normally hit the same warm isolate. This
+    // synchronous memory guard costs effectively 0 ms and avoids an extra
+    // Redis/network round-trip on every real customer message.
+    const pendingMemoryKey =
+      `${workspaceId}:${textFingerprint(String(item?.text || ""))}`;
+    const pendingMemory = pendingOutboundMemory.get(pendingMemoryKey);
+    if (pendingMemory && pendingMemory.expiresAt <= Date.now()) {
+      pendingOutboundMemory.delete(pendingMemoryKey);
+    } else if (
+      pendingMemory &&
+      pendingMemory.recipientId !== String(item?.senderId || "")
+    ) {
+      messageState = "outbound_echo";
+    }
 
-    const parallelLookupMs = Math.round(performance.now() - dedupeStart);
-    const dedupeMs = parallelLookupMs;
-    const automationLookupMs = Math.round(
-      performance.now() - automationStart
-    );
+    const accountLookupMs = contextLookupMs;
+    const dedupeMs = contextLookupMs;
+    const automationLookupMs = contextLookupMs;
 
     if (messageState === "outbound_echo") {
       console.log("[LIVE_DM_OUTBOUND_ECHO_IGNORED]", {
@@ -1278,11 +1323,25 @@ Deno.serve(async (req: Request) => {
     }
 
     const pendingMarkStart = performance.now();
-    const pendingMarkerPromise = markPendingOutbound(
-      admin,
-      workspaceId,
-      responseText,
-      item.senderId
+    const pendingMemoryKey =
+      `${workspaceId}:${textFingerprint(responseText)}`;
+    pendingOutboundMemory.set(pendingMemoryKey, {
+      recipientId: item.senderId,
+      expiresAt: Date.now() + 20_000,
+    });
+
+    // Redis remains the cross-isolate safety net, but it no longer blocks the
+    // customer-visible reply path.
+    runInBackground(
+      markPendingOutbound(
+        admin,
+        workspaceId,
+        responseText,
+        item.senderId
+      )
+    );
+    const pendingMarkMs = Math.round(
+      performance.now() - pendingMarkStart
     );
 
     const sendStartEpoch = Date.now();
@@ -1300,29 +1359,17 @@ Deno.serve(async (req: Request) => {
         : null;
     const edgePreSendMs = Math.max(0, sendStartEpoch - edgeReceivedAt);
     const sendStart = performance.now();
-    let pendingMarkMs = 0;
 
     try {
       // This is the user-visible critical point. Everything expensive that does
       // not affect the reply itself is deferred until after the Send API call.
-      const sendPromise = sendInstagramText(
+      const sendResult = await sendInstagramText(
         igUserId,
         item.senderId,
         accessToken,
         responseText
       );
 
-      // Redis echo marker and Meta Send API run concurrently. Redis normally
-      // finishes well before Meta returns, preserving echo protection without
-      // adding its round-trip to user-visible latency.
-      const [sendResult] = await Promise.all([
-        sendPromise,
-        pendingMarkerPromise,
-      ]);
-
-      pendingMarkMs = Math.round(
-        performance.now() - pendingMarkStart
-      );
       const sendMs = Math.round(performance.now() - sendStart);
 
       runInBackground(
@@ -1380,6 +1427,7 @@ Deno.serve(async (req: Request) => {
           meta_to_relay_ms: metaToRelayMs,
           relay_to_edge_ms: relayToEdgeMs,
           edge_pre_send_ms: edgePreSendMs,
+          context_lookup_ms: contextLookupMs,
           account_lookup_ms: accountLookupMs,
           account_cache_source: accountRow?._cache || null,
           dedupe_ms: dedupeMs,
@@ -1401,6 +1449,7 @@ Deno.serve(async (req: Request) => {
         metaToRelayMs,
         relayToEdgeMs,
         edgePreSendMs,
+        contextLookupMs,
         accountLookupMs,
         dedupeMs,
         automationLookupMs,
@@ -1442,6 +1491,7 @@ Deno.serve(async (req: Request) => {
           meta_to_relay_ms: metaToRelayMs,
           relay_to_edge_ms: relayToEdgeMs,
           edge_pre_send_ms: edgePreSendMs,
+          context_lookup_ms: contextLookupMs,
           account_lookup_ms: accountLookupMs,
           dedupe_ms: dedupeMs,
           automation_lookup_ms: automationLookupMs,
