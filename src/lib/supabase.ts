@@ -1,9 +1,9 @@
 import { createClient, type User as SupabaseUser, type Session } from '@supabase/supabase-js';
 
 const viteEnv = ((import.meta as any).env || {}) as Record<string, string | undefined>;
-const SUPABASE_URL = viteEnv.VITE_SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.supabase.co';
+const SUPABASE_URL = viteEnv.VITE_SUPABASE_URL || 'https://mgibujqljahrfwlaafjy.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY =
-  viteEnv.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Eae4_ClutOufXa5U2vo6MA_nhnOL8D7';
+  viteEnv.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_bFT19NWnOrUiIssSZU2Aew_lRXxOYBA';
 
 const PRODUCTION_SITE_URL = 'https://autoreplys.vercel.app';
 

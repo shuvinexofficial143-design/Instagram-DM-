@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
-import { auth } from './lib/supabase';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { PlanBanner } from './components/Common/PlanBanner';
@@ -16,47 +15,6 @@ import { InboxPage } from './components/Inbox/InboxPage';
 import { SettingsPage } from './components/Settings/SettingsPage';
 import { AboutUsPage } from './components/About/AboutUsPage';
 import { AdminPage } from './components/Admin/AdminPage';
-import { LoginPage } from './components/Auth/LoginPage';
-
-// Install once, before any provider effects run. Every same-origin /api request made by
-// an authenticated user carries a Supabase access token.
-if (typeof window !== 'undefined' && !(window as any).__autoreplyAuthenticatedFetchInstalled) {
-  const originalFetch = window.fetch.bind(window);
-  (window as any).__autoreplyAuthenticatedFetchInstalled = true;
-
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    try {
-      const rawUrl =
-        typeof input === 'string' || input instanceof URL
-          ? String(input)
-          : input instanceof Request
-            ? input.url
-            : '';
-      const resolvedUrl = rawUrl ? new URL(rawUrl, window.location.origin) : null;
-      const isSameOriginApi =
-        resolvedUrl?.origin === window.location.origin && resolvedUrl.pathname.startsWith('/api/');
-
-      if (isSameOriginApi && auth?.currentUser) {
-        const idToken = await auth.currentUser.getIdToken();
-        const headers = new Headers(input instanceof Request ? input.headers : undefined);
-        if (init?.headers) {
-          new Headers(init.headers).forEach((value, key) => headers.set(key, value));
-        }
-        headers.set('Authorization', `Bearer ${idToken}`);
-
-        return originalFetch(input, {
-          ...init,
-          headers,
-          credentials: init?.credentials || 'same-origin',
-        });
-      }
-    } catch (error) {
-      console.warn('[AUTHENTICATED_FETCH_WARN]', error);
-    }
-
-    return originalFetch(input, init);
-  };
-}
 
 const MainContent: React.FC = () => {
   const { activeTab } = useApp();
@@ -85,7 +43,7 @@ const MainContent: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const { authLoading, firebaseUser } = useApp();
+  const { authLoading } = useApp();
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
   if (authLoading) {
@@ -96,13 +54,6 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (!firebaseUser) {
-    return (
-      <ErrorBoundary>
-        <LoginPage />
-      </ErrorBoundary>
-    );
-  }
 
   return (
     <ErrorBoundary>
