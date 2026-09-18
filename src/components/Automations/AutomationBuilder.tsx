@@ -18,16 +18,33 @@ import {
   HelpCircle,
   Copy,
   ExternalLink,
+  Film,
+  Image as ImageIcon,
+  RefreshCw,
+  LoaderCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Automation, TriggerType, ActionItem, TriggerConfig } from '../../types';
 import { SmartPromptAnalyzer } from './SmartPromptAnalyzer';
+
+type InstagramMediaPreview = {
+  id: string;
+  media_type?: string;
+  media_product_type?: string;
+  content_type: 'POST' | 'REEL' | 'STORY' | string;
+  caption?: string;
+  media_url?: string;
+  thumbnail_url?: string;
+  permalink?: string;
+  timestamp?: string;
+};
 
 export const AutomationBuilder: React.FC = () => {
   const {
     isBuilderOpen,
     setIsBuilderOpen,
     editingAutomation,
+    instagramAccount,
     createAutomation,
     updateAutomation,
   } = useApp();
@@ -59,6 +76,28 @@ export const AutomationBuilder: React.FC = () => {
   
   const [smartMatching, setSmartMatching] = useState<boolean>(
     editingAutomation?.trigger_config?.smart_matching ?? true
+  );
+
+  // Selected Instagram content. Comment and Story automations are intentionally
+  // bound to one specific piece of content so they never fire account-wide.
+  const [mediaItems, setMediaItems] = useState<InstagramMediaPreview[]>([]);
+  const [mediaLoading, setMediaLoading] = useState<boolean>(false);
+  const [mediaError, setMediaError] = useState<string>('');
+  const [mediaFilter, setMediaFilter] = useState<'all' | 'post' | 'reel' | 'story'>('all');
+  const [selectedMediaId, setSelectedMediaId] = useState<string>(
+    editingAutomation?.trigger_config?.selected_media_id || ''
+  );
+  const [selectedMediaType, setSelectedMediaType] = useState<string>(
+    editingAutomation?.trigger_config?.selected_media_type || ''
+  );
+  const [selectedMediaPermalink, setSelectedMediaPermalink] = useState<string>(
+    editingAutomation?.trigger_config?.selected_media_permalink || ''
+  );
+  const [selectedMediaThumbnail, setSelectedMediaThumbnail] = useState<string>(
+    editingAutomation?.trigger_config?.selected_media_thumbnail_url || ''
+  );
+  const [selectedMediaCaption, setSelectedMediaCaption] = useState<string>(
+    editingAutomation?.trigger_config?.selected_media_caption || ''
   );
 
   // Gemini AI System Prompt Box
@@ -127,6 +166,53 @@ Answer only about the business.`
   // Simulation test state inside simulator
   const [isSimulatingLive, setIsSimulatingLive] = useState<boolean>(false);
 
+  const clearSelectedMedia = () => {
+    setSelectedMediaId('');
+    setSelectedMediaType('');
+    setSelectedMediaPermalink('');
+    setSelectedMediaThumbnail('');
+    setSelectedMediaCaption('');
+  };
+
+  const selectMediaItem = (item: InstagramMediaPreview) => {
+    setSelectedMediaId(item.id);
+    setSelectedMediaType(item.content_type || item.media_type || '');
+    setSelectedMediaPermalink(item.permalink || '');
+    setSelectedMediaThumbnail(item.thumbnail_url || item.media_url || '');
+    setSelectedMediaCaption(item.caption || '');
+    setMediaError('');
+  };
+
+  const loadInstagramMedia = async (kindOverride?: 'comment' | 'story') => {
+    const kind = kindOverride || (triggerType === 'story_reply' ? 'story' : 'comment');
+    setMediaLoading(true);
+    setMediaError('');
+
+    try {
+      const response = await fetch(
+        `/api/instagram/media?kind=${encodeURIComponent(kind)}`,
+        { credentials: 'same-origin' }
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(
+          payload?.error ||
+            (kind === 'story'
+              ? 'Could not load active Instagram stories.'
+              : 'Could not load Instagram posts and reels.')
+        );
+      }
+
+      setMediaItems(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (err: any) {
+      setMediaItems([]);
+      setMediaError(err?.message || 'Instagram media could not be loaded.');
+    } finally {
+      setMediaLoading(false);
+    }
+  };
+
   // Reset form when builder opens or editingAutomation changes
   useEffect(() => {
     if (isBuilderOpen) {
@@ -139,6 +225,20 @@ Answer only about the business.`
         setAllOrKeywords(editingAutomation.trigger_config.all_or_keywords);
         setKeywords(editingAutomation.trigger_config.keywords || []);
         setSmartMatching(editingAutomation.trigger_config.smart_matching ?? true);
+        setSelectedMediaId(editingAutomation.trigger_config.selected_media_id || '');
+        setSelectedMediaType(editingAutomation.trigger_config.selected_media_type || '');
+        setSelectedMediaPermalink(editingAutomation.trigger_config.selected_media_permalink || '');
+        setSelectedMediaThumbnail(editingAutomation.trigger_config.selected_media_thumbnail_url || '');
+        setSelectedMediaCaption(editingAutomation.trigger_config.selected_media_caption || '');
+        setMediaFilter(
+          editingAutomation.trigger_type === 'story_reply'
+            ? 'story'
+            : editingAutomation.trigger_config.selected_media_type === 'REEL'
+            ? 'reel'
+            : editingAutomation.trigger_config.selected_media_type === 'POST'
+            ? 'post'
+            : 'all'
+        );
 
         const dmAct = editingAutomation.actions.find((a) => a.type === 'send_dm');
         if (dmAct?.message_text) setStaticResponse(dmAct.message_text);
@@ -157,6 +257,10 @@ Answer only about the business.`
         setKeywords(['PRICE', 'LINK', 'GUIDE']);
         setNewKeyword('');
         setSmartMatching(true);
+        clearSelectedMedia();
+        setMediaItems([]);
+        setMediaFilter('all');
+        setMediaError('');
         setStaticResponse('');
         setCommentReplyText('Just sent you the link in your DMs! Check your inbox 📩');
         setButtons([{ label: '📥 Claim Offer', url: 'https://autoreply.io/deal' }]);
@@ -164,6 +268,28 @@ Answer only about the business.`
       }
     }
   }, [isBuilderOpen, editingAutomation]);
+
+  useEffect(() => {
+    if (!isBuilderOpen) return;
+
+    if (triggerType === 'comment') {
+      setMediaFilter((prev) => (prev === 'story' ? 'all' : prev));
+      void loadInstagramMedia('comment');
+    } else if (triggerType === 'story_reply') {
+      setMediaFilter('story');
+      void loadInstagramMedia('story');
+    } else {
+      setMediaItems([]);
+      setMediaError('');
+    }
+  }, [isBuilderOpen, triggerType]);
+
+  const visibleMediaItems = mediaItems.filter((item) => {
+    if (triggerType === 'story_reply') return item.content_type === 'STORY';
+    if (mediaFilter === 'reel') return item.content_type === 'REEL';
+    if (mediaFilter === 'post') return item.content_type !== 'REEL' && item.content_type !== 'STORY';
+    return item.content_type !== 'STORY';
+  });
 
   if (!isBuilderOpen) return null;
 
@@ -214,7 +340,18 @@ Answer only about the business.`
       setNameError('Automation Name is required before continuing.');
       return;
     }
+
+    if ((triggerType === 'comment' || triggerType === 'story_reply') && !selectedMediaId) {
+      setMediaError(
+        triggerType === 'story_reply'
+          ? 'Select one active Story before continuing.'
+          : 'Select one Post or Reel before continuing.'
+      );
+      return;
+    }
+
     setNameError('');
+    setMediaError('');
     setCurrentStep(2);
   };
 
@@ -275,6 +412,24 @@ Answer only about the business.`
       all_or_keywords: allOrKeywords,
       keywords: allOrKeywords === 'keywords' ? keywords : [],
       smart_matching: smartMatching,
+      ...((triggerType === 'comment' || triggerType === 'story_reply') && selectedMediaId
+        ? {
+            media_scope: 'specific_media' as const,
+            selected_media_id: selectedMediaId,
+            selected_media_type: selectedMediaType,
+            selected_media_permalink: selectedMediaPermalink,
+            selected_media_thumbnail_url: selectedMediaThumbnail,
+            selected_media_caption: selectedMediaCaption,
+            ...(triggerType === 'comment'
+              ? {
+                  post_scope: 'specific_post' as const,
+                  specific_post_url: selectedMediaPermalink,
+                }
+              : {
+                  story_scope: 'specific_story' as const,
+                }),
+          }
+        : {}),
     };
 
     const actionsList: ActionItem[] = [];
@@ -351,13 +506,13 @@ Answer only about the business.`
       : 'Direct Message (DM)';
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto">
-      <div className="bg-white rounded-3xl w-full max-w-6xl h-[94vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200/90">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/75 p-2 sm:p-4 md:p-6">
+      <div className="flex h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-white/90 bg-gradient-to-b from-[#F7FAFF] via-[#FBFCFF] to-[#F8F6FF] shadow-2xl">
         
         {/* ================= HEADER / STEP 0: AUTOMATION HEADER & TEMPLATES ================= */}
-        <div className="px-6 py-4 bg-white border-b border-slate-200/90 flex flex-wrap items-center justify-between gap-4 shrink-0">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-indigo-100/80 bg-white/85 px-6 py-4 backdrop-blur-sm">
           <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#2563eb] to-indigo-600 text-white flex items-center justify-center font-black shadow-md shadow-blue-500/20 shrink-0">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-500 to-violet-500 font-black text-white shadow-md shadow-indigo-500/20">
               <Zap className="w-5 h-5 fill-white" />
             </div>
 
@@ -459,7 +614,7 @@ Answer only about the business.`
         </div>
 
         {/* STEPPER HEADER BAR */}
-        <div className="px-6 py-3 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between gap-4 shrink-0">
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-indigo-100/70 bg-[#F7FAFF]/90 px-6 py-3 backdrop-blur-sm">
           <div className="flex items-center gap-3">
             {/* Step 1 Tab */}
             <button
@@ -511,7 +666,7 @@ Answer only about the business.`
           <div className={`overflow-y-auto p-6 space-y-6 ${
             currentStep === 2
               ? 'w-full lg:w-[65%] flex-1 automation-response-theme'
-              : 'w-full flex-1 bg-white'
+              : 'w-full flex-1 bg-transparent'
           }`}>
             
             {/* ================= STEP 1: AUTOMATION DETAILS & MESSAGING CHANNEL ================= */}
@@ -519,7 +674,7 @@ Answer only about the business.`
               <div className="space-y-6">
                 
                 {/* CARD 1: AUTOMATION DETAILS */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-6">
+                <div className="space-y-6 rounded-2xl border border-white/90 bg-white/85 p-6 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm">
                   <div className="border-b border-slate-100 pb-4">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-[#2563eb]"></div>
@@ -574,12 +729,14 @@ Answer only about the business.`
                       <button
                         type="button"
                         onClick={() => {
+                          if (triggerType !== 'comment') clearSelectedMedia();
                           setTriggerType('comment');
+                          setMediaFilter('all');
                           if (allOrKeywords === 'ai_conversation') setAllOrKeywords('keywords');
                         }}
                         className={`p-4 rounded-2xl border-2 text-left transition-all duration-200 relative cursor-pointer flex flex-col justify-between ${
                           triggerType === 'comment'
-                            ? 'border-[#2563eb] bg-blue-50/40 text-[#2563eb] shadow-md shadow-blue-500/10 ring-2 ring-blue-500/20'
+                            ? 'border-indigo-400 bg-gradient-to-br from-blue-50/80 via-indigo-50/70 to-violet-50/80 text-indigo-700 shadow-md shadow-indigo-500/10 ring-2 ring-indigo-500/10'
                             : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/60 text-slate-700'
                         }`}
                       >
@@ -603,12 +760,14 @@ Answer only about the business.`
                       <button
                         type="button"
                         onClick={() => {
+                          if (triggerType !== 'story_reply') clearSelectedMedia();
                           setTriggerType('story_reply');
+                          setMediaFilter('story');
                           if (allOrKeywords === 'ai_conversation') setAllOrKeywords('keywords');
                         }}
                         className={`p-4 rounded-2xl border-2 text-left transition-all duration-200 relative cursor-pointer flex flex-col justify-between ${
                           triggerType === 'story_reply'
-                            ? 'border-[#2563eb] bg-blue-50/40 text-[#2563eb] shadow-md shadow-blue-500/10 ring-2 ring-blue-500/20'
+                            ? 'border-indigo-400 bg-gradient-to-br from-blue-50/80 via-indigo-50/70 to-violet-50/80 text-indigo-700 shadow-md shadow-indigo-500/10 ring-2 ring-indigo-500/10'
                             : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/60 text-slate-700'
                         }`}
                       >
@@ -632,12 +791,13 @@ Answer only about the business.`
                       <button
                         type="button"
                         onClick={() => {
+                          clearSelectedMedia();
                           setTriggerType('dm');
                           if (allOrKeywords === 'ai_conversation') setAllOrKeywords('keywords');
                         }}
                         className={`p-4 rounded-2xl border-2 text-left transition-all duration-200 relative cursor-pointer flex flex-col justify-between ${
                           triggerType === 'dm' && allOrKeywords !== 'ai_conversation'
-                            ? 'border-[#2563eb] bg-blue-50/40 text-[#2563eb] shadow-md shadow-blue-500/10 ring-2 ring-blue-500/20'
+                            ? 'border-indigo-400 bg-gradient-to-br from-blue-50/80 via-indigo-50/70 to-violet-50/80 text-indigo-700 shadow-md shadow-indigo-500/10 ring-2 ring-indigo-500/10'
                             : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/60 text-slate-700'
                         }`}
                       >
@@ -661,12 +821,13 @@ Answer only about the business.`
                       <button
                         type="button"
                         onClick={() => {
+                          clearSelectedMedia();
                           setTriggerType('dm_ai_conversation');
                           setAllOrKeywords('ai_conversation');
                         }}
                         className={`p-4 rounded-2xl border-2 text-left transition-all duration-200 relative cursor-pointer flex flex-col justify-between ${
                           triggerType === 'dm_ai_conversation' || allOrKeywords === 'ai_conversation'
-                            ? 'border-purple-600 bg-purple-50/40 text-purple-600 shadow-md shadow-purple-500/10 ring-2 ring-purple-500/20'
+                            ? 'border-violet-400 bg-gradient-to-br from-indigo-50/80 to-violet-50/80 text-violet-700 shadow-md shadow-violet-500/10 ring-2 ring-violet-500/10'
                             : 'border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50/60 text-slate-700'
                         }`}
                       >
@@ -693,7 +854,7 @@ Answer only about the business.`
 
                 {/* CARD 2: STEP 2 – MESSAGING CHANNEL SELECTION (Hidden when DM AI Conversation box is selected) */}
                 {triggerType !== 'dm_ai_conversation' && allOrKeywords !== 'ai_conversation' && (
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-5">
+                  <div className="space-y-5 rounded-2xl border border-white/90 bg-white/85 p-6 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm">
                     <div className="border-b border-slate-100 pb-4">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
@@ -771,7 +932,7 @@ Answer only about the business.`
                         <button
                           type="button"
                           onClick={handleAddKeyword}
-                          className="bg-[#2563eb] hover:bg-blue-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer"
+                          className="cursor-pointer rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-500/15 transition-transform hover:-translate-y-0.5"
                         >
                           Save Keyword
                         </button>
@@ -782,7 +943,7 @@ Answer only about the business.`
                         {keywords.map((kw) => (
                           <span
                             key={kw}
-                            className="bg-blue-50 border border-blue-200 text-[#2563eb] font-extrabold text-xs px-3 py-1 rounded-xl flex items-center gap-1.5 shadow-2xs"
+                            className="flex items-center gap-1.5 rounded-xl border border-indigo-100 bg-indigo-50/80 px-3 py-1 text-xs font-extrabold text-indigo-700 shadow-sm"
                           >
                             <span>"{kw}"</span>
                             <button
@@ -819,12 +980,194 @@ Answer only about the business.`
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    className="bg-[#2563eb] hover:bg-blue-700 text-white font-extrabold text-xs px-6 py-3 rounded-2xl flex items-center gap-2 shadow-md shadow-blue-500/20 transition-colors cursor-pointer"
+                    disabled={
+                      mediaLoading ||
+                      ((triggerType === 'comment' || triggerType === 'story_reply') && !selectedMediaId)
+                    }
+                    title={
+                      (triggerType === 'comment' || triggerType === 'story_reply') && !selectedMediaId
+                        ? 'Select one Instagram content item first'
+                        : undefined
+                    }
+                    className="flex cursor-pointer items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-6 py-3 text-xs font-extrabold text-white shadow-lg shadow-indigo-500/20 transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
                   >
                     <span>{allOrKeywords === 'ai_conversation' ? 'Next: Configure AI Conversation' : 'Next: Configure Message'}</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
+
+                {(triggerType === 'comment' || triggerType === 'story_reply') && (
+                  <section className="relative overflow-hidden rounded-3xl border border-indigo-100/80 bg-gradient-to-br from-blue-50/70 via-white/90 to-violet-50/70 p-5 shadow-[0_16px_48px_rgba(72,95,145,0.08)]">
+                    <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-violet-200/25 blur-3xl" />
+                    <div className="pointer-events-none absolute -bottom-20 -left-16 h-48 w-48 rounded-full bg-cyan-100/35 blur-3xl" />
+
+                    <div className="relative">
+                      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Instagram className="h-4 w-4 text-indigo-600" />
+                            <h3 className="text-sm font-black text-slate-900">
+                              Select Instagram Content
+                            </h3>
+                            {instagramAccount?.username && (
+                              <span className="rounded-full border border-indigo-100 bg-white/80 px-2.5 py-0.5 text-[10px] font-bold text-indigo-600">
+                                @{instagramAccount.username}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-[11px] font-medium leading-5 text-slate-500">
+                            {triggerType === 'story_reply'
+                              ? 'Choose one currently active Story. Only replies to that Story will run this automation.'
+                              : 'Choose one Post or Reel. Only comments on that selected content will run this automation.'}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => void loadInstagramMedia(triggerType === 'story_reply' ? 'story' : 'comment')}
+                          disabled={mediaLoading}
+                          className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-indigo-100 bg-white/90 px-3 py-2 text-[11px] font-bold text-indigo-700 shadow-sm transition-colors hover:bg-indigo-50 disabled:opacity-50 sm:self-auto"
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 ${mediaLoading ? 'animate-spin' : ''}`} />
+                          Refresh
+                        </button>
+                      </div>
+
+                      {triggerType === 'comment' && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {([
+                            ['all', 'All'],
+                            ['post', 'Posts'],
+                            ['reel', 'Reels'],
+                          ] as const).map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => setMediaFilter(value)}
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition-all ${
+                                mediaFilter === value
+                                  ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-md shadow-indigo-500/15'
+                                  : 'border border-indigo-100 bg-white/85 text-slate-600 hover:bg-indigo-50'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {triggerType === 'story_reply' && (
+                        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white/85 px-3 py-1.5 text-[11px] font-bold text-violet-700">
+                          <Sparkles className="h-3.5 w-3.5" />
+                          Active Stories
+                        </div>
+                      )}
+
+                      {mediaLoading ? (
+                        <div className="mt-5 flex min-h-36 items-center justify-center rounded-2xl border border-white/90 bg-white/70">
+                          <div className="flex items-center gap-2 text-xs font-bold text-indigo-600">
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                            Loading official Instagram content...
+                          </div>
+                        </div>
+                      ) : mediaError ? (
+                        <div className="mt-5 rounded-2xl border border-rose-100 bg-rose-50/80 p-4 text-xs font-semibold text-rose-700">
+                          {mediaError}
+                        </div>
+                      ) : visibleMediaItems.length === 0 ? (
+                        <div className="mt-5 rounded-2xl border border-dashed border-indigo-200 bg-white/65 p-6 text-center">
+                          <Instagram className="mx-auto h-6 w-6 text-indigo-300" />
+                          <p className="mt-2 text-xs font-black text-slate-700">
+                            {triggerType === 'story_reply'
+                              ? 'No active stories available right now.'
+                              : 'No posts or reels were returned by Instagram.'}
+                          </p>
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            Refresh after publishing new content or reconnect Instagram if the list stays empty.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                          {visibleMediaItems.map((item) => {
+                            const selected = selectedMediaId === item.id;
+                            const preview = item.thumbnail_url || item.media_url || '';
+                            const label =
+                              item.content_type === 'REEL'
+                                ? 'Reel'
+                                : item.content_type === 'STORY'
+                                ? 'Story'
+                                : 'Post';
+
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => selectMediaItem(item)}
+                                className={`group relative overflow-hidden rounded-2xl border-2 bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                                  selected
+                                    ? 'border-indigo-500 ring-2 ring-indigo-500/15'
+                                    : 'border-white hover:border-indigo-200'
+                                }`}
+                              >
+                                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-br from-slate-100 to-indigo-50">
+                                  {preview ? (
+                                    <img
+                                      src={preview}
+                                      alt={item.caption || `Instagram ${label}`}
+                                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center">
+                                      {item.content_type === 'REEL' ? (
+                                        <Film className="h-8 w-8 text-indigo-300" />
+                                      ) : (
+                                        <ImageIcon className="h-8 w-8 text-indigo-300" />
+                                      )}
+                                    </div>
+                                  )}
+
+                                  <div className="absolute left-2 top-2 rounded-full border border-white/70 bg-white/90 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-indigo-700 backdrop-blur">
+                                    {label}
+                                  </div>
+
+                                  {selected && (
+                                    <div className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg">
+                                      <CheckCircle2 className="h-4 w-4" />
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="p-2.5">
+                                  <p className="line-clamp-2 min-h-[2.1rem] text-[10px] font-semibold leading-4 text-slate-600">
+                                    {item.caption || (label === 'Story' ? 'Active Instagram Story' : `Instagram ${label}`)}
+                                  </p>
+                                  <div className="mt-2 flex items-center justify-between gap-2">
+                                    <span className={`text-[10px] font-black ${selected ? 'text-indigo-600' : 'text-slate-400'}`}>
+                                      {selected ? 'Selected ✓' : 'Select'}
+                                    </span>
+                                    {item.permalink && (
+                                      <span className="text-slate-300">
+                                        <ExternalLink className="h-3 w-3" />
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {selectedMediaId && (
+                        <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-2 text-[11px] font-bold text-emerald-700">
+                          <CheckCircle2 className="h-4 w-4" />
+                          This automation will run only on the selected {triggerType === 'story_reply' ? 'Story' : selectedMediaType === 'REEL' ? 'Reel' : 'Post'}.
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
               </div>
             )}
 
