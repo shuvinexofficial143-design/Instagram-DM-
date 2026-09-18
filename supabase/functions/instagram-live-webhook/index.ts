@@ -12,124 +12,28 @@ const automationCache = new Map<
   string,
   { expiresAt: number; automation: any | null }
 >();
-const pendingOutboundMemory = new Map<
-  string,
-  { recipientId: string; expiresAt: number }
->();
-
-async function resolveDmContext(
-  admin: any,
-  candidates: string[],
-  messageId: string
-) {
-  const cleanCandidates = [...new Set(
-    (candidates || []).map((id) => String(id || "").trim()).filter(Boolean)
-  )];
-
-  const { data, error } = await admin.rpc("autoreply_resolve_dm_context", {
-    p_candidates: cleanCandidates,
-    p_message_id: String(messageId || ""),
-  });
-
-  if (error) {
-    console.error("[LIVE_DM_CONTEXT_RPC_FAILED]", error);
-    throw new Error("Could not resolve DM context");
-  }
-
-  return data || null;
-}
-
 
 type RedisConfig = { restUrl: string; restToken: string };
+const REDIS_BOOTSTRAP_URL = "";
+const REDIS_BOOTSTRAP_TOKEN = "";
 let redisConfigCache: { expiresAt: number; value: RedisConfig | null } = {
   expiresAt: 0,
   value: null,
 };
-type RuntimeSecrets = {
-  appSecret: string;
-  verifyToken: string;
-  openaiKey: string;
-};
-let runtimeSecretsCache: { expiresAt: number; value: RuntimeSecrets | null } = {
-  expiresAt: 0,
-  value: null,
-};
-
-async function getRuntimeSecrets(admin: any): Promise<RuntimeSecrets | null> {
-  if (runtimeSecretsCache.expiresAt > Date.now()) {
-    return runtimeSecretsCache.value;
-  }
-
-  const { data, error } = await admin
-    .from("autoreply_integrations")
-    .select("config")
-    .eq("provider", "runtime_secrets")
-    .maybeSingle();
-
-  if (error) {
-    console.warn("[RUNTIME_SECRETS_LOAD_WARN]", error.message || error);
-    runtimeSecretsCache = { expiresAt: Date.now() + 5_000, value: null };
-    return null;
-  }
-
-  const value = data?.config
-    ? {
-        appSecret: cleanToken(data.config.app_secret),
-        verifyToken: cleanToken(data.config.verify_token),
-        openaiKey: cleanToken(data.config.openai_key),
-      }
-    : null;
-
-  runtimeSecretsCache = { expiresAt: Date.now() + 3_600_000, value };
-  return value;
-}
-
-async function persistRuntimeSecrets(
-  admin: any,
-  values: Partial<RuntimeSecrets>
-) {
-  const current = (await getRuntimeSecrets(admin)) || {
-    appSecret: "",
-    verifyToken: "",
-    openaiKey: "",
-  };
-
-  const merged = {
-    appSecret: cleanToken(values.appSecret || current.appSecret),
-    verifyToken: cleanToken(values.verifyToken || current.verifyToken),
-    openaiKey: cleanToken(values.openaiKey || current.openaiKey),
-  };
-
-  if (!merged.appSecret && !merged.openaiKey && !merged.verifyToken) return;
-
-  const { error } = await admin
-    .from("autoreply_integrations")
-    .upsert(
-      {
-        provider: "runtime_secrets",
-        config: {
-          app_secret: merged.appSecret,
-          verify_token: merged.verifyToken,
-          openai_key: merged.openaiKey,
-        },
-      },
-      { onConflict: "provider" }
-    );
-
-  if (error) {
-    console.warn("[RUNTIME_SECRETS_SAVE_WARN]", error.message || error);
-    return;
-  }
-
-  runtimeSecretsCache = {
-    expiresAt: Date.now() + 3_600_000,
-    value: merged,
-  };
-}
-
 
 async function getRedisConfig(admin: any): Promise<RedisConfig | null> {
   if (redisConfigCache.expiresAt > Date.now()) return redisConfigCache.value;
+
+  const envUrl = String(Deno.env.get("UPSTASH_REDIS_REST_URL") || "").trim();
+  const envToken = String(Deno.env.get("UPSTASH_REDIS_REST_TOKEN") || "").trim();
+  const bootstrapUrl = String(REDIS_BOOTSTRAP_URL || envUrl).replace(/\/$/, "");
+  const bootstrapToken = String(REDIS_BOOTSTRAP_TOKEN || envToken).trim();
+
+  if (bootstrapUrl && bootstrapToken) {
+    const value = { restUrl: bootstrapUrl, restToken: bootstrapToken };
+    redisConfigCache = { expiresAt: Date.now() + 3_600_000, value };
+    return value;
+  }
 
   const { data, error } = await admin
     .from("autoreply_integrations")
@@ -417,12 +321,7 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   if (!candidates.length) return null;
 
-  // Hottest path first: a warm Edge isolate can resolve the account without
-  // any Redis/Postgres round-trip.
-  if (
-    accountRowsCache.rows.length &&
-    accountRowsCache.expiresAt > Date.now()
-  ) {
+  if (accountRowsCache.rows.length && accountRowsCache.expiresAt > Date.now()) {
     const warmMatch = accountRowsCache.rows.find((row: any) =>
       candidates.includes(String(row?.account?.ig_user_id || ""))
     );
@@ -435,9 +334,30 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
     }
   }
 
-  // On a cold isolate, the authoritative account table lives in the same
-  // Supabase region. One small DB read is cheaper than first loading Redis
-  // credentials and then making a second network request.
+  const redisKeys = candidates.map(
+    (candidate) => `ar:v1:account:ig:${candidate}`
+  );
+  const redisBatch = await redisCommand(admin, ["MGET", ...redisKeys]);
+  if (redisBatch.available && Array.isArray(redisBatch.result)) {
+    for (const raw of redisBatch.result) {
+      if (typeof raw !== "string") continue;
+      try {
+        const row = JSON.parse(raw);
+        if (row?.user_id && row?.account?.access_token) {
+          accountRowsCache = {
+            rows: [row],
+            expiresAt: Date.now() + 3_600_000,
+          };
+          return {
+            ...row,
+            matchedInstagramId: String(row?.account?.ig_user_id || ""),
+            _cache: "redis",
+          };
+        }
+      } catch {}
+    }
+  }
+
   const { data, error } = await admin
     .from("autoreply_instagram_tokens")
     .select("user_id,account")
@@ -454,60 +374,30 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
     expiresAt: Date.now() + 3_600_000,
   };
 
-  // Populate Redis after the critical lookup; future workers can use it for
-  // recovery/other paths without making this reply wait.
-  runInBackground(
-    Promise.all(
-      rows
-        .filter((row: any) => row?.user_id && row?.account?.access_token)
-        .map((row: any) =>
-          redisSetJson(
-            admin,
-            `ar:v1:account:ig:${String(row?.account?.ig_user_id || "")}`,
-            row,
-            3600
-          )
-        )
-    )
-  );
-
   const matched = rows.find((row: any) =>
     candidates.includes(String(row?.account?.ig_user_id || ""))
   );
 
-  if (matched?.user_id && matched?.account?.access_token) {
-    return {
-      ...matched,
-      matchedInstagramId: String(matched?.account?.ig_user_id || ""),
-      _cache: "db",
-    };
-  }
-
   const usableRows = rows.filter(
     (row: any) => row?.user_id && row?.account?.access_token
   );
+  const chosen = matched || (usableRows.length === 1 ? usableRows[0] : null);
 
-  if (usableRows.length === 1) {
-    const only = usableRows[0];
-    console.warn("[LIVE_DM_ACCOUNT_SINGLE_FALLBACK]", {
-      candidates,
-      using: only?.account?.ig_user_id || null,
-    });
+  if (chosen?.user_id && chosen?.account?.access_token) {
+    runInBackground(
+      redisSetJson(
+        admin,
+        `ar:v1:account:ig:${String(chosen?.account?.ig_user_id || "")}`,
+        chosen,
+        3600
+      )
+    );
     return {
-      ...only,
-      matchedInstagramId: String(only?.account?.ig_user_id || ""),
-      _cache: "single_fallback",
+      ...chosen,
+      matchedInstagramId: String(chosen?.account?.ig_user_id || ""),
+      _cache: matched ? "db" : "single_fallback",
     };
   }
-
-  console.warn("[LIVE_DM_ACCOUNT_NOT_FOUND]", {
-    candidates,
-    connectedAccounts: rows.map((row: any) => ({
-      user_id: row?.user_id || null,
-      ig_user_id: row?.account?.ig_user_id || null,
-      username: row?.account?.username || null,
-    })),
-  });
 
   return null;
 }
@@ -1127,28 +1017,17 @@ Deno.serve(async (req: Request) => {
       .sort();
 
     const healthAdmin = getAdminClient();
-    const [redisPing, storedSecrets] = await Promise.all([
-      redisCommand(healthAdmin, ["PING"]),
-      getRuntimeSecrets(healthAdmin),
-    ]);
+    const redisPing = await redisCommand(healthAdmin, ["PING"]);
 
     return new Response(
       JSON.stringify({
         ok: true,
         directMetaWebhookReady: Boolean(
           acceptedVerifyTokens.size &&
-            (
-              cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET")) ||
-              storedSecrets?.appSecret
-            )
+            cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"))
         ),
-        verifyTokenConfigured: Boolean(
-          configuredVerifyToken || storedSecrets?.verifyToken || "nazha12"
-        ),
-        openaiConfigured: Boolean(
-          cleanToken(Deno.env.get("OPENAI_API_KEY")) ||
-          storedSecrets?.openaiKey
-        ),
+        verifyTokenConfigured: Boolean(configuredVerifyToken),
+        openaiConfigured: Boolean(cleanToken(Deno.env.get("OPENAI_API_KEY"))),
         redisReady: redisPing.available && redisPing.result === "PONG",
         visibleCustomEnvKeys,
         deploymentId: Deno.env.get("DENO_DEPLOYMENT_ID") || null,
@@ -1170,57 +1049,6 @@ Deno.serve(async (req: Request) => {
 
   const rawBody = await req.text();
 
-  // Supabase may initially run this function in its default US region even
-  // though the database and Redis are in Mumbai. Re-dispatch once to Mumbai
-  // before any DB/Redis work. This works even while the older Vercel relay is
-  // still live, so cross-region database round-trips are removed immediately.
-  const requestUrl = new URL(req.url);
-  const currentRegion = String(Deno.env.get("SB_REGION") || "");
-  const alreadyRegionForwarded =
-    requestUrl.searchParams.get("regionForward") === "1";
-
-  if (
-    currentRegion &&
-    currentRegion !== "ap-south-1" &&
-    !alreadyRegionForwarded
-  ) {
-    try {
-      const supabaseUrl = String(Deno.env.get("SUPABASE_URL") || "").replace(
-        /\/$/,
-        ""
-      );
-      const target =
-        `${supabaseUrl}/functions/v1/instagram-live-webhook?forceFunctionRegion=ap-south-1&regionForward=1`;
-      const signature = cleanToken(
-        req.headers.get("x-hub-signature-256")
-      );
-
-      const regionalResponse = await fetch(target, {
-        method: "POST",
-        headers: {
-          "Content-Type": req.headers.get("content-type") || "application/json",
-          ...(signature
-            ? { "x-hub-signature-256": signature }
-            : {}),
-        },
-        body: rawBody,
-      });
-
-      return new Response(await regionalResponse.text(), {
-        status: regionalResponse.status,
-        headers: {
-          "Content-Type":
-            regionalResponse.headers.get("content-type") ||
-            "application/json",
-          "Cache-Control": "no-store",
-        },
-      });
-    } catch (err) {
-      console.warn("[REGION_FORWARD_WARN]", err);
-      // Fall through to local processing if the regional handoff fails.
-    }
-  }
-
   let payload: any;
   try {
     payload = JSON.parse(rawBody || "{}");
@@ -1235,15 +1063,9 @@ Deno.serve(async (req: Request) => {
   let event: any;
   let openaiKey = "";
   let relayReceivedAt = 0;
-  let forwardedAppSecret = "";
-  let forwardedVerifyToken = "";
 
   if (metaSignature) {
-    const directAdmin = getAdminClient();
-    const storedSecrets = await getRuntimeSecrets(directAdmin);
-    const appSecret = cleanToken(
-      Deno.env.get("INSTAGRAM_APP_SECRET") || storedSecrets?.appSecret
-    );
+    const appSecret = cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"));
 
     if (!appSecret) {
       return reply(503, {
@@ -1264,15 +1086,11 @@ Deno.serve(async (req: Request) => {
 
     // Direct architecture: Meta -> Supabase Edge -> Instagram/OpenAI.
     event = payload;
-    openaiKey = cleanToken(
-      Deno.env.get("OPENAI_API_KEY") || storedSecrets?.openaiKey
-    );
+    openaiKey = cleanToken(Deno.env.get("OPENAI_API_KEY"));
   } else {
     // Backward-compatible architecture used by the current Vercel webhook.
     event = payload?.event;
     relayReceivedAt = Number(payload?.relayReceivedAt || 0);
-    forwardedAppSecret = cleanToken(payload?.metaAppSecret);
-    forwardedVerifyToken = cleanToken(payload?.verifyToken);
     openaiKey = cleanToken(
       payload?.openaiKey || Deno.env.get("OPENAI_API_KEY")
     );
@@ -1285,50 +1103,29 @@ Deno.serve(async (req: Request) => {
   }
 
   const admin = getAdminClient();
-
-  if (forwardedAppSecret || forwardedVerifyToken || openaiKey) {
-    runInBackground(
-      persistRuntimeSecrets(admin, {
-        appSecret: forwardedAppSecret,
-        verifyToken: forwardedVerifyToken,
-        openaiKey,
-      })
-    );
-  }
-
   const results: any[] = [];
 
   for (const item of messages) {
     const totalStart = performance.now();
-    const contextStart = performance.now();
+    const accountStart = performance.now();
 
-    const context = await resolveDmContext(
-      admin,
-      [item.entryId, item.recipientId],
-      item.messageId
-    );
-    const contextLookupMs = Math.round(
-      performance.now() - contextStart
-    );
+    const accountRow = await findWorkspaceByInstagramIds(admin, [
+      item.entryId,
+      item.recipientId,
+    ]);
+    const accountLookupMs = Math.round(performance.now() - accountStart);
 
-    if (!context?.user_id || !context?.account?.access_token) {
+    if (!accountRow?.user_id || !accountRow?.account?.access_token) {
       results.push({
         messageId: item.messageId,
         ok: false,
         reason: "connected_account_not_found",
-        contextLookupMs,
         totalMs: Math.round(performance.now() - totalStart),
       });
       continue;
     }
 
-    const workspaceId = String(context.user_id);
-    const accountRow = {
-      user_id: context.user_id,
-      account: context.account,
-      matchedInstagramId: String(context?.account?.ig_user_id || ""),
-      _cache: context?.match_type || "rpc",
-    };
+    const workspaceId = String(accountRow.user_id);
     const account = accountRow.account;
     const igUserId = String(
       account?.ig_user_id ||
@@ -1337,28 +1134,20 @@ Deno.serve(async (req: Request) => {
         item.recipientId
     );
     const accessToken = cleanToken(account?.access_token);
-    const automation = context?.automation || null;
 
-    let messageState = String(context?.message_state || "new");
+    const dedupeStart = performance.now();
+    const automationStart = performance.now();
 
-    // Very early outbound echoes normally hit the same warm isolate. This
-    // synchronous memory guard costs effectively 0 ms and avoids an extra
-    // Redis/network round-trip on every real customer message.
-    const pendingMemoryKey =
-      `${workspaceId}:${textFingerprint(String(item?.text || ""))}`;
-    const pendingMemory = pendingOutboundMemory.get(pendingMemoryKey);
-    if (pendingMemory && pendingMemory.expiresAt <= Date.now()) {
-      pendingOutboundMemory.delete(pendingMemoryKey);
-    } else if (
-      pendingMemory &&
-      pendingMemory.recipientId !== String(item?.senderId || "")
-    ) {
-      messageState = "outbound_echo";
-    }
+    const [messageState, automation] = await Promise.all([
+      classifyMessageId(admin, workspaceId, item),
+      loadActiveDmAiAutomation(admin, workspaceId),
+    ]);
 
-    const accountLookupMs = contextLookupMs;
-    const dedupeMs = contextLookupMs;
-    const automationLookupMs = contextLookupMs;
+    const parallelLookupMs = Math.round(performance.now() - dedupeStart);
+    const dedupeMs = parallelLookupMs;
+    const automationLookupMs = Math.round(
+      performance.now() - automationStart
+    );
 
     if (messageState === "outbound_echo") {
       console.log("[LIVE_DM_OUTBOUND_ECHO_IGNORED]", {
@@ -1488,25 +1277,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const pendingMarkStart = performance.now();
-    const pendingMemoryKey =
-      `${workspaceId}:${textFingerprint(responseText)}`;
-    pendingOutboundMemory.set(pendingMemoryKey, {
-      recipientId: item.senderId,
-      expiresAt: Date.now() + 20_000,
-    });
-
-    // Redis remains the cross-isolate safety net, but it no longer blocks the
-    // customer-visible reply path.
-    runInBackground(
-      markPendingOutbound(
-        admin,
-        workspaceId,
-        responseText,
-        item.senderId
-      )
-    );
-    const pendingMarkMs = Math.round(
-      performance.now() - pendingMarkStart
+    const pendingMarkerPromise = markPendingOutbound(
+      admin,
+      workspaceId,
+      responseText,
+      item.senderId
     );
 
     const sendStartEpoch = Date.now();
@@ -1524,17 +1299,29 @@ Deno.serve(async (req: Request) => {
         : null;
     const edgePreSendMs = Math.max(0, sendStartEpoch - edgeReceivedAt);
     const sendStart = performance.now();
+    let pendingMarkMs = 0;
 
     try {
       // This is the user-visible critical point. Everything expensive that does
       // not affect the reply itself is deferred until after the Send API call.
-      const sendResult = await sendInstagramText(
+      const sendPromise = sendInstagramText(
         igUserId,
         item.senderId,
         accessToken,
         responseText
       );
 
+      // Redis echo marker and Meta Send API run concurrently. Redis normally
+      // finishes well before Meta returns, preserving echo protection without
+      // adding its round-trip to user-visible latency.
+      const [sendResult] = await Promise.all([
+        sendPromise,
+        pendingMarkerPromise,
+      ]);
+
+      pendingMarkMs = Math.round(
+        performance.now() - pendingMarkStart
+      );
       const sendMs = Math.round(performance.now() - sendStart);
 
       runInBackground(
@@ -1592,7 +1379,6 @@ Deno.serve(async (req: Request) => {
           meta_to_relay_ms: metaToRelayMs,
           relay_to_edge_ms: relayToEdgeMs,
           edge_pre_send_ms: edgePreSendMs,
-          context_lookup_ms: contextLookupMs,
           account_lookup_ms: accountLookupMs,
           account_cache_source: accountRow?._cache || null,
           dedupe_ms: dedupeMs,
@@ -1614,7 +1400,6 @@ Deno.serve(async (req: Request) => {
         metaToRelayMs,
         relayToEdgeMs,
         edgePreSendMs,
-        contextLookupMs,
         accountLookupMs,
         dedupeMs,
         automationLookupMs,
@@ -1656,7 +1441,6 @@ Deno.serve(async (req: Request) => {
           meta_to_relay_ms: metaToRelayMs,
           relay_to_edge_ms: relayToEdgeMs,
           edge_pre_send_ms: edgePreSendMs,
-          context_lookup_ms: contextLookupMs,
           account_lookup_ms: accountLookupMs,
           dedupe_ms: dedupeMs,
           automation_lookup_ms: automationLookupMs,
