@@ -45,6 +45,7 @@ function preWarmHttpConnections() {
     'https://graph.instagram.com',
     'https://graph.facebook.com',
     'https://generativelanguage.googleapis.com',
+    'https://api.openai.com',
   ];
   for (const host of hosts) {
     fetch(host, { method: 'HEAD', signal: AbortSignal.timeout(2000) }).catch(() => {});
@@ -75,6 +76,60 @@ const serverSupabase = serverSupabaseServiceKey
 
 if (!serverSupabase) {
   console.warn('[SUPABASE_SERVICE_ROLE_MISSING] Instagram OAuth tokens will use in-memory fallback until SUPABASE_SERVICE_ROLE_KEY is configured.');
+}
+
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
+
+async function generateOpenAIDmReply(params: {
+  incomingText: string;
+  systemInstruction?: string;
+  maxTokens?: number;
+}) {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              params.systemInstruction ||
+              'You are a concise Instagram DM assistant. Reply naturally, politely, and briefly.',
+          },
+          { role: 'user', content: params.incomingText },
+        ],
+        temperature: 0.45,
+        max_tokens: params.maxTokens || 90,
+      }),
+      signal: controller.signal,
+    });
+
+    const payload: any = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(
+        payload?.error?.message ||
+          `OpenAI request failed with HTTP ${response.status}`
+      );
+    }
+
+    const reply = String(payload?.choices?.[0]?.message?.content || '').trim();
+    if (!reply) throw new Error('GPT-4o mini returned an empty response');
+    return reply;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function startServer() {
@@ -2148,24 +2203,39 @@ async function startServer() {
       }
     }
 
-    // Call Gemini AI ONLY if specifically configured as an AI Conversation automation
+    // Call the model selected on the automation. DM AI Conversation uses GPT-4o mini.
     if (!replyText && isExplicitAiConversation) {
       const ai_start = Date.now();
-      console.log(`🤖 4. AI Generation Started:   gemini-3.1-flash-lite ultra-fast stream with 1.4s deadline...`);
+      const aiAction = matchedAutomation?.actions?.find((a) => a.type === 'ai_chatbot');
+      const selectedModel = aiAction?.ai_model || 'gpt-4o-mini';
+      const promptToUse =
+        systemPrompt ||
+        'You are a concise Instagram assistant. Reply politely and directly in 1 short sentence.';
+
+      console.log(`🤖 4. AI Generation Started:   ${selectedModel}...`);
+
       try {
-        const promptToUse = systemPrompt || 'You are a concise Instagram assistant. Reply politely and directly in 1 short sentence under 15 words.';
-        const aiRes = await generateGeminiChatReply({
-          history: [], // Keep zero DB queries in critical path for maximum sub-second speed
-          incomingText: messageText,
-          systemInstruction: promptToUse,
-          model: 'gemini-3.1-flash-lite',
-          maxOutputTokens: 40,
-        });
-        replyText = aiRes.reply || 'Thank you for reaching out! How can I help you today?';
+        if (selectedModel === 'gpt-4o-mini') {
+          replyText = await generateOpenAIDmReply({
+            incomingText: messageText,
+            systemInstruction: promptToUse,
+            maxTokens: 90,
+          });
+        } else {
+          const aiRes = await generateGeminiChatReply({
+            history: [],
+            incomingText: messageText,
+            systemInstruction: promptToUse,
+            model: selectedModel as any,
+            maxOutputTokens: 60,
+          });
+          replyText = aiRes.reply || 'Thank you for reaching out! How can I help you today?';
+        }
       } catch (aiErr) {
-        console.error('[GEMINI_REPLY_GEN_ERROR]', aiErr);
+        console.error('[AI_REPLY_GEN_ERROR]', selectedModel, aiErr);
         replyText = 'Thanks for reaching out! How can I help you today?';
       }
+
       const ai_end = Date.now();
       ai_gen_duration_ms = ai_end - ai_start;
       console.log(`🤖    AI Generation Completed: ${ai_gen_duration_ms}ms`);
