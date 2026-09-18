@@ -424,6 +424,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // and Contacts even without Google/Firebase authentication.
       let cancelled = false;
       let pollTimer: ReturnType<typeof setInterval> | null = null;
+      let profileRefreshRequested = false;
 
       setGeminiKeys([]);
 
@@ -473,6 +474,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             status: contact.status || 'lead',
           }));
           setContacts(filterOutMockContacts(guestContacts));
+
+          const needsRealProfileRefresh = guestContacts.some((contact) => {
+            const username = String(contact.ig_username || '').trim();
+            return /^\d{8,}$/.test(username) || !contact.avatar_url;
+          });
+
+          if (needsRealProfileRefresh && !profileRefreshRequested) {
+            profileRefreshRequested = true;
+            fetch('/api/instagram/refresh-contacts', {
+              method: 'POST',
+              credentials: 'same-origin',
+            })
+              .then(async (refreshRes) => {
+                const refreshPayload = await refreshRes.json().catch(() => null);
+                if (!refreshRes.ok || !refreshPayload?.ok) {
+                  throw new Error(
+                    refreshPayload?.error || 'Could not refresh Instagram contact profiles'
+                  );
+                }
+                // The regular 4s workspace poll will pick up the real username/photo.
+              })
+              .catch((err) => {
+                console.warn('[IG_CONTACT_PROFILE_REFRESH_WARN]', err?.message || err);
+                // Allow one later retry in this page session.
+                setTimeout(() => {
+                  profileRefreshRequested = false;
+                }, 15000);
+              });
+          }
 
           const guestMessages: InboxMessage[] = (
             Array.isArray(payload?.inboxMessages) ? payload.inboxMessages : []
