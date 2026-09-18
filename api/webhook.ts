@@ -149,16 +149,9 @@ export default async function handler(req: any, res: any) {
     });
 
     if (!openaiKey) {
-      // Acknowledge Meta so it does not retry forever, but log the exact reason
-      // the AI reply could not be generated.
-      console.error(
-        '[LIVE_DM_AI] OPENAI_API_KEY is missing in Vercel; event acknowledged without AI reply'
+      console.warn(
+        '[LIVE_DM_AI] OPENAI_API_KEY is missing in Vercel; live processor will use the automation fallback message'
       );
-      return res.status(200).json({
-        received: true,
-        processed: false,
-        reason: 'openai_key_missing',
-      });
     }
 
     try {
