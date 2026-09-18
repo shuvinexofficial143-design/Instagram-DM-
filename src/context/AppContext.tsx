@@ -553,23 +553,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // 3. Handle OAuth callback parameters, window postMessage events, and initial account load
+  // 3. Handle OAuth callback parameters, window postMessage events, and initial account load.
+  // When there is no app login, the backend uses a secure HttpOnly guest-workspace cookie.
   useEffect(() => {
     const uid = firebaseUser?.uid;
-    if (!uid) {
-      setInstagramAccount(null);
-      return;
-    }
 
     const fetchAccountData = async () => {
       try {
-        const res = await fetch(`/api/instagram/account?userId=${encodeURIComponent(uid)}`);
+        const accountUrl = uid
+          ? `/api/instagram/account?userId=${encodeURIComponent(uid)}`
+          : '/api/instagram/account';
+        const res = await fetch(accountUrl, { credentials: 'same-origin' });
         if (res.ok) {
           const data = await res.json();
           if (data && data.account && data.account.username) {
             const formatted = { ...data.account, id: 'primary' };
             setInstagramAccount(formatted);
-            saveUserDocument(uid, 'instagram_account', formatted).catch(() => {});
+            if (uid) {
+              saveUserDocument(uid, 'instagram_account', formatted).catch(() => {});
+            }
           } else {
             setInstagramAccount(null);
           }
@@ -595,8 +597,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data === 'ig_connected' || event.data?.type === 'ig_connected') {
-        // OAuth credentials never cross postMessage. Always re-fetch safe metadata
-        // from our authenticated same-origin backend after Meta completes OAuth.
+        // OAuth credentials never cross postMessage. Re-fetch only safe metadata.
         fetchAccountData();
       }
     };
@@ -1103,7 +1104,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const disconnectChannel = async () => {
-    const uid = firebaseUser?.uid || user?.id || 'creator_primary';
+    const uid = firebaseUser?.uid || user?.id || '';
     setInstagramAccount(null);
     try {
       localStorage.removeItem('autoreply_connected_instagram_account');
@@ -1119,7 +1120,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await fetch('/api/instagram/account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: null, userId: uid }),
+        credentials: 'same-origin',
+        body: JSON.stringify(uid ? { account: null, userId: uid } : { account: null }),
       });
     } catch (err) {
       console.warn('[DISCONNECT_CHANNEL_ERR]', err);
