@@ -22,6 +22,31 @@ export const ConnectChannelModal: React.FC = () => {
   const [isLaunching, setIsLaunching] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  const readableError = (value: unknown): string => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (value instanceof Error) return value.message;
+
+    if (typeof value === 'object') {
+      const candidate = value as any;
+      const nested =
+        candidate.message ||
+        candidate.error_description ||
+        candidate.description ||
+        candidate.details ||
+        candidate.code;
+      if (typeof nested === 'string' && nested.trim()) return nested.trim();
+
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    }
+
+    return String(value);
+  };
+
   if (!isConnectModalOpen) return null;
 
   const handleOAuthLaunch = async () => {
@@ -51,7 +76,12 @@ export const ConnectChannelModal: React.FC = () => {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok || !payload?.url) {
-        throw new Error(payload?.error || 'Could not start Instagram authorization.');
+        const serverMessage = readableError(payload?.error || payload);
+        const serverCode = readableError(payload?.code);
+        throw new Error(
+          [serverCode, serverMessage].filter(Boolean).join(': ') ||
+            `Could not start Instagram authorization (HTTP ${response.status}).`
+        );
       }
 
       if (popup && !popup.closed) {
@@ -71,7 +101,7 @@ export const ConnectChannelModal: React.FC = () => {
       } catch {}
       setFeedback({
         type: 'error',
-        message: err?.message || 'Could not start Instagram authorization.',
+        message: readableError(err) || 'Could not start Instagram authorization.',
       });
     } finally {
       setIsLaunching(false);
