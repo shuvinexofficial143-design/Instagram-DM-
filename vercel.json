@@ -1,13 +1,19 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [
+  "framework": "vite",
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
+  "routes": [
     {
-      "source": "/webhook",
-      "destination": "/api/webhook"
+      "src": "/webhook/?",
+      "dest": "/api/webhook"
     },
     {
-      "source": "/webhook/",
-      "destination": "/api/webhook"
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
     }
   ]
 }
