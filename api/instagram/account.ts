@@ -5,6 +5,7 @@ import {
   toClientSafeAccount,
 } from '../../src/server/instagramVercel';
 
+// Dedicated Vercel function for the browser's connected-account status.
 export default async function handler(req: any, res: any) {
   const workspaceId = getGuestWorkspaceId(req);
 
