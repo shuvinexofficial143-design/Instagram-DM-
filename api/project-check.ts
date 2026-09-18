@@ -1,0 +1,30 @@
+function projectRefFromUrl(value: string): string {
+  try {
+    const host = new URL(value).hostname;
+    return host.split('.')[0] || '';
+  } catch {
+    return '';
+  }
+}
+
+export default async function handler(req: any, res: any) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
+  }
+
+  const serverUrl = String(
+    process.env.SUPABASE_URL || 'https://mgibujqljahrfwlaafjy.supabase.co'
+  ).trim();
+
+  const viteUrl = String(process.env.VITE_SUPABASE_URL || '').trim();
+
+  return res.status(200).json({
+    ok: true,
+    serverSupabaseProjectRef: projectRefFromUrl(serverUrl),
+    serverSupabaseSource: process.env.SUPABASE_URL ? 'SUPABASE_URL env' : 'code fallback',
+    viteSupabaseProjectRef: viteUrl ? projectRefFromUrl(viteUrl) : null,
+    viteSupabaseSource: viteUrl ? 'VITE_SUPABASE_URL env' : 'not set at runtime',
+    expectedRepoFallbackRef: 'mgibujqljahrfwlaafjy',
+  });
+}
