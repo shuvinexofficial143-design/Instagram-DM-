@@ -39,7 +39,9 @@ function verifyMetaSignature(rawBody: Buffer, signatureHeader: string, appSecret
 async function forwardToLiveProcessor(
   event: any,
   openaiKey: string,
-  relayReceivedAt: number
+  relayReceivedAt: number,
+  metaAppSecret: string,
+  verifyToken: string
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
@@ -55,6 +57,8 @@ async function forwardToLiveProcessor(
           relayReceivedAt,
           // Server-to-server only. Never returned to the browser or logged.
           openaiKey,
+          metaAppSecret,
+          verifyToken,
         }),
         signal: controller.signal,
       }
@@ -163,7 +167,9 @@ export default async function handler(req: any, res: any) {
       const result = await forwardToLiveProcessor(
         event,
         openaiKey,
-        relayReceivedAt
+        relayReceivedAt,
+        appSecret,
+        configuredVerifyToken || 'nazha12'
       );
 
       console.log('[LIVE_DM_AI] Processor complete', {
