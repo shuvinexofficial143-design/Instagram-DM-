@@ -2028,6 +2028,7 @@ async function startServer() {
     recipientId: string;
     messageText: string;
     commentId?: string;
+    mediaId?: string;
     rawEvent?: any;
     webhookReceivedAt?: string;
     webhookReceivedAtMs?: number;
@@ -2035,7 +2036,7 @@ async function startServer() {
     isTest?: boolean;
   }) {
     const t0_start = Date.now();
-    const { triggerType, senderId, recipientId, messageText, commentId, isTest } = params;
+    const { triggerType, senderId, recipientId, messageText, commentId, mediaId, isTest } = params;
     const isTestEvent = Boolean(
       isTest ||
       params.senderUsername?.startsWith('user_') ||
@@ -2086,6 +2087,18 @@ async function startServer() {
 
       const config = auto.trigger_config || { all_or_keywords: 'all', keywords: [] };
       const keywords = config.keywords || [];
+
+      // Content-specific safety: a new Comment/Story automation only runs for
+      // the exact Post, Reel, or Story chosen in the builder.
+      if (
+        (triggerType === 'comment' || triggerType === 'story_reply') &&
+        config.media_scope === 'specific_media' &&
+        config.selected_media_id
+      ) {
+        if (!mediaId || String(config.selected_media_id) !== String(mediaId)) {
+          continue;
+        }
+      }
 
       if (auto.trigger_type === 'dm_ai_conversation' || config.all_or_keywords === 'ai_conversation') {
         matchedAutomation = auto;
@@ -2483,18 +2496,38 @@ async function startServer() {
           const messageText = msgEvent.message?.text;
           const isEcho = msgEvent.message?.is_echo;
           const metaMsgTimestamp = msgEvent.timestamp || entryTime || null;
+          const storyReply =
+            msgEvent.message?.reply_to?.story ||
+            msgEvent.reply_to?.story ||
+            msgEvent.message?.reply_to?.story_reply ||
+            null;
+          const storyMediaId =
+            storyReply?.id ||
+            msgEvent.message?.reply_to?.story_id ||
+            msgEvent.reply_to?.story_id ||
+            msgEvent.message?.reply_to?.mid ||
+            '';
 
           if (senderId && messageText && !isEcho) {
+            const resolvedTriggerType = storyReply || storyMediaId ? 'story_reply' : 'dm';
             processSingleMessageEvent({
-              triggerType: 'dm',
+              triggerType: resolvedTriggerType,
               senderId: String(senderId),
               recipientId: String(recipientId || entry.id || ''),
               messageText: String(messageText),
+              mediaId: storyMediaId ? String(storyMediaId) : undefined,
               rawEvent: msgEvent,
               webhookReceivedAt,
               webhookReceivedAtMs,
               metaEventTimestamp: metaMsgTimestamp,
-            }).catch((err) => console.error('[ASYNC_DM_PROCESS_ERR]', err));
+            }).catch((err) =>
+              console.error(
+                resolvedTriggerType === 'story_reply'
+                  ? '[ASYNC_STORY_REPLY_PROCESS_ERR]'
+                  : '[ASYNC_DM_PROCESS_ERR]',
+                err
+              )
+            );
           }
         }
 
@@ -2509,6 +2542,12 @@ async function startServer() {
             const commentText = val.text;
             const senderId = val.from?.id;
             const senderUsername = val.from?.username || '';
+            const commentMediaId =
+              val.media?.id ||
+              val.media_id ||
+              val.media?.media_id ||
+              val.parent_media_id ||
+              '';
             const metaCommentTimestamp = val.created_time ? (typeof val.created_time === 'number' ? (val.created_time > 1e11 ? val.created_time : val.created_time * 1000) : Date.parse(val.created_time)) : (entryTime || null);
 
             if (commentText && senderId) {
@@ -2519,6 +2558,7 @@ async function startServer() {
                 recipientId: String(entry.id || ''),
                 messageText: String(commentText),
                 commentId: commentId ? String(commentId) : undefined,
+                mediaId: commentMediaId ? String(commentMediaId) : undefined,
                 rawEvent: change,
                 webhookReceivedAt,
                 webhookReceivedAtMs,
@@ -2533,19 +2573,40 @@ async function startServer() {
             const messageText = val.message?.text || val.text;
             const isEcho = val.message?.is_echo || val.is_echo;
             const metaMsgTimestamp = val.timestamp || entryTime || null;
+            const storyReply =
+              val.message?.reply_to?.story ||
+              val.reply_to?.story ||
+              val.story ||
+              null;
+            const storyMediaId =
+              storyReply?.id ||
+              val.message?.reply_to?.story_id ||
+              val.reply_to?.story_id ||
+              val.message?.reply_to?.mid ||
+              val.story_id ||
+              '';
 
             if (senderId && messageText && !isEcho) {
+              const resolvedTriggerType = storyReply || storyMediaId ? 'story_reply' : 'dm';
               processSingleMessageEvent({
-                triggerType: 'dm',
+                triggerType: resolvedTriggerType,
                 senderId: String(senderId),
                 senderUsername: val.from?.username || '',
                 recipientId: String(recipientId || entry.id || ''),
                 messageText: String(messageText),
+                mediaId: storyMediaId ? String(storyMediaId) : undefined,
                 rawEvent: change,
                 webhookReceivedAt,
                 webhookReceivedAtMs,
                 metaEventTimestamp: metaMsgTimestamp,
-              }).catch((err) => console.error('[ASYNC_DM_CHANGES_PROCESS_ERR]', err));
+              }).catch((err) =>
+                console.error(
+                  resolvedTriggerType === 'story_reply'
+                    ? '[ASYNC_STORY_REPLY_CHANGES_PROCESS_ERR]'
+                    : '[ASYNC_DM_CHANGES_PROCESS_ERR]',
+                  err
+                )
+              );
             }
           }
         }
@@ -2559,7 +2620,7 @@ async function startServer() {
 
   // 7. Test Webhook Engine API Endpoint
   app.post('/api/test-webhook', async (req: Request, res: Response) => {
-    const { trigger_type, username, text, userId } = req.body;
+    const { trigger_type, username, text, userId, mediaId } = req.body;
 
     if (!trigger_type || !username || !text) {
       return res.status(400).json({ error: 'Missing required parameters: trigger_type, username, text' });
@@ -2577,6 +2638,7 @@ async function startServer() {
       senderUsername: cleanUsername,
       recipientId: 'ig_business_id_main',
       messageText: String(text),
+      mediaId: mediaId ? String(mediaId) : undefined,
       isTest: true,
     });
 
