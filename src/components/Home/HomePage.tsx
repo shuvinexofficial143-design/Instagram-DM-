@@ -55,11 +55,11 @@ export const HomePage: React.FC = () => {
   const connectedCount = isConnected ? 1 : 0;
 
   return (
-    <div className="px-4 md:px-6 py-6 space-y-6 bg-[#F9F6FE] min-h-screen">
+    <div className="min-h-screen space-y-6 bg-gradient-to-b from-[#F7FAFF] via-[#FBFCFF] to-[#F8F6FF] px-4 py-6 md:px-6">
       {/* 1. Welcome back, Nazha! Top Banner Card */}
-      <div className="bg-white rounded-2xl p-5 md:p-6 border border-slate-200/90 shadow-sm flex items-center gap-4 md:gap-6 transition-all w-full">
+      <div className="flex w-full items-center gap-4 rounded-2xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm transition-all md:gap-6 md:p-6">
         {/* Pink/Magenta Circular Avatar with white first initial */}
-        <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-gradient-to-tr from-pink-500 via-rose-500 to-fuchsia-500 text-white font-black text-xl md:text-2xl flex items-center justify-center shadow-md shadow-pink-500/25 shrink-0">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-500 to-violet-500 text-xl font-black text-white shadow-md shadow-indigo-500/20 md:h-14 md:w-14 md:text-2xl">
           {user.name ? user.name.charAt(0).toUpperCase() : 'C'}
         </div>
 
@@ -78,20 +78,17 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* 2. "LIVE - MAGIC IN PROGRESS" Main Banner Card */}
-      <div className="relative rounded-3xl p-7 md:p-10 shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden min-h-[300px] md:min-h-[330px] flex flex-col justify-between gap-6 bg-gradient-to-br from-indigo-50/90 via-purple-50/70 to-pink-50/80 border border-purple-200/80 group">
+      <div className="group relative flex min-h-[300px] flex-col justify-between gap-6 overflow-hidden rounded-3xl border border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 p-7 shadow-[0_18px_55px_rgba(78,93,169,0.10)] transition-all duration-300 hover:shadow-[0_22px_65px_rgba(78,93,169,0.13)] md:min-h-[330px] md:p-10">
         {/* Soft Background Pattern Image Layer with Opacity */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center opacity-10 mix-blend-multiply scale-105 group-hover:scale-100 transition-transform duration-700 pointer-events-none"
-          style={{ backgroundImage: `url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1600&q=80')` }}
-        ></div>
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(129,140,248,0.16),transparent_30%),radial-gradient(circle_at_10%_85%,rgba(56,189,248,0.12),transparent_34%)]"></div>
 
         {/* Ambient Pastel Glow Orbs */}
-        <div className="absolute -top-20 -right-20 w-80 h-80 bg-purple-300/30 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-pink-300/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-violet-300/20 blur-3xl"></div>
+        <div className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-cyan-200/20 blur-3xl"></div>
 
         {/* Top Live Status Badge */}
         <div className="relative z-10 flex items-center justify-between">
-          <div className="inline-flex items-center gap-2.5 bg-white/95 backdrop-blur-md border border-emerald-300/90 px-4 py-1.5 rounded-full text-xs font-black text-emerald-800 shadow-xs">
+          <div className="inline-flex items-center gap-2.5 rounded-full border border-emerald-200/80 bg-white/85 px-4 py-1.5 text-xs font-black text-emerald-700 shadow-sm backdrop-blur-md">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
@@ -104,7 +101,7 @@ export const HomePage: React.FC = () => {
         <div className="relative z-10 space-y-3 max-w-3xl">
           <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-[1.15]">
             You're chilling.<br />
-            <span className="bg-gradient-to-r from-purple-700 via-pink-700 to-rose-700 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent">
               AutoReply is working the magic.
             </span>
           </h1>
@@ -114,16 +111,16 @@ export const HomePage: React.FC = () => {
 
           {/* Quick Live Stats Pills */}
           <div className="flex items-center gap-3 flex-wrap pt-1">
-            <div className="bg-white/90 backdrop-blur-md border border-purple-200 px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-slate-800 flex items-center gap-2 shadow-2xs">
-              <Send className="w-3.5 h-3.5 text-purple-700 stroke-[2.2]" />
+            <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-white/80 px-3.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm backdrop-blur-md">
+              <Send className="h-3.5 w-3.5 text-indigo-600 stroke-[2.2]" />
               <span>{totalDms} DMs Sent</span>
             </div>
-            <div className="bg-white/90 backdrop-blur-md border border-purple-200 px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-slate-800 flex items-center gap-2 shadow-2xs">
-              <MessageCircle className="w-3.5 h-3.5 text-emerald-700 stroke-[2.2]" />
+            <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-white/80 px-3.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm backdrop-blur-md">
+              <MessageCircle className="h-3.5 w-3.5 text-blue-600 stroke-[2.2]" />
               <span>{commentReplies} Comments Replied</span>
             </div>
-            <div className="bg-white/90 backdrop-blur-md border border-purple-200 px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-slate-800 flex items-center gap-2 shadow-2xs">
-              <Sparkles className="w-3.5 h-3.5 text-amber-700 stroke-[2.2]" />
+            <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-white/80 px-3.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm backdrop-blur-md">
+              <Sparkles className="h-3.5 w-3.5 text-violet-600 stroke-[2.2]" />
               <span>{totalUniqueUsers} People Reached</span>
             </div>
           </div>
@@ -136,9 +133,9 @@ export const HomePage: React.FC = () => {
               const el = document.getElementById('top-performers-section');
               if (el) el.scrollIntoView({ behavior: 'smooth' });
             }}
-            className="inline-flex items-center gap-2.5 bg-slate-950 hover:bg-slate-900 text-white font-black text-xs md:text-sm px-6 py-3.5 rounded-2xl shadow-md hover:shadow-lg hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer"
+            className="inline-flex cursor-pointer items-center gap-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-6 py-3.5 text-xs font-black text-white shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.98] md:text-sm"
           >
-            <Sparkles className="w-4 h-4 text-purple-300" />
+            <Sparkles className="h-4 w-4 text-white/90" />
             <span>See Top Performers</span>
             <ArrowRight className="w-4 h-4 stroke-[2.5]" />
           </button>
@@ -147,7 +144,7 @@ export const HomePage: React.FC = () => {
 
       {/* 3. Stats Row (People touched / DM open rate / Comment replies / DMs sent) */}
       <div className="space-y-5">
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col justify-between gap-4 rounded-2xl border border-white/90 bg-white/85 p-6 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm sm:flex-row sm:items-center">
           <div className="space-y-1">
             <div className="text-xs font-black text-slate-600 uppercase tracking-wider">
               PEOPLE YOU'VE TOUCHED
@@ -161,8 +158,8 @@ export const HomePage: React.FC = () => {
           </div>
 
           <div className="self-start sm:self-center shrink-0">
-            <div className="bg-amber-50/90 border border-amber-300/90 px-4 py-1.5 rounded-full text-xs font-black text-amber-900 flex items-center gap-2 shadow-2xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+            <div className="flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50/80 px-4 py-1.5 text-xs font-black text-indigo-700 shadow-sm">
+              <span className="h-2.5 w-2.5 rounded-full bg-indigo-500"></span>
               <span>{activeCount} / {totalCount} automations live</span>
             </div>
           </div>
@@ -171,8 +168,8 @@ export const HomePage: React.FC = () => {
         {/* 3 Metrics Grid Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* Metric 1: DM OPEN RATE */}
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-400 transition-all duration-200 flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-500/25">
+          <div className="flex items-start gap-4 rounded-2xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_34px_rgba(72,95,145,0.07)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_42px_rgba(72,95,145,0.10)]">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-100 via-indigo-100 to-violet-100 text-indigo-600 shadow-sm ring-1 ring-white">
               <LinkIcon className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div className="space-y-1 min-w-0 flex-1">
@@ -189,8 +186,8 @@ export const HomePage: React.FC = () => {
           </div>
 
           {/* Metric 2: COMMENT REPLIES */}
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-emerald-400 transition-all duration-200 flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/25">
+          <div className="flex items-start gap-4 rounded-2xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_34px_rgba(72,95,145,0.07)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-[0_16px_42px_rgba(72,95,145,0.10)]">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-100 via-blue-100 to-indigo-100 text-blue-600 shadow-sm ring-1 ring-white">
               <MessageCircle className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div className="space-y-1 min-w-0 flex-1">
@@ -207,8 +204,8 @@ export const HomePage: React.FC = () => {
           </div>
 
           {/* Metric 3: DMS SENT */}
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:border-purple-400 transition-all duration-200 flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-purple-500/25">
+          <div className="flex items-start gap-4 rounded-2xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_34px_rgba(72,95,145,0.07)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_16px_42px_rgba(72,95,145,0.10)]">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-100 via-indigo-100 to-blue-100 text-violet-600 shadow-sm ring-1 ring-white">
               <Send className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div className="space-y-1 min-w-0 flex-1">
@@ -227,7 +224,7 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* 4. CONNECTED ACCOUNTS BANNER (~8:1 Ratio Horizontal Strip) */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-4 hover:border-indigo-300 hover:shadow-md transition-all w-full flex flex-col md:flex-row md:items-center justify-between gap-4 min-h-[76px]">
+      <div className="flex min-h-[76px] w-full flex-col justify-between gap-4 rounded-2xl border border-white/90 bg-white/85 px-5 py-4 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm transition-all hover:border-indigo-200 hover:shadow-[0_16px_42px_rgba(72,95,145,0.10)] md:flex-row md:items-center">
         {/* Left Section */}
         <div className="space-y-1 min-w-0">
           <div className="text-[11px] font-black text-slate-600 tracking-tight">
@@ -296,7 +293,7 @@ export const HomePage: React.FC = () => {
           {isConnected && instagramAccount?.username ? (
             <button
               onClick={() => setActiveTab('settings')}
-              className="bg-[#3B5BFF] hover:bg-indigo-700 text-white font-black text-xs px-4 py-2.5 rounded-xl btn-primary-elevated flex items-center gap-1.5 cursor-pointer"
+              className="btn-primary-elevated flex cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2.5 text-xs font-black text-white shadow-md shadow-indigo-500/15 transition-transform hover:-translate-y-0.5"
             >
               <span>View all profiles</span>
               <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -304,7 +301,7 @@ export const HomePage: React.FC = () => {
           ) : (
             <button
               onClick={() => setIsConnectModalOpen(true)}
-              className="bg-[#3B5BFF] hover:bg-indigo-700 text-white font-black text-xs px-4 py-2.5 rounded-xl btn-primary-elevated flex items-center gap-1.5 cursor-pointer"
+              className="btn-primary-elevated flex cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2.5 text-xs font-black text-white shadow-md shadow-indigo-500/15 transition-transform hover:-translate-y-0.5"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Connect Instagram</span>
@@ -314,7 +311,7 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* 5. Top Performing Automations */}
-      <div id="top-performers-section" className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
+      <div id="top-performers-section" className="space-y-5 rounded-2xl border border-white/90 bg-white/85 p-6 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
             <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
@@ -336,7 +333,7 @@ export const HomePage: React.FC = () => {
 
         <div className="space-y-3">
           {topAutomations.length === 0 ? (
-            <div className="p-8 text-center bg-slate-50/70 rounded-xl border border-dashed border-slate-300">
+            <div className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/35 p-8 text-center">
               <Zap className="w-8 h-8 text-slate-400 mx-auto mb-2" />
               <p className="text-sm font-black text-slate-800">No Automations Created Yet</p>
               <p className="text-xs font-semibold text-slate-600 mb-4 max-w-sm mx-auto">
@@ -344,7 +341,7 @@ export const HomePage: React.FC = () => {
               </p>
               <button
                 onClick={() => setIsBuilderOpen(true)}
-                className="bg-[#3B5BFF] text-white text-xs font-black py-2.5 px-4 rounded-xl btn-primary-elevated cursor-pointer"
+                className="btn-primary-elevated cursor-pointer rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2.5 text-xs font-black text-white shadow-md shadow-indigo-500/15"
               >
                 + Create Automation
               </button>
@@ -355,7 +352,7 @@ export const HomePage: React.FC = () => {
               return (
                 <div
                   key={auto.id}
-                  className="p-4 rounded-xl border border-slate-200 hover:border-indigo-300 bg-white hover:bg-indigo-50/30 transition-all shadow-2xs hover:shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/70 bg-white/75 p-4 shadow-sm transition-all hover:border-indigo-200 hover:bg-indigo-50/30 hover:shadow-md sm:flex-row sm:items-center"
                 >
                   <div className="min-w-0 space-y-1 flex-1">
                     <div className="flex items-center gap-2.5">
@@ -410,7 +407,7 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* 6. Quick Actions */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+      <div className="space-y-4 rounded-2xl border border-white/90 bg-white/85 p-6 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm">
         <div className="flex items-center justify-between border-b border-slate-200 pb-3">
           <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-600 fill-amber-500/20" />
@@ -482,7 +479,7 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* Footer */}
-      <footer className="pt-6 pb-2 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-medium">
+      <footer className="flex flex-col items-center justify-between gap-4 border-t border-indigo-100/80 pb-2 pt-6 text-xs font-medium text-slate-500 sm:flex-row">
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-indigo-600 fill-indigo-600/20" />
           <span className="font-bold text-slate-800">AutoReply.io</span>
