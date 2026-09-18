@@ -657,26 +657,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Automation CRUD. Authenticated users use Supabase RLS directly;
   // no-login users persist under their secure guest workspace cookie.
-  const persistGuestAutomation = (automation: Automation) => {
-    fetch('/api/automations', {
+  const persistGuestAutomation = async (automation: Automation) => {
+    const response = await fetch('/api/automations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify({ automation }),
-    }).catch((err) =>
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error || 'Automation could not be saved.');
+    }
+
+    if (Array.isArray(payload?.pausedAutomationIds) && payload.pausedAutomationIds.length) {
+      const paused = new Set<string>(payload.pausedAutomationIds);
+      setAutomations((prev) =>
+        prev.map((item) =>
+          paused.has(item.id)
+            ? { ...item, status: 'paused', updated_at: new Date().toISOString() }
+            : item
+        )
+      );
+    }
+
+    return payload;
+  };
+
+  const persistAutomationRecord = (
+    automation: Automation,
+    uid: string | undefined
+  ) => {
+    if (uid) {
+      saveUserDocument(uid, 'automations', automation).catch((err) =>
+        console.warn('[AUTOMATION_SAVE_WARN]', err?.message || err)
+      );
+      return;
+    }
+
+    persistGuestAutomation(automation).catch((err) =>
       console.warn('[GUEST_AUTOMATION_SAVE_WARN]', err?.message || err)
     );
   };
+
+  const hasDuplicateAutomationName = (name: string, exceptId?: string) =>
+    automations.some(
+      (auto) =>
+        auto.id !== exceptId &&
+        auto.name.trim().toLocaleLowerCase() === name.trim().toLocaleLowerCase()
+    );
 
   const createAutomation = (
     newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'>
   ) => {
     const uid = firebaseUser?.uid;
+    const now = new Date().toISOString();
+    const cleanName = newAuto.name.trim();
+
+    if (hasDuplicateAutomationName(cleanName)) {
+      console.warn('[AUTOMATION_NAME_DUPLICATE]', cleanName);
+      return;
+    }
+
     const created: Automation = {
       ...newAuto,
+      name: cleanName,
       id: `auto_${Date.now()}`,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
       stats: {
         runs: 0,
         dms_sent: 0,
@@ -685,41 +733,90 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     };
 
-    setAutomations((prev) => [created, ...prev]);
+    const shouldBeOnlyLiveDmAi =
+      created.trigger_type === 'dm_ai_conversation' && created.status === 'active';
 
-    if (uid) {
-      saveUserDocument(uid, 'automations', created).catch((err) =>
-        console.warn('[AUTOMATION_CREATE_SAVE_WARN]', err?.message || err)
-      );
-    } else {
-      persistGuestAutomation(created);
-    }
+    const pausedOthers = shouldBeOnlyLiveDmAi
+      ? automations
+          .filter(
+            (auto) =>
+              auto.id !== created.id &&
+              auto.trigger_type === 'dm_ai_conversation' &&
+              auto.status === 'active'
+          )
+          .map((auto) => ({
+            ...auto,
+            status: 'paused' as const,
+            updated_at: now,
+          }))
+      : [];
+
+    const pausedIds = new Set(pausedOthers.map((auto) => auto.id));
+
+    setAutomations((prev) => [
+      created,
+      ...prev.map((auto) =>
+        pausedIds.has(auto.id)
+          ? { ...auto, status: 'paused', updated_at: now }
+          : auto
+      ),
+    ]);
+
+    for (const paused of pausedOthers) persistAutomationRecord(paused, uid);
+    persistAutomationRecord(created, uid);
   };
 
   const updateAutomation = (id: string, updates: Partial<Automation>) => {
     const uid = firebaseUser?.uid;
+    const current = automations.find((auto) => auto.id === id);
+    if (!current) return;
+
+    const nextName = String(updates.name ?? current.name).trim();
+    if (hasDuplicateAutomationName(nextName, id)) {
+      console.warn('[AUTOMATION_NAME_DUPLICATE]', nextName);
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updated: Automation = {
+      ...current,
+      ...updates,
+      name: nextName,
+      updated_at: now,
+    };
+
+    const shouldBeOnlyLiveDmAi =
+      updated.trigger_type === 'dm_ai_conversation' && updated.status === 'active';
+
+    const pausedOthers = shouldBeOnlyLiveDmAi
+      ? automations
+          .filter(
+            (auto) =>
+              auto.id !== id &&
+              auto.trigger_type === 'dm_ai_conversation' &&
+              auto.status === 'active'
+          )
+          .map((auto) => ({
+            ...auto,
+            status: 'paused' as const,
+            updated_at: now,
+          }))
+      : [];
+
+    const pausedIds = new Set(pausedOthers.map((auto) => auto.id));
 
     setAutomations((prev) =>
       prev.map((auto) => {
-        if (auto.id !== id) return auto;
-
-        const updated: Automation = {
-          ...auto,
-          ...updates,
-          updated_at: new Date().toISOString(),
-        };
-
-        if (uid) {
-          saveUserDocument(uid, 'automations', updated).catch((err) =>
-            console.warn('[AUTOMATION_UPDATE_SAVE_WARN]', err?.message || err)
-          );
-        } else {
-          persistGuestAutomation(updated);
+        if (auto.id === id) return updated;
+        if (pausedIds.has(auto.id)) {
+          return { ...auto, status: 'paused', updated_at: now };
         }
-
-        return updated;
+        return auto;
       })
     );
+
+    for (const paused of pausedOthers) persistAutomationRecord(paused, uid);
+    persistAutomationRecord(updated, uid);
   };
 
   const deleteAutomation = (id: string) => {
@@ -742,28 +839,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleAutomationStatus = (id: string) => {
     const uid = firebaseUser?.uid;
+    const current = automations.find((auto) => auto.id === id);
+    if (!current) return;
+
+    const now = new Date().toISOString();
+    const nextStatus = current.status === 'active' ? 'paused' : 'active';
+    const updated: Automation = {
+      ...current,
+      status: nextStatus,
+      updated_at: now,
+    };
+
+    const shouldBeOnlyLiveDmAi =
+      updated.trigger_type === 'dm_ai_conversation' && nextStatus === 'active';
+
+    const pausedOthers = shouldBeOnlyLiveDmAi
+      ? automations
+          .filter(
+            (auto) =>
+              auto.id !== id &&
+              auto.trigger_type === 'dm_ai_conversation' &&
+              auto.status === 'active'
+          )
+          .map((auto) => ({
+            ...auto,
+            status: 'paused' as const,
+            updated_at: now,
+          }))
+      : [];
+
+    const pausedIds = new Set(pausedOthers.map((auto) => auto.id));
 
     setAutomations((prev) =>
       prev.map((auto) => {
-        if (auto.id !== id) return auto;
-
-        const updated: Automation = {
-          ...auto,
-          status: auto.status === 'active' ? 'paused' : 'active',
-          updated_at: new Date().toISOString(),
-        };
-
-        if (uid) {
-          saveUserDocument(uid, 'automations', updated).catch((err) =>
-            console.warn('[AUTOMATION_TOGGLE_SAVE_WARN]', err?.message || err)
-          );
-        } else {
-          persistGuestAutomation(updated);
+        if (auto.id === id) return updated;
+        if (pausedIds.has(auto.id)) {
+          return { ...auto, status: 'paused', updated_at: now };
         }
-
-        return updated;
+        return auto;
       })
     );
+
+    for (const paused of pausedOthers) persistAutomationRecord(paused, uid);
+    persistAutomationRecord(updated, uid);
   };
 
   // Gemini Key Management Actions (Scoped strictly by user UID)
