@@ -4,6 +4,15 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const GRAPH_VERSION = "v25.0";
 
+let accountRowsCache: { expiresAt: number; rows: any[] } = {
+  expiresAt: 0,
+  rows: [],
+};
+const automationCache = new Map<
+  string,
+  { expiresAt: number; automation: any | null }
+>();
+
 function reply(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
@@ -94,54 +103,40 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   if (!candidates.length) return null;
 
-  // Webhook payloads may place the connected Instagram professional account id
-  // in entry.id while recipient.id can be a different scoped identifier.
-  // Try every candidate instead of assuming recipient.id is always the account.
-  for (const igUserId of candidates) {
+  let rows = accountRowsCache.rows;
+  if (Date.now() >= accountRowsCache.expiresAt || !rows.length) {
     const { data, error } = await admin
       .from("autoreply_instagram_tokens")
       .select("user_id,account")
-      .contains("account", { ig_user_id: igUserId })
-      .limit(1)
-      .maybeSingle();
+      .limit(100);
 
     if (error) {
-      console.error("[LIVE_DM_ACCOUNT_LOOKUP_FAILED]", igUserId, error);
+      console.error("[LIVE_DM_ACCOUNT_SCAN_FAILED]", error);
+      return null;
     }
 
-    if (data?.user_id && data?.account?.access_token) {
-      return { ...data, matchedInstagramId: igUserId };
-    }
+    rows = data || [];
+    accountRowsCache = {
+      rows,
+      expiresAt: Date.now() + 60_000,
+    };
   }
 
-  // Fallback for older rows / JSON containment differences.
-  const { data: rows, error: rowsError } = await admin
-    .from("autoreply_instagram_tokens")
-    .select("user_id,account")
-    .limit(100);
-
-  if (rowsError) {
-    console.error("[LIVE_DM_ACCOUNT_SCAN_FAILED]", rowsError);
-    return null;
-  }
-
-  const matched = (rows || []).find((row: any) =>
+  const matched = rows.find((row: any) =>
     candidates.includes(String(row?.account?.ig_user_id || ""))
   );
 
-  if (matched) {
+  if (matched?.user_id && matched?.account?.access_token) {
     return {
       ...matched,
       matchedInstagramId: String(matched?.account?.ig_user_id || ""),
     };
   }
 
-  // If this project has exactly one connected Instagram account, use it as a
-  // safe compatibility fallback. Some Instagram webhook variants expose a
-  // scoped recipient id that differs from the id returned by /me.
-  const usableRows = (rows || []).filter(
+  const usableRows = rows.filter(
     (row: any) => row?.user_id && row?.account?.access_token
   );
+
   if (usableRows.length === 1) {
     const only = usableRows[0];
     console.warn("[LIVE_DM_ACCOUNT_SINGLE_FALLBACK]", {
@@ -156,7 +151,7 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   console.warn("[LIVE_DM_ACCOUNT_NOT_FOUND]", {
     candidates,
-    connectedAccounts: (rows || []).map((row: any) => ({
+    connectedAccounts: rows.map((row: any) => ({
       user_id: row?.user_id || null,
       ig_user_id: row?.account?.ig_user_id || null,
       username: row?.account?.username || null,
@@ -165,8 +160,12 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   return null;
 }
-
 async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
+  const cached = automationCache.get(workspaceId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.automation;
+  }
+
   const { data, error } = await admin
     .from("autoreply_documents")
     .select("id,data,updated_at")
@@ -189,88 +188,72 @@ async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
     (a: any) => a?.trigger_type === "dm_ai_conversation" && a?.status === "active"
   );
 
-  if (!active.length) return null;
-
-  // Self-heal: only the newest DM AI Conversation is allowed to stay active.
   if (active.length > 1) {
-    for (const stale of active.slice(1)) {
-      const paused = {
-        ...stale,
-        status: "paused",
-        updated_at: new Date().toISOString(),
-      };
-      delete paused._updated_at;
+    await Promise.all(
+      active.slice(1).map(async (stale: any) => {
+        const paused = {
+          ...stale,
+          status: "paused",
+          updated_at: new Date().toISOString(),
+        };
+        delete paused._updated_at;
 
-      await admin
-        .from("autoreply_documents")
-        .update({ data: paused })
-        .eq("user_id", workspaceId)
-        .eq("collection", "automations")
-        .eq("id", stale.id);
-    }
+        const { error: pauseError } = await admin
+          .from("autoreply_documents")
+          .update({ data: paused })
+          .eq("user_id", workspaceId)
+          .eq("collection", "automations")
+          .eq("id", stale.id);
+
+        if (pauseError) {
+          console.error("[AUTOMATION_AUTO_PAUSE_FAILED]", stale.id, pauseError);
+        }
+      })
+    );
   }
 
-  return active[0];
-}
+  const automation = active[0] || null;
+  automationCache.set(workspaceId, {
+    automation,
+    expiresAt: Date.now() + 5_000,
+  });
 
-async function isKnownOutboundMessage(
+  return automation;
+}
+async function classifyMessageId(
   admin: any,
   workspaceId: string,
   messageId: string
-) {
-  if (!messageId) return false;
+): Promise<"new" | "outbound_echo" | "duplicate"> {
+  if (!messageId) return "new";
 
-  // First check Inbox by exact Meta message id. Outbound replies are saved using
-  // the Send API message_id, and Meta can later echo that same message back
-  // without setting message.is_echo=true.
-  const { data: inboxRow } = await admin
-    .from("autoreply_documents")
-    .select("data")
-    .eq("user_id", workspaceId)
-    .eq("collection", "inbox_messages")
-    .eq("id", messageId)
-    .maybeSingle();
+  const [inboxResult, eventResult] = await Promise.all([
+    admin
+      .from("autoreply_documents")
+      .select("data")
+      .eq("user_id", workspaceId)
+      .eq("collection", "inbox_messages")
+      .eq("id", messageId)
+      .maybeSingle(),
+    admin
+      .from("autoreply_documents")
+      .select("data")
+      .eq("user_id", workspaceId)
+      .eq("collection", "webhook_events")
+      .eq("id", messageId)
+      .maybeSingle(),
+  ]);
 
-  if (inboxRow?.data?.direction === "out") {
-    return true;
+  if (inboxResult?.data?.data?.direction === "out") {
+    return "outbound_echo";
   }
 
-  // Compatibility check: successful inbound event logs also store the outbound
-  // Instagram message id in data.instagram_message_id.
-  const { data: sentEvents, error } = await admin
-    .from("autoreply_documents")
-    .select("id,data")
-    .eq("user_id", workspaceId)
-    .eq("collection", "webhook_events")
-    .contains("data", { instagram_message_id: messageId })
-    .limit(1);
-
-  if (error) {
-    console.warn("[LIVE_DM_OUTBOUND_ECHO_LOOKUP_WARN]", error);
-    return false;
+  if (eventResult?.data?.data?.status === "sent") {
+    return "duplicate";
   }
 
-  return Boolean(sentEvents?.length);
+  return "new";
 }
-
-async function alreadyProcessed(
-  admin: any,
-  workspaceId: string,
-  messageId: string
-) {
-  if (!messageId) return false;
-
-  const { data } = await admin
-    .from("autoreply_documents")
-    .select("id,data")
-    .eq("user_id", workspaceId)
-    .eq("collection", "webhook_events")
-    .eq("id", messageId)
-    .maybeSingle();
-
-  return Boolean(data?.data?.status === "sent");
-}
-
 async function loadHistory(admin: any, workspaceId: string, senderId: string) {
   const { data } = await admin
     .from("autoreply_documents")
@@ -330,7 +313,7 @@ async function getSenderProfile(
   accessToken: string
 ): Promise<{ username: string; avatar_url: string }> {
   const params = new URLSearchParams({
-    fields: "id,username,name,profile_picture_url",
+    fields: "id,name,username,profile_pic,follower_count",
     access_token: accessToken,
   });
 
@@ -354,7 +337,7 @@ async function getSenderProfile(
 
     return {
       username: String(payload?.username || payload?.name || senderId),
-      avatar_url: String(payload?.profile_picture_url || ""),
+      avatar_url: String(payload?.profile_pic || ""),
     };
   } catch (err) {
     console.warn("[LIVE_DM_SENDER_PROFILE_ERROR]", err);
@@ -598,8 +581,8 @@ async function generateReply(
             })),
           { role: "user", content: incomingText },
         ],
-        temperature: 0.45,
-        max_tokens: 180,
+        temperature: 0.3,
+        max_tokens: 90,
       }),
       signal: controller.signal,
     });
@@ -680,6 +663,8 @@ Deno.serve(async (req: Request) => {
   const results: any[] = [];
 
   for (const item of messages) {
+    const totalStart = performance.now();
+
     const accountRow = await findWorkspaceByInstagramIds(admin, [
       item.entryId,
       item.recipientId,
@@ -690,6 +675,7 @@ Deno.serve(async (req: Request) => {
         messageId: item.messageId,
         ok: false,
         reason: "connected_account_not_found",
+        totalMs: Math.round(performance.now() - totalStart),
       });
       continue;
     }
@@ -704,11 +690,13 @@ Deno.serve(async (req: Request) => {
     );
     const accessToken = cleanToken(account?.access_token);
 
-    // Instagram may echo our own Send API reply back as a new webhook without
-    // message.is_echo=true. Detect it by the exact outbound Meta message id
-    // BEFORE writing Inbox/Contacts, otherwise our own reply becomes a fake
-    // customer message and can trigger an AI reply loop.
-    if (await isKnownOutboundMessage(admin, workspaceId, item.messageId)) {
+    const messageState = await classifyMessageId(
+      admin,
+      workspaceId,
+      item.messageId
+    );
+
+    if (messageState === "outbound_echo") {
       console.log("[LIVE_DM_OUTBOUND_ECHO_IGNORED]", {
         messageId: item.messageId,
         senderId: item.senderId,
@@ -718,28 +706,56 @@ Deno.serve(async (req: Request) => {
         ok: true,
         ignored: true,
         reason: "outbound_echo",
+        totalMs: Math.round(performance.now() - totalStart),
       });
       continue;
     }
 
-    const senderProfile = await getSenderProfile(item.senderId, accessToken);
-
-    // Store every real customer DM/contact before automation matching so Inbox
-    // and Contacts stay accurate even if AI generation or reply sending fails.
-    await persistInboundMessage(
-      admin,
-      workspaceId,
-      item,
-      senderProfile
-    );
-
-    if (await alreadyProcessed(admin, workspaceId, item.messageId)) {
-      results.push({ messageId: item.messageId, ok: true, duplicate: true });
+    if (messageState === "duplicate") {
+      results.push({
+        messageId: item.messageId,
+        ok: true,
+        duplicate: true,
+        totalMs: Math.round(performance.now() - totalStart),
+      });
       continue;
     }
 
-    const automation = await loadActiveDmAiAutomation(admin, workspaceId);
+    // Profile lookup + Inbox/Contacts persistence is intentionally outside the
+    // reply critical path. It runs in parallel while we load automation/history
+    // and ask GPT-4o mini for the response.
+    const profilePersistPromise = getSenderProfile(item.senderId, accessToken)
+      .then(async (profile) => {
+        await persistInboundMessage(
+          admin,
+          workspaceId,
+          item,
+          profile
+        );
+        return profile;
+      })
+      .catch(async (err) => {
+        console.warn("[LIVE_DM_PROFILE_PERSIST_WARN]", err);
+        const fallbackProfile = {
+          username: item.senderId,
+          avatar_url: "",
+        };
+        await persistInboundMessage(
+          admin,
+          workspaceId,
+          item,
+          fallbackProfile
+        );
+        return fallbackProfile;
+      });
+
+    const [automation, history] = await Promise.all([
+      loadActiveDmAiAutomation(admin, workspaceId),
+      loadHistory(admin, workspaceId, item.senderId),
+    ]);
+
     if (!automation) {
+      const senderProfile = await profilePersistPromise;
       await persistWebhookLog(
         admin,
         workspaceId,
@@ -755,6 +771,7 @@ Deno.serve(async (req: Request) => {
         ok: true,
         ignored: true,
         reason: "no_active_dm_ai_automation",
+        totalMs: Math.round(performance.now() - totalStart),
       });
       continue;
     }
@@ -771,15 +788,11 @@ Deno.serve(async (req: Request) => {
         "You are a helpful Instagram DM assistant. Reply naturally and briefly.",
       12000
     );
-    const model =
-      String(aiAction?.ai_model || "gpt-4o-mini") === "gpt-4o-mini"
-        ? "gpt-4o-mini"
-        : "gpt-4o-mini";
-
-    const history = await loadHistory(admin, workspaceId, item.senderId);
+    const model = "gpt-4o-mini";
 
     let responseText = "";
     let aiError = "";
+    const aiStart = performance.now();
 
     try {
       responseText = await generateReply(
@@ -800,7 +813,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const aiMs = Math.round(performance.now() - aiStart);
+    const sendStart = performance.now();
+
     try {
+      // This is the user-visible critical point. Everything expensive that does
+      // not affect the reply itself is deferred until after the Send API call.
       const sendResult = await sendInstagramText(
         igUserId,
         item.senderId,
@@ -808,46 +826,52 @@ Deno.serve(async (req: Request) => {
         responseText
       );
 
+      const sendMs = Math.round(performance.now() - sendStart);
+      const senderProfile = await profilePersistPromise;
+
       const nextHistory = [
         ...history,
         { role: "user", content: item.text, at: item.timestamp },
         { role: "assistant", content: responseText, at: Date.now() },
       ];
 
-      await saveHistory(admin, workspaceId, item.senderId, nextHistory);
-      await persistOutboundMessage(
-        admin,
-        workspaceId,
-        item,
-        senderProfile,
-        automation,
-        responseText,
-        sendResult?.message_id
-      );
-      await persistWebhookLog(
-        admin,
-        workspaceId,
-        item,
-        senderProfile,
-        "success",
-        automation,
-        responseText
-      );
-      await updateAutomationStats(admin, workspaceId, automation);
-
-      await logEvent(admin, workspaceId, item.messageId || crypto.randomUUID(), {
-        status: "sent",
-        trigger_type: "dm_ai_conversation",
-        automation_id: automation.id,
-        automation_name: automation.name,
-        sender_id: item.senderId,
-        recipient_id: igUserId,
-        incoming_text: item.text,
-        reply_text: responseText,
-        ai_model: model,
-        ai_error: aiError || null,
-        instagram_message_id: sendResult?.message_id || null,
-      });
+      await Promise.all([
+        saveHistory(admin, workspaceId, item.senderId, nextHistory),
+        persistOutboundMessage(
+          admin,
+          workspaceId,
+          item,
+          senderProfile,
+          automation,
+          responseText,
+          sendResult?.message_id
+        ),
+        persistWebhookLog(
+          admin,
+          workspaceId,
+          item,
+          senderProfile,
+          "success",
+          automation,
+          responseText
+        ),
+        updateAutomationStats(admin, workspaceId, automation),
+        logEvent(admin, workspaceId, item.messageId || crypto.randomUUID(), {
+          status: "sent",
+          trigger_type: "dm_ai_conversation",
+          automation_id: automation.id,
+          automation_name: automation.name,
+          sender_id: item.senderId,
+          recipient_id: igUserId,
+          incoming_text: item.text,
+          reply_text: responseText,
+          ai_model: model,
+          ai_error: aiError || null,
+          instagram_message_id: sendResult?.message_id || null,
+          ai_ms: aiMs,
+          send_ms: sendMs,
+        }),
+      ]);
 
       results.push({
         messageId: item.messageId,
@@ -855,39 +879,51 @@ Deno.serve(async (req: Request) => {
         automationId: automation.id,
         sent: true,
         fallbackUsed: Boolean(aiError),
+        aiMs,
+        sendMs,
+        totalMs: Math.round(performance.now() - totalStart),
       });
     } catch (err) {
+      const sendMs = Math.round(performance.now() - sendStart);
       const sendError = err instanceof Error ? err.message : String(err);
       console.error("[LIVE_DM_SEND_FAILED]", sendError);
 
-      await persistWebhookLog(
-        admin,
-        workspaceId,
-        item,
-        senderProfile,
-        "error",
-        automation,
-        responseText,
-        sendError
-      );
+      const senderProfile = await profilePersistPromise;
 
-      await logEvent(admin, workspaceId, item.messageId || crypto.randomUUID(), {
-        status: "failed",
-        trigger_type: "dm_ai_conversation",
-        automation_id: automation.id,
-        automation_name: automation.name,
-        sender_id: item.senderId,
-        recipient_id: igUserId,
-        incoming_text: item.text,
-        ai_error: aiError || null,
-        send_error: sendError,
-      });
+      await Promise.all([
+        persistWebhookLog(
+          admin,
+          workspaceId,
+          item,
+          senderProfile,
+          "error",
+          automation,
+          responseText,
+          sendError
+        ),
+        logEvent(admin, workspaceId, item.messageId || crypto.randomUUID(), {
+          status: "failed",
+          trigger_type: "dm_ai_conversation",
+          automation_id: automation.id,
+          automation_name: automation.name,
+          sender_id: item.senderId,
+          recipient_id: igUserId,
+          incoming_text: item.text,
+          ai_error: aiError || null,
+          send_error: sendError,
+          ai_ms: aiMs,
+          send_ms: sendMs,
+        }),
+      ]);
 
       results.push({
         messageId: item.messageId,
         ok: false,
         reason: "instagram_send_failed",
         error: sendError,
+        aiMs,
+        sendMs,
+        totalMs: Math.round(performance.now() - totalStart),
       });
     }
   }
