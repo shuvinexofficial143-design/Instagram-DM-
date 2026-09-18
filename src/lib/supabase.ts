@@ -5,14 +5,14 @@ const SUPABASE_URL = viteEnv.VITE_SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.
 const SUPABASE_PUBLISHABLE_KEY =
   viteEnv.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Eae4_ClutOufXa5U2vo6MA_nhnOL8D7';
 
-const PRODUCTION_SITE_URL = 'https://instagram-dm-sable.vercel.app';
+const PRODUCTION_SITE_URL = 'https://autoreplys.vercel.app';
 
 function getAuthRedirectUrl(): string {
   if (typeof window !== 'undefined') {
     const { hostname, origin } = window.location;
 
     // Production must never inherit a stale localhost URL from deployment env.
-    if (hostname === 'instagram-dm-sable.vercel.app') return PRODUCTION_SITE_URL;
+    if (hostname === 'autoreplys.vercel.app') return PRODUCTION_SITE_URL;
 
     // Keep Vercel preview deployments on their own HTTPS origin when explicitly used.
     if (hostname.endsWith('.vercel.app')) return origin.replace(/\/+$/, '');
