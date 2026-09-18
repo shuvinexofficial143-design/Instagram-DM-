@@ -41,6 +41,45 @@ function cleanToken(value: unknown): string {
   return String(value || "").trim();
 }
 
+async function verifyMetaHmac(
+  rawBody: string,
+  signatureHeader: string,
+  appSecret: string
+) {
+  if (!rawBody || !signatureHeader || !appSecret) return false;
+  if (!signatureHeader.startsWith("sha256=")) return false;
+
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(appSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(rawBody)
+  );
+
+  const expected =
+    "sha256=" +
+    Array.from(new Uint8Array(signature))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+
+  if (expected.length !== signatureHeader.length) return false;
+
+  let mismatch = 0;
+  for (let i = 0; i < expected.length; i += 1) {
+    mismatch |= expected.charCodeAt(i) ^ signatureHeader.charCodeAt(i);
+  }
+
+  return mismatch === 0;
+}
+
 function asText(value: unknown, max = 12000): string {
   return String(value || "").trim().slice(0, max);
 }
@@ -664,23 +703,82 @@ async function sendInstagramText(
 }
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "GET") {
+    const url = new URL(req.url);
+    const mode = String(url.searchParams.get("hub.mode") || "");
+    const token = String(url.searchParams.get("hub.verify_token") || "");
+    const challenge = String(url.searchParams.get("hub.challenge") || "");
+    const verifyToken = cleanToken(Deno.env.get("WEBHOOK_VERIFY_TOKEN"));
+
+    if (mode === "subscribe" && verifyToken && token === verifyToken) {
+      return new Response(challenge, {
+        status: 200,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
+    return reply(200, {
+      ok: true,
+      directMetaWebhookReady: Boolean(
+        verifyToken &&
+          cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"))
+      ),
+      openaiConfigured: Boolean(cleanToken(Deno.env.get("OPENAI_API_KEY"))),
+    });
+  }
+
   if (req.method !== "POST") {
     return reply(405, { ok: false, error: "Method Not Allowed" });
   }
 
+  const rawBody = await req.text();
+
   let payload: any;
   try {
-    payload = await req.json();
+    payload = JSON.parse(rawBody || "{}");
   } catch {
     return reply(400, { ok: false, error: "Invalid JSON" });
   }
 
-  const openaiKey = cleanToken(payload?.openaiKey);
-  const event = payload?.event;
+  const metaSignature = cleanToken(
+    req.headers.get("x-hub-signature-256")
+  );
 
-  // The Vercel webhook sends the OpenAI key server-to-server when configured.
-  // If it is missing or rejected, we still send the automation fallback message
-  // instead of leaving the Instagram customer without any response.
+  let event: any;
+  let openaiKey = "";
+
+  if (metaSignature) {
+    const appSecret = cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"));
+
+    if (!appSecret) {
+      return reply(503, {
+        ok: false,
+        error: "INSTAGRAM_APP_SECRET is not configured for direct webhook mode",
+      });
+    }
+
+    const signatureOk = await verifyMetaHmac(
+      rawBody,
+      metaSignature,
+      appSecret
+    );
+
+    if (!signatureOk) {
+      return reply(403, { ok: false, error: "Invalid Meta signature" });
+    }
+
+    // Direct architecture: Meta -> Supabase Edge -> Instagram/OpenAI.
+    event = payload;
+    openaiKey = cleanToken(Deno.env.get("OPENAI_API_KEY"));
+  } else {
+    // Backward-compatible architecture used by the current Vercel webhook.
+    event = payload?.event;
+    openaiKey = cleanToken(
+      payload?.openaiKey || Deno.env.get("OPENAI_API_KEY")
+    );
+  }
+
+  // If OpenAI is unavailable, the configured fallback message is still sent.
   const messages = extractDirectMessages(event);
   if (!messages.length) {
     return reply(200, { ok: true, processed: 0, reason: "no_text_dm_events" });
