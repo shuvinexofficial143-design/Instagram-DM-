@@ -149,6 +149,32 @@ const filterOutMockMessages = (items: InboxMessage[]): InboxMessage[] => {
   return (items || []).filter((item) => !isTestOrMockMessage(item));
 };
 
+const sanitizeAutomationRecord = (auto: any): Automation => ({
+  ...auto,
+  id: auto?.id || `auto_${Date.now()}`,
+  name: auto?.name || 'Untitled Automation',
+  trigger_type: auto?.trigger_type || 'dm',
+  trigger_config: {
+    ...(auto?.trigger_config || {}),
+    all_or_keywords: auto?.trigger_config?.all_or_keywords || 'keywords',
+    keywords: Array.isArray(auto?.trigger_config?.keywords) ? auto.trigger_config.keywords : [],
+    smart_matching: auto?.trigger_config?.smart_matching ?? true,
+    story_scope: auto?.trigger_config?.story_scope || 'any_story',
+    post_scope: auto?.trigger_config?.post_scope || 'any_post',
+    specific_post_url: auto?.trigger_config?.specific_post_url || '',
+  },
+  actions: Array.isArray(auto?.actions) ? auto.actions : [],
+  status: auto?.status || 'active',
+  stats: {
+    runs: Number(auto?.stats?.runs) || 0,
+    dms_sent: Number(auto?.stats?.dms_sent) || 0,
+    unique_users: Number(auto?.stats?.unique_users) || 0,
+    open_rate: typeof auto?.stats?.open_rate === 'number' ? auto.stats.open_rate : 98,
+  },
+  created_at: auto?.created_at || new Date().toISOString(),
+  updated_at: auto?.updated_at || new Date().toISOString(),
+});
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
@@ -393,13 +419,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const uid = firebaseUser?.uid;
     if (!uid) {
-      // User is not logged in: clear multi-tenant data collections
-      setAutomations([]);
+      // No Google/app login is required. Guest workspaces use the same secure
+      // HttpOnly workspace cookie as the connected Instagram account.
+      let cancelled = false;
+
       setContacts([]);
       setInboxMessages([]);
       setLogs([]);
       setGeminiKeys([]);
-      return;
+
+      fetch('/api/automations', { credentials: 'same-origin' })
+        .then(async (res) => {
+          const payload = await res.json().catch(() => null);
+          if (!res.ok || !payload?.ok) {
+            throw new Error(payload?.error || 'Could not load automations');
+          }
+          if (!cancelled) {
+            setAutomations(
+              (Array.isArray(payload?.automations) ? payload.automations : []).map(
+                sanitizeAutomationRecord
+              )
+            );
+          }
+        })
+        .catch((err) => {
+          console.warn('[GUEST_AUTOMATIONS_LOAD_WARN]', err?.message || err);
+          if (!cancelled) setAutomations([]);
+        });
+
+      return () => {
+        cancelled = true;
+      };
     }
 
     // Immediately reset collection state for this session
@@ -411,30 +461,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubscribeAutomations = subscribeToUserCollection<Automation>(uid, 'automations', (data) => {
       if (data) {
-        const sanitized: Automation[] = data.map((auto) => ({
-          ...auto,
-          id: auto.id || `auto_${Date.now()}`,
-          name: auto.name || 'Untitled Automation',
-          trigger_type: auto.trigger_type || 'dm',
-          trigger_config: {
-            all_or_keywords: auto.trigger_config?.all_or_keywords || 'keywords',
-            keywords: Array.isArray(auto.trigger_config?.keywords) ? auto.trigger_config.keywords : [],
-            smart_matching: auto.trigger_config?.smart_matching ?? true,
-            story_scope: auto.trigger_config?.story_scope || 'any_story',
-            post_scope: auto.trigger_config?.post_scope || 'any_post',
-            specific_post_url: auto.trigger_config?.specific_post_url || '',
-          },
-          actions: Array.isArray(auto.actions) ? auto.actions : [],
-          status: auto.status || 'active',
-          stats: {
-            runs: Number(auto.stats?.runs) || 0,
-            dms_sent: Number(auto.stats?.dms_sent) || 0,
-            unique_users: Number(auto.stats?.unique_users) || 0,
-            open_rate: typeof auto.stats?.open_rate === 'number' ? auto.stats.open_rate : 98,
-          },
-          created_at: auto.created_at || new Date().toISOString(),
-          updated_at: auto.updated_at || new Date().toISOString(),
-        }));
+        const sanitized: Automation[] = data.map(sanitizeAutomationRecord);
         setAutomations(sanitized);
       } else {
         setAutomations([]);
@@ -628,10 +655,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveTab('home');
   };
 
-  // Automation CRUD (Scoped strictly by user UID)
-  const createAutomation = (newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'>) => {
+  // Automation CRUD. Authenticated users use Supabase RLS directly;
+  // no-login users persist under their secure guest workspace cookie.
+  const persistGuestAutomation = (automation: Automation) => {
+    fetch('/api/automations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ automation }),
+    }).catch((err) =>
+      console.warn('[GUEST_AUTOMATION_SAVE_WARN]', err?.message || err)
+    );
+  };
+
+  const createAutomation = (
+    newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'>
+  ) => {
     const uid = firebaseUser?.uid;
-    if (!uid) return;
     const created: Automation = {
       ...newAuto,
       id: `auto_${Date.now()}`,
@@ -644,43 +684,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         open_rate: 100,
       },
     };
+
     setAutomations((prev) => [created, ...prev]);
-    saveUserDocument(uid, 'automations', created);
+
+    if (uid) {
+      saveUserDocument(uid, 'automations', created).catch((err) =>
+        console.warn('[AUTOMATION_CREATE_SAVE_WARN]', err?.message || err)
+      );
+    } else {
+      persistGuestAutomation(created);
+    }
   };
 
   const updateAutomation = (id: string, updates: Partial<Automation>) => {
     const uid = firebaseUser?.uid;
-    if (!uid) return;
+
     setAutomations((prev) =>
       prev.map((auto) => {
-        if (auto.id === id) {
-          const updated = { ...auto, ...updates, updated_at: new Date().toISOString() };
-          saveUserDocument(uid, 'automations', updated);
-          return updated;
+        if (auto.id !== id) return auto;
+
+        const updated: Automation = {
+          ...auto,
+          ...updates,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (uid) {
+          saveUserDocument(uid, 'automations', updated).catch((err) =>
+            console.warn('[AUTOMATION_UPDATE_SAVE_WARN]', err?.message || err)
+          );
+        } else {
+          persistGuestAutomation(updated);
         }
-        return auto;
+
+        return updated;
       })
     );
   };
 
   const deleteAutomation = (id: string) => {
     const uid = firebaseUser?.uid;
-    if (!uid) return;
     setAutomations((prev) => prev.filter((auto) => auto.id !== id));
-    removeUserDocument(uid, 'automations', id);
+
+    if (uid) {
+      removeUserDocument(uid, 'automations', id).catch((err) =>
+        console.warn('[AUTOMATION_DELETE_SAVE_WARN]', err?.message || err)
+      );
+    } else {
+      fetch(`/api/automations?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      }).catch((err) =>
+        console.warn('[GUEST_AUTOMATION_DELETE_WARN]', err?.message || err)
+      );
+    }
   };
 
   const toggleAutomationStatus = (id: string) => {
     const uid = firebaseUser?.uid;
-    if (!uid) return;
+
     setAutomations((prev) =>
       prev.map((auto) => {
-        if (auto.id === id) {
-          const updated = { ...auto, status: auto.status === 'active' ? ('paused' as const) : ('active' as const) };
-          saveUserDocument(uid, 'automations', updated);
-          return updated;
+        if (auto.id !== id) return auto;
+
+        const updated: Automation = {
+          ...auto,
+          status: auto.status === 'active' ? 'paused' : 'active',
+          updated_at: new Date().toISOString(),
+        };
+
+        if (uid) {
+          saveUserDocument(uid, 'automations', updated).catch((err) =>
+            console.warn('[AUTOMATION_TOGGLE_SAVE_WARN]', err?.message || err)
+          );
+        } else {
+          persistGuestAutomation(updated);
         }
-        return auto;
+
+        return updated;
       })
     );
   };
