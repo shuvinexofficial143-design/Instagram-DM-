@@ -17,7 +17,6 @@ export const ConnectChannelModal: React.FC = () => {
     setIsConnectModalOpen,
     instagramAccount,
     disconnectChannel,
-    firebaseUser,
   } = useApp();
 
   const [isLaunching, setIsLaunching] = useState(false);
@@ -29,9 +28,7 @@ export const ConnectChannelModal: React.FC = () => {
     setFeedback(null);
     setIsLaunching(true);
 
-    const popupUrl = firebaseUser?.uid
-      ? `/api/auth/instagram?userId=${encodeURIComponent(firebaseUser.uid)}`
-      : '/api/auth/instagram';
+    const popupUrl = '/api/auth/instagram';
     const width = 600;
     const height = 720;
     const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
