@@ -30,14 +30,14 @@ async function getRedisConfig(admin: any): Promise<RedisConfig | null> {
 
   if (error) {
     console.warn("[REDIS_CONFIG_LOAD_WARN]", error.message || error);
-    redisConfigCache = { expiresAt: Date.now() + 5_000, value: null };
+    redisConfigCache = { expiresAt: Date.now() + 60_000, value: null };
     return null;
   }
 
   const restUrl = String(data?.config?.rest_url || "").replace(/\/$/, "");
   const restToken = String(data?.config?.rest_token || "").trim();
   const value = restUrl && restToken ? { restUrl, restToken } : null;
-  redisConfigCache = { expiresAt: Date.now() + 60_000, value };
+  redisConfigCache = { expiresAt: Date.now() + 3_600_000, value };
   return value;
 }
 
@@ -308,67 +308,59 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   if (!candidates.length) return null;
 
-  const redisKeys = candidates.map(
-    (candidate) => `ar:v1:account:ig:${candidate}`
-  );
-  const redisBatch = await redisCommand(admin, ["MGET", ...redisKeys]);
-  const redisHits = Array.isArray(redisBatch.result)
-    ? redisBatch.result.map((raw: any) => {
-        if (typeof raw !== "string") return null;
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return null;
-        }
-      })
-    : [];
-
-  const redisMatched = redisHits.find(
-    (row: any) => row?.user_id && row?.account?.access_token
-  );
-  if (redisMatched) {
-    return {
-      ...redisMatched,
-      matchedInstagramId: String(
-        redisMatched?.account?.ig_user_id || candidates[0] || ""
-      ),
-      _cache: "redis",
-    };
-  }
-
-  let rows = accountRowsCache.rows;
-  if (Date.now() >= accountRowsCache.expiresAt || !rows.length) {
-    const { data, error } = await admin
-      .from("autoreply_instagram_tokens")
-      .select("user_id,account")
-      .limit(100);
-
-    if (error) {
-      console.error("[LIVE_DM_ACCOUNT_SCAN_FAILED]", error);
-      return null;
-    }
-
-    rows = data || [];
-    accountRowsCache = {
-      rows,
-      expiresAt: Date.now() + 60_000,
-    };
-
-    runInBackground(
-      Promise.all(
-        rows
-          .filter((row: any) => row?.user_id && row?.account?.access_token)
-          .map((row: any) =>
-            redisSetJson(
-              admin,
-              `ar:v1:account:ig:${String(row?.account?.ig_user_id || "")}`,
-              row,
-              60
-            )
-          )
-      )
+  // Hottest path first: a warm Edge isolate can resolve the account without
+  // any Redis/Postgres round-trip.
+  if (
+    accountRowsCache.rows.length &&
+    accountRowsCache.expiresAt > Date.now()
+  ) {
+    const warmMatch = accountRowsCache.rows.find((row: any) =>
+      candidates.includes(String(row?.account?.ig_user_id || ""))
     );
+    if (warmMatch?.user_id && warmMatch?.account?.access_token) {
+      return {
+        ...warmMatch,
+        matchedInstagramId: String(warmMatch?.account?.ig_user_id || ""),
+        _cache: "memory",
+      };
+    }
   }
+
+  // On a cold isolate, the authoritative account table lives in the same
+  // Supabase region. One small DB read is cheaper than first loading Redis
+  // credentials and then making a second network request.
+  const { data, error } = await admin
+    .from("autoreply_instagram_tokens")
+    .select("user_id,account")
+    .limit(100);
+
+  if (error) {
+    console.error("[LIVE_DM_ACCOUNT_SCAN_FAILED]", error);
+    return null;
+  }
+
+  const rows = data || [];
+  accountRowsCache = {
+    rows,
+    expiresAt: Date.now() + 3_600_000,
+  };
+
+  // Populate Redis after the critical lookup; future workers can use it for
+  // recovery/other paths without making this reply wait.
+  runInBackground(
+    Promise.all(
+      rows
+        .filter((row: any) => row?.user_id && row?.account?.access_token)
+        .map((row: any) =>
+          redisSetJson(
+            admin,
+            `ar:v1:account:ig:${String(row?.account?.ig_user_id || "")}`,
+            row,
+            3600
+          )
+        )
+    )
+  );
 
   const matched = rows.find((row: any) =>
     candidates.includes(String(row?.account?.ig_user_id || ""))
@@ -378,7 +370,7 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
     return {
       ...matched,
       matchedInstagramId: String(matched?.account?.ig_user_id || ""),
-      _cache: "memory_or_db",
+      _cache: "db",
     };
   }
 
@@ -388,13 +380,6 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   if (usableRows.length === 1) {
     const only = usableRows[0];
-    runInBackground(
-      Promise.all(
-        candidates.map((candidate) =>
-          redisSetJson(admin, `ar:v1:account:ig:${candidate}`, only, 30)
-        )
-      )
-    );
     console.warn("[LIVE_DM_ACCOUNT_SINGLE_FALLBACK]", {
       candidates,
       using: only?.account?.ig_user_id || null,
@@ -428,7 +413,7 @@ async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
     const automation = redisCached.value?._cache_none ? null : redisCached.value;
     automationCache.set(workspaceId, {
       automation,
-      expiresAt: Date.now() + 5_000,
+      expiresAt: Date.now() + 60_000,
     });
     return automation;
   }
@@ -482,7 +467,7 @@ async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
   const automation = active[0] || null;
   automationCache.set(workspaceId, {
     automation,
-    expiresAt: Date.now() + 5_000,
+    expiresAt: Date.now() + 60_000,
   });
 
   runInBackground(
@@ -490,7 +475,7 @@ async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
       admin,
       `ar:v1:automation:${workspaceId}`,
       automation || { _cache_none: true },
-      5
+      60
     )
   );
 
@@ -1152,12 +1137,18 @@ Deno.serve(async (req: Request) => {
     const accessToken = cleanToken(account?.access_token);
 
     const dedupeStart = performance.now();
-    const messageState = await classifyMessageId(
-      admin,
-      workspaceId,
-      item
+    const automationStart = performance.now();
+
+    const [messageState, automation] = await Promise.all([
+      classifyMessageId(admin, workspaceId, item),
+      loadActiveDmAiAutomation(admin, workspaceId),
+    ]);
+
+    const parallelLookupMs = Math.round(performance.now() - dedupeStart);
+    const dedupeMs = parallelLookupMs;
+    const automationLookupMs = Math.round(
+      performance.now() - automationStart
     );
-    const dedupeMs = Math.round(performance.now() - dedupeStart);
 
     if (messageState === "outbound_echo") {
       console.log("[LIVE_DM_OUTBOUND_ECHO_IGNORED]", {
@@ -1210,11 +1201,6 @@ Deno.serve(async (req: Request) => {
       }
     };
 
-    const automationStart = performance.now();
-    const automation = await loadActiveDmAiAutomation(admin, workspaceId);
-    const automationLookupMs = Math.round(
-      performance.now() - automationStart
-    );
 
 
     if (!automation) {
@@ -1292,14 +1278,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const pendingMarkStart = performance.now();
-    await markPendingOutbound(
+    const pendingMarkerPromise = markPendingOutbound(
       admin,
       workspaceId,
       responseText,
       item.senderId
-    );
-    const pendingMarkMs = Math.round(
-      performance.now() - pendingMarkStart
     );
 
     const sendStartEpoch = Date.now();
@@ -1317,17 +1300,29 @@ Deno.serve(async (req: Request) => {
         : null;
     const edgePreSendMs = Math.max(0, sendStartEpoch - edgeReceivedAt);
     const sendStart = performance.now();
+    let pendingMarkMs = 0;
 
     try {
       // This is the user-visible critical point. Everything expensive that does
       // not affect the reply itself is deferred until after the Send API call.
-      const sendResult = await sendInstagramText(
+      const sendPromise = sendInstagramText(
         igUserId,
         item.senderId,
         accessToken,
         responseText
       );
 
+      // Redis echo marker and Meta Send API run concurrently. Redis normally
+      // finishes well before Meta returns, preserving echo protection without
+      // adding its round-trip to user-visible latency.
+      const [sendResult] = await Promise.all([
+        sendPromise,
+        pendingMarkerPromise,
+      ]);
+
+      pendingMarkMs = Math.round(
+        performance.now() - pendingMarkStart
+      );
       const sendMs = Math.round(performance.now() - sendStart);
 
       runInBackground(
@@ -1386,6 +1381,7 @@ Deno.serve(async (req: Request) => {
           relay_to_edge_ms: relayToEdgeMs,
           edge_pre_send_ms: edgePreSendMs,
           account_lookup_ms: accountLookupMs,
+          account_cache_source: accountRow?._cache || null,
           dedupe_ms: dedupeMs,
           automation_lookup_ms: automationLookupMs,
           pending_marker_ms: pendingMarkMs,
