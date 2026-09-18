@@ -45,6 +45,88 @@ let redisConfigCache: { expiresAt: number; value: RedisConfig | null } = {
   expiresAt: 0,
   value: null,
 };
+type RuntimeSecrets = {
+  appSecret: string;
+  verifyToken: string;
+  openaiKey: string;
+};
+let runtimeSecretsCache: { expiresAt: number; value: RuntimeSecrets | null } = {
+  expiresAt: 0,
+  value: null,
+};
+
+async function getRuntimeSecrets(admin: any): Promise<RuntimeSecrets | null> {
+  if (runtimeSecretsCache.expiresAt > Date.now()) {
+    return runtimeSecretsCache.value;
+  }
+
+  const { data, error } = await admin
+    .from("autoreply_integrations")
+    .select("config")
+    .eq("provider", "runtime_secrets")
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[RUNTIME_SECRETS_LOAD_WARN]", error.message || error);
+    runtimeSecretsCache = { expiresAt: Date.now() + 5_000, value: null };
+    return null;
+  }
+
+  const value = data?.config
+    ? {
+        appSecret: cleanToken(data.config.app_secret),
+        verifyToken: cleanToken(data.config.verify_token),
+        openaiKey: cleanToken(data.config.openai_key),
+      }
+    : null;
+
+  runtimeSecretsCache = { expiresAt: Date.now() + 3_600_000, value };
+  return value;
+}
+
+async function persistRuntimeSecrets(
+  admin: any,
+  values: Partial<RuntimeSecrets>
+) {
+  const current = (await getRuntimeSecrets(admin)) || {
+    appSecret: "",
+    verifyToken: "",
+    openaiKey: "",
+  };
+
+  const merged = {
+    appSecret: cleanToken(values.appSecret || current.appSecret),
+    verifyToken: cleanToken(values.verifyToken || current.verifyToken),
+    openaiKey: cleanToken(values.openaiKey || current.openaiKey),
+  };
+
+  if (!merged.appSecret && !merged.openaiKey && !merged.verifyToken) return;
+
+  const { error } = await admin
+    .from("autoreply_integrations")
+    .upsert(
+      {
+        provider: "runtime_secrets",
+        config: {
+          app_secret: merged.appSecret,
+          verify_token: merged.verifyToken,
+          openai_key: merged.openaiKey,
+        },
+      },
+      { onConflict: "provider" }
+    );
+
+  if (error) {
+    console.warn("[RUNTIME_SECRETS_SAVE_WARN]", error.message || error);
+    return;
+  }
+
+  runtimeSecretsCache = {
+    expiresAt: Date.now() + 3_600_000,
+    value: merged,
+  };
+}
+
 
 async function getRedisConfig(admin: any): Promise<RedisConfig | null> {
   if (redisConfigCache.expiresAt > Date.now()) return redisConfigCache.value;
@@ -1045,17 +1127,28 @@ Deno.serve(async (req: Request) => {
       .sort();
 
     const healthAdmin = getAdminClient();
-    const redisPing = await redisCommand(healthAdmin, ["PING"]);
+    const [redisPing, storedSecrets] = await Promise.all([
+      redisCommand(healthAdmin, ["PING"]),
+      getRuntimeSecrets(healthAdmin),
+    ]);
 
     return new Response(
       JSON.stringify({
         ok: true,
         directMetaWebhookReady: Boolean(
           acceptedVerifyTokens.size &&
-            cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"))
+            (
+              cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET")) ||
+              storedSecrets?.appSecret
+            )
         ),
-        verifyTokenConfigured: Boolean(configuredVerifyToken),
-        openaiConfigured: Boolean(cleanToken(Deno.env.get("OPENAI_API_KEY"))),
+        verifyTokenConfigured: Boolean(
+          configuredVerifyToken || storedSecrets?.verifyToken || "nazha12"
+        ),
+        openaiConfigured: Boolean(
+          cleanToken(Deno.env.get("OPENAI_API_KEY")) ||
+          storedSecrets?.openaiKey
+        ),
         redisReady: redisPing.available && redisPing.result === "PONG",
         visibleCustomEnvKeys,
         deploymentId: Deno.env.get("DENO_DEPLOYMENT_ID") || null,
@@ -1091,9 +1184,15 @@ Deno.serve(async (req: Request) => {
   let event: any;
   let openaiKey = "";
   let relayReceivedAt = 0;
+  let forwardedAppSecret = "";
+  let forwardedVerifyToken = "";
 
   if (metaSignature) {
-    const appSecret = cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"));
+    const directAdmin = getAdminClient();
+    const storedSecrets = await getRuntimeSecrets(directAdmin);
+    const appSecret = cleanToken(
+      Deno.env.get("INSTAGRAM_APP_SECRET") || storedSecrets?.appSecret
+    );
 
     if (!appSecret) {
       return reply(503, {
@@ -1114,11 +1213,15 @@ Deno.serve(async (req: Request) => {
 
     // Direct architecture: Meta -> Supabase Edge -> Instagram/OpenAI.
     event = payload;
-    openaiKey = cleanToken(Deno.env.get("OPENAI_API_KEY"));
+    openaiKey = cleanToken(
+      Deno.env.get("OPENAI_API_KEY") || storedSecrets?.openaiKey
+    );
   } else {
     // Backward-compatible architecture used by the current Vercel webhook.
     event = payload?.event;
     relayReceivedAt = Number(payload?.relayReceivedAt || 0);
+    forwardedAppSecret = cleanToken(payload?.metaAppSecret);
+    forwardedVerifyToken = cleanToken(payload?.verifyToken);
     openaiKey = cleanToken(
       payload?.openaiKey || Deno.env.get("OPENAI_API_KEY")
     );
@@ -1131,6 +1234,17 @@ Deno.serve(async (req: Request) => {
   }
 
   const admin = getAdminClient();
+
+  if (forwardedAppSecret || forwardedVerifyToken || openaiKey) {
+    runInBackground(
+      persistRuntimeSecrets(admin, {
+        appSecret: forwardedAppSecret,
+        verifyToken: forwardedVerifyToken,
+        openaiKey,
+      })
+    );
+  }
+
   const results: any[] = [];
 
   for (const item of messages) {
