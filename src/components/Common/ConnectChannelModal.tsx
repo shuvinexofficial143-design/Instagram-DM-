@@ -26,18 +26,12 @@ export const ConnectChannelModal: React.FC = () => {
   if (!isConnectModalOpen) return null;
 
   const handleOAuthLaunch = () => {
-    if (!firebaseUser?.uid) {
-      setFeedback({
-        type: 'error',
-        message: 'Please sign in to AutoReply.io before connecting an Instagram account.',
-      });
-      return;
-    }
-
     setFeedback(null);
     setIsLaunching(true);
 
-    const popupUrl = '/api/auth/instagram';
+    const popupUrl = firebaseUser?.uid
+      ? `/api/auth/instagram?userId=${encodeURIComponent(firebaseUser.uid)}`
+      : '/api/auth/instagram';
     const width = 600;
     const height = 720;
     const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
