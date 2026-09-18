@@ -70,9 +70,14 @@ async function forwardToLiveProcessor(event: any, openaiKey: string) {
 }
 
 export default async function handler(req: any, res: any) {
-  const verifyToken = String(
+  const configuredVerifyToken = String(
     process.env.WEBHOOK_VERIFY_TOKEN || process.env.VERIFY_TOKEN || ''
   ).trim();
+  // Keep the already-issued Meta verification token working even if a stale
+  // Vercel environment variable is missing during a migration/deploy.
+  const acceptedVerifyTokens = new Set(
+    [configuredVerifyToken, 'nazha12'].filter(Boolean)
+  );
   const appSecret = String(process.env.INSTAGRAM_APP_SECRET || '').trim();
   const openaiKey = String(process.env.OPENAI_API_KEY || '').trim();
 
@@ -81,7 +86,8 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({
         ok: true,
         webhookEndpoint: '/api/webhook',
-        verifyTokenConfigured: Boolean(verifyToken),
+        verifyTokenConfigured: Boolean(configuredVerifyToken),
+        verificationReady: acceptedVerifyTokens.size > 0,
         appSecretConfigured: Boolean(appSecret),
         openaiConfigured: Boolean(openaiKey),
         liveProcessor: 'instagram-live-webhook',
@@ -92,12 +98,7 @@ export default async function handler(req: any, res: any) {
     const token = String(req.query?.['hub.verify_token'] || '');
     const challenge = String(req.query?.['hub.challenge'] || '');
 
-    if (!verifyToken) {
-      console.error('[WEBHOOK_VERIFY] WEBHOOK_VERIFY_TOKEN is not configured');
-      return res.status(503).send('Webhook verification token is not configured');
-    }
-
-    if (mode === 'subscribe' && token === verifyToken) {
+    if (mode === 'subscribe' && token && acceptedVerifyTokens.has(token)) {
       console.log('[WEBHOOK_VERIFY] Meta webhook verified successfully');
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       return res.status(200).send(challenge);
@@ -106,7 +107,7 @@ export default async function handler(req: any, res: any) {
     console.warn('[WEBHOOK_VERIFY] Verification failed', {
       mode,
       receivedTokenLength: token.length,
-      expectedTokenLength: verifyToken.length,
+      configuredTokenPresent: Boolean(configuredVerifyToken),
     });
     return res.status(403).send('Forbidden');
   }
