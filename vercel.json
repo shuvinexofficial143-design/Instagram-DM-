@@ -12,5 +12,8 @@
       "source": "/webhook/",
       "destination": "/api/webhook"
     }
+  ],
+  "regions": [
+    "bom1"
   ]
 }
