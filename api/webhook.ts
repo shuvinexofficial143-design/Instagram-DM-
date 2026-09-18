@@ -3,12 +3,6 @@ export default function handler(req: any, res: any) {
     process.env.WEBHOOK_VERIFY_TOKEN || process.env.VERIFY_TOKEN || ''
   ).trim();
 
-  // Temporary bootstrap token for Meta webhook verification.
-  // Keep accepting the deployment env token as the primary value.
-  const acceptedVerifyTokens = new Set(
-    [verifyToken, 'nazha12'].map((token) => token.trim()).filter(Boolean)
-  );
-
   if (req.method === 'GET') {
     // Small deployment/config health check without exposing the secret.
     if (String(req.query?.check || '') === '1') {
@@ -17,7 +11,6 @@ export default function handler(req: any, res: any) {
         webhookEndpoint: '/api/webhook',
         verifyTokenConfigured: Boolean(verifyToken),
         verifyTokenLength: verifyToken.length,
-        bootstrapTokenEnabled: true,
       });
     }
 
@@ -30,7 +23,7 @@ export default function handler(req: any, res: any) {
       return res.status(503).send('Webhook verification token is not configured');
     }
 
-    if (mode === 'subscribe' && acceptedVerifyTokens.has(token)) {
+    if (mode === 'subscribe' && token === verifyToken) {
       console.log('[WEBHOOK_VERIFY] Meta webhook verified successfully');
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       return res.status(200).send(challenge);
