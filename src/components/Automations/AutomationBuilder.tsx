@@ -45,6 +45,7 @@ export const AutomationBuilder: React.FC = () => {
     setIsBuilderOpen,
     editingAutomation,
     instagramAccount,
+    automations,
     createAutomation,
     updateAutomation,
   } = useApp();
@@ -431,11 +432,26 @@ Answer only about the business.`
   };
 
   const saveAutomationWithStatus = (statusToSave: 'active' | 'paused') => {
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
       setCurrentStep(1);
       setNameError('Automation Name is required before continuing.');
       return;
     }
+
+    const duplicateName = automations.some(
+      (automation) =>
+        automation.id !== editingAutomation?.id &&
+        automation.name.trim().toLocaleLowerCase() === trimmedName.toLocaleLowerCase()
+    );
+
+    if (duplicateName) {
+      setCurrentStep(1);
+      setNameError('This automation name is already in use. Please choose a different name.');
+      return;
+    }
+
     setNameError('');
 
     const triggerConfig: TriggerConfig = {
@@ -509,7 +525,7 @@ Answer only about the business.`
 
     if (editingAutomation) {
       updateAutomation(editingAutomation.id, {
-        name: name || 'Untitled Automation',
+        name: trimmedName,
         trigger_type: triggerType,
         trigger_config: triggerConfig,
         actions: actionsList,
@@ -517,7 +533,7 @@ Answer only about the business.`
       });
     } else {
       createAutomation({
-        name: name || (allOrKeywords === 'ai_conversation' ? 'AI Assistant DM Conversation' : 'Product Launch Lead Auto-Reply'),
+        name: trimmedName,
         trigger_type: triggerType,
         trigger_config: triggerConfig,
         actions: actionsList,
@@ -1530,10 +1546,14 @@ Please rephrase your question or our support team will assist you.`}
                       <span>Test AI</span>
                     </button>
 
+                    <div className="mr-1 hidden max-w-[330px] rounded-xl border border-indigo-100 bg-gradient-to-r from-blue-50 to-violet-50 px-3 py-2 text-[10px] font-bold leading-4 text-indigo-700 sm:block">
+                      Only one DM AI Conversation can stay live. Publishing this one automatically pauses the previous live DM AI automation.
+                    </div>
+
                     <button
                       type="button"
                       onClick={handleSaveAndActivate}
-                      className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-xs flex items-center gap-2 transition-colors cursor-pointer"
+                      className="bg-gradient-to-r from-blue-600 to-violet-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md shadow-indigo-500/15 flex items-center gap-2 transition-transform hover:-translate-y-0.5 cursor-pointer"
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       <span>Publish Automation</span>
