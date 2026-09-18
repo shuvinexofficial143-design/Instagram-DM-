@@ -545,6 +545,30 @@ async function updateAutomationStats(
   }
 }
 
+function getInstantFastReply(incomingText: string): string | null {
+  const clean = String(incomingText || "")
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[!.?]+$/g, "")
+    .replace(/\s+/g, " ");
+
+  // These messages do not need an LLM round trip. This keeps common first-contact
+  // greetings as fast as the Instagram Send API itself.
+  if (/^(hi+|hii+|hiii+|hello+|hey+|hey there|hello there|hlo+|hy+)$/.test(clean)) {
+    return "Hi! How can I help you today?";
+  }
+
+  if (/^(namaste|namaskar)$/.test(clean)) {
+    return "Namaste! Main aapki kaise help kar sakta hoon?";
+  }
+
+  if (/^(good morning|good afternoon|good evening)$/.test(clean)) {
+    return "Hello! How can I help you today?";
+  }
+
+  return null;
+}
+
 async function generateReply(
   openaiKey: string,
   model: string,
@@ -582,7 +606,7 @@ async function generateReply(
           { role: "user", content: incomingText },
         ],
         temperature: 0.3,
-        max_tokens: 90,
+        max_tokens: 60,
       }),
       signal: controller.signal,
     });
@@ -749,10 +773,7 @@ Deno.serve(async (req: Request) => {
         return fallbackProfile;
       });
 
-    const [automation, history] = await Promise.all([
-      loadActiveDmAiAutomation(admin, workspaceId),
-      loadHistory(admin, workspaceId, item.senderId),
-    ]);
+    const automation = await loadActiveDmAiAutomation(admin, workspaceId);
 
     if (!automation) {
       const senderProfile = await profilePersistPromise;
@@ -792,28 +813,46 @@ Deno.serve(async (req: Request) => {
 
     let responseText = "";
     let aiError = "";
-    const aiStart = performance.now();
+    let aiMs = 0;
+    let history: any[] = [];
+    const instantReply = getInstantFastReply(item.text);
 
-    try {
-      responseText = await generateReply(
-        openaiKey,
-        model,
-        systemPrompt,
-        history,
-        item.text
-      );
-    } catch (err) {
-      aiError = err instanceof Error ? err.message : String(err);
-      console.error("[LIVE_DM_OPENAI_FAILED]", aiError);
+    if (instantReply) {
+      responseText = instantReply;
+      console.log("[LIVE_DM_FAST_PATH]", {
+        type: "greeting",
+        messageId: item.messageId,
+      });
+    } else {
+      history = await loadHistory(admin, workspaceId, item.senderId);
+      const aiStart = performance.now();
 
-      responseText = asText(
-        fallbackAction?.message_text ||
-          "Thanks for your message! Our team will get back to you shortly.",
-        1000
-      );
+      try {
+        responseText = await generateReply(
+          openaiKey,
+          model,
+          systemPrompt,
+          history,
+          item.text
+        );
+      } catch (err) {
+        aiError = err instanceof Error ? err.message : String(err);
+        console.error("[LIVE_DM_OPENAI_FAILED]", aiError);
+
+        responseText = asText(
+          fallbackAction?.message_text ||
+            "Thanks for your message! Our team will get back to you shortly.",
+          1000
+        );
+      }
+
+      aiMs = Math.round(performance.now() - aiStart);
     }
 
-    const aiMs = Math.round(performance.now() - aiStart);
+    const metaDeliveryMs = Math.max(
+      0,
+      Date.now() - Number(item.timestamp || Date.now())
+    );
     const sendStart = performance.now();
 
     try {
@@ -870,6 +909,9 @@ Deno.serve(async (req: Request) => {
           instagram_message_id: sendResult?.message_id || null,
           ai_ms: aiMs,
           send_ms: sendMs,
+          meta_delivery_ms: metaDeliveryMs,
+          meta_delivery_ms: metaDeliveryMs,
+          fast_path: instantReply ? "greeting" : null,
         }),
       ]);
 
@@ -881,6 +923,8 @@ Deno.serve(async (req: Request) => {
         fallbackUsed: Boolean(aiError),
         aiMs,
         sendMs,
+        metaDeliveryMs,
+        fastPath: instantReply ? "greeting" : null,
         totalMs: Math.round(performance.now() - totalStart),
       });
     } catch (err) {
@@ -923,6 +967,7 @@ Deno.serve(async (req: Request) => {
         error: sendError,
         aiMs,
         sendMs,
+        metaDeliveryMs,
         totalMs: Math.round(performance.now() - totalStart),
       });
     }
