@@ -12,7 +12,7 @@ export type StoredInstagramAccount = {
   status: 'connected';
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://mgibujqljahrfwlaafjy.supabase.co';
+const SUPABASE_URL = 'https://dwgxmmftybxwpurgsxkx.supabase.co';
 const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 const PROD_ORIGIN = 'https://autoreplys.vercel.app';

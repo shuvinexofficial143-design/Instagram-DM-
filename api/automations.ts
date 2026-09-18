@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 const SUPABASE_URL = String(
-  process.env.SUPABASE_URL || 'https://mgibujqljahrfwlaafjy.supabase.co'
+  process.env.SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co'
 ).replace(/\/$/, '');
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 

@@ -13,9 +13,7 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   }
 
-  const serverUrl = String(
-    process.env.SUPABASE_URL || 'https://mgibujqljahrfwlaafjy.supabase.co'
-  ).trim();
+  const serverUrl = 'https://dwgxmmftybxwpurgsxkx.supabase.co';
 
   const viteUrl = String(process.env.VITE_SUPABASE_URL || '').trim();
 
@@ -25,6 +23,6 @@ export default async function handler(req: any, res: any) {
     serverSupabaseSource: process.env.SUPABASE_URL ? 'SUPABASE_URL env' : 'code fallback',
     viteSupabaseProjectRef: viteUrl ? projectRefFromUrl(viteUrl) : null,
     viteSupabaseSource: viteUrl ? 'VITE_SUPABASE_URL env' : 'not set at runtime',
-    expectedRepoFallbackRef: 'mgibujqljahrfwlaafjy',
+    expectedRepoFallbackRef: 'dwgxmmftybxwpurgsxkx',
   });
 }
