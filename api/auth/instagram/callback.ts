@@ -28,6 +28,7 @@ function renderError(res: any, message: string, status = 400) {
 }
 
 export default async function handler(req: any, res: any) {
+  try {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
     return res.status(405).send('Method Not Allowed');
@@ -204,4 +205,13 @@ export default async function handler(req: any, res: any) {
   </script>
 </body>
 </html>`);
+  } catch (err: any) {
+    console.error('[INSTAGRAM_CALLBACK_FATAL]', err);
+    return renderError(
+      res,
+      err?.message || String(err) || 'Instagram connection failed unexpectedly.',
+      500
+    );
+  }
+
 }
