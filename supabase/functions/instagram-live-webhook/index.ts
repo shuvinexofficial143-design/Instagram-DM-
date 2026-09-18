@@ -160,6 +160,86 @@ async function redisSetJson(admin: any, key: string, value: any, ttlSeconds: num
   ]);
 }
 
+async function loadFastDmContext(
+  admin: any,
+  businessId: string,
+  item: any
+): Promise<any | null> {
+  const igId = String(businessId || "").trim();
+  const messageId = String(item?.messageId || "").trim();
+  if (!igId || !messageId) return null;
+
+  const contextKey = `ar:v2:context:ig:${igId}`;
+  const messageKey = `ar:v2:msg:${igId}:${messageId}`;
+  const pendingKey =
+    `ar:v2:pendingout:${igId}:${textFingerprint(String(item?.text || ""))}`;
+
+  const batch = await redisPipeline(admin, [
+    ["GET", contextKey],
+    ["SET", messageKey, "in", "NX", "EX", "900"],
+    ["GET", pendingKey],
+  ]);
+
+  if (!batch.available || batch.results.length < 3) return null;
+
+  let context: any = null;
+  try {
+    context =
+      typeof batch.results[0] === "string"
+        ? JSON.parse(batch.results[0])
+        : null;
+  } catch {}
+
+  if (!context?.user_id || !context?.account?.access_token) return null;
+
+  const claimed = batch.results[1];
+  const pendingRecipient = String(batch.results[2] || "");
+  let messageState: "new" | "outbound_echo" | "duplicate" = "new";
+
+  if (
+    pendingRecipient &&
+    pendingRecipient !== String(item?.senderId || "")
+  ) {
+    messageState = "outbound_echo";
+  } else if (claimed !== "OK") {
+    messageState = "duplicate";
+  }
+
+  return { ...context, messageState };
+}
+
+async function refreshFastDmContext(
+  admin: any,
+  businessId: string,
+  userId: string,
+  account: any,
+  automation: any
+) {
+  if (!businessId || !userId || !account?.access_token) return;
+  await redisSetJson(
+    admin,
+    `ar:v2:context:ig:${businessId}`,
+    { user_id: userId, account, automation: automation || null },
+    600
+  );
+}
+
+async function markFastPendingOutbound(
+  admin: any,
+  businessId: string,
+  responseText: string,
+  recipientId: string
+) {
+  if (!businessId || !responseText || !recipientId) return;
+  await redisCommand(admin, [
+    "SET",
+    `ar:v2:pendingout:${businessId}:${textFingerprint(responseText)}`,
+    recipientId,
+    "EX",
+    "20",
+  ]);
+}
+
 async function markOutboundMessage(
   admin: any,
   workspaceId: string,
@@ -1107,13 +1187,66 @@ Deno.serve(async (req: Request) => {
 
   for (const item of messages) {
     const totalStart = performance.now();
-    const accountStart = performance.now();
+    const businessId = String(item.entryId || item.recipientId || "");
+    const fastContextStart = performance.now();
+    const fastContext = await loadFastDmContext(admin, businessId, item);
+    const fastContextMs = Math.round(performance.now() - fastContextStart);
 
-    const accountRow = await findWorkspaceByInstagramIds(admin, [
-      item.entryId,
-      item.recipientId,
-    ]);
-    const accountLookupMs = Math.round(performance.now() - accountStart);
+    let accountRow: any = null;
+    let automation: any = null;
+    let messageState: "new" | "outbound_echo" | "duplicate" = "new";
+    let accountLookupMs = fastContextMs;
+    let dedupeMs = fastContextMs;
+    let automationLookupMs = fastContextMs;
+
+    if (fastContext) {
+      accountRow = {
+        user_id: fastContext.user_id,
+        account: fastContext.account,
+        matchedInstagramId: String(fastContext?.account?.ig_user_id || businessId),
+        _cache: "redis_pipeline",
+      };
+      automation = fastContext.automation || null;
+      messageState = fastContext.messageState || "new";
+    } else {
+      const accountStart = performance.now();
+      accountRow = await findWorkspaceByInstagramIds(admin, [
+        item.entryId,
+        item.recipientId,
+      ]);
+      accountLookupMs = Math.round(performance.now() - accountStart);
+
+      if (!accountRow?.user_id || !accountRow?.account?.access_token) {
+        results.push({
+          messageId: item.messageId,
+          ok: false,
+          reason: "connected_account_not_found",
+          totalMs: Math.round(performance.now() - totalStart),
+        });
+        continue;
+      }
+
+      const fallbackWorkspaceId = String(accountRow.user_id);
+      const fallbackStart = performance.now();
+      const fallbackResults = await Promise.all([
+        classifyMessageId(admin, fallbackWorkspaceId, item),
+        loadActiveDmAiAutomation(admin, fallbackWorkspaceId),
+      ]);
+      messageState = fallbackResults[0];
+      automation = fallbackResults[1];
+      dedupeMs = Math.round(performance.now() - fallbackStart);
+      automationLookupMs = dedupeMs;
+
+      runInBackground(
+        refreshFastDmContext(
+          admin,
+          businessId,
+          fallbackWorkspaceId,
+          accountRow.account,
+          automation
+        )
+      );
+    }
 
     if (!accountRow?.user_id || !accountRow?.account?.access_token) {
       results.push({
@@ -1134,20 +1267,6 @@ Deno.serve(async (req: Request) => {
         item.recipientId
     );
     const accessToken = cleanToken(account?.access_token);
-
-    const dedupeStart = performance.now();
-    const automationStart = performance.now();
-
-    const [messageState, automation] = await Promise.all([
-      classifyMessageId(admin, workspaceId, item),
-      loadActiveDmAiAutomation(admin, workspaceId),
-    ]);
-
-    const parallelLookupMs = Math.round(performance.now() - dedupeStart);
-    const dedupeMs = parallelLookupMs;
-    const automationLookupMs = Math.round(
-      performance.now() - automationStart
-    );
 
     if (messageState === "outbound_echo") {
       console.log("[LIVE_DM_OUTBOUND_ECHO_IGNORED]", {
@@ -1277,12 +1396,20 @@ Deno.serve(async (req: Request) => {
     }
 
     const pendingMarkStart = performance.now();
-    const pendingMarkerPromise = markPendingOutbound(
-      admin,
-      workspaceId,
-      responseText,
-      item.senderId
-    );
+    const pendingMarkerPromise = Promise.all([
+      markPendingOutbound(
+        admin,
+        workspaceId,
+        responseText,
+        item.senderId
+      ),
+      markFastPendingOutbound(
+        admin,
+        igUserId,
+        responseText,
+        item.senderId
+      ),
+    ]);
 
     const sendStartEpoch = Date.now();
     const metaDeliveryMs = Math.max(
@@ -1379,6 +1506,8 @@ Deno.serve(async (req: Request) => {
           meta_to_relay_ms: metaToRelayMs,
           relay_to_edge_ms: relayToEdgeMs,
           edge_pre_send_ms: edgePreSendMs,
+          fast_context_ms: fastContextMs,
+          fast_context_hit: Boolean(fastContext),
           account_lookup_ms: accountLookupMs,
           account_cache_source: accountRow?._cache || null,
           dedupe_ms: dedupeMs,
@@ -1400,6 +1529,7 @@ Deno.serve(async (req: Request) => {
         metaToRelayMs,
         relayToEdgeMs,
         edgePreSendMs,
+        fastContextMs,
         accountLookupMs,
         dedupeMs,
         automationLookupMs,
@@ -1441,6 +1571,8 @@ Deno.serve(async (req: Request) => {
           meta_to_relay_ms: metaToRelayMs,
           relay_to_edge_ms: relayToEdgeMs,
           edge_pre_send_ms: edgePreSendMs,
+          fast_context_ms: fastContextMs,
+          fast_context_hit: Boolean(fastContext),
           account_lookup_ms: accountLookupMs,
           dedupe_ms: dedupeMs,
           automation_lookup_ms: automationLookupMs,
