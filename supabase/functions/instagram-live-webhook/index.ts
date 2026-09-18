@@ -1170,6 +1170,57 @@ Deno.serve(async (req: Request) => {
 
   const rawBody = await req.text();
 
+  // Supabase may initially run this function in its default US region even
+  // though the database and Redis are in Mumbai. Re-dispatch once to Mumbai
+  // before any DB/Redis work. This works even while the older Vercel relay is
+  // still live, so cross-region database round-trips are removed immediately.
+  const requestUrl = new URL(req.url);
+  const currentRegion = String(Deno.env.get("SB_REGION") || "");
+  const alreadyRegionForwarded =
+    requestUrl.searchParams.get("regionForward") === "1";
+
+  if (
+    currentRegion &&
+    currentRegion !== "ap-south-1" &&
+    !alreadyRegionForwarded
+  ) {
+    try {
+      const supabaseUrl = String(Deno.env.get("SUPABASE_URL") || "").replace(
+        /\/$/,
+        ""
+      );
+      const target =
+        `${supabaseUrl}/functions/v1/instagram-live-webhook?forceFunctionRegion=ap-south-1&regionForward=1`;
+      const signature = cleanToken(
+        req.headers.get("x-hub-signature-256")
+      );
+
+      const regionalResponse = await fetch(target, {
+        method: "POST",
+        headers: {
+          "Content-Type": req.headers.get("content-type") || "application/json",
+          ...(signature
+            ? { "x-hub-signature-256": signature }
+            : {}),
+        },
+        body: rawBody,
+      });
+
+      return new Response(await regionalResponse.text(), {
+        status: regionalResponse.status,
+        headers: {
+          "Content-Type":
+            regionalResponse.headers.get("content-type") ||
+            "application/json",
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch (err) {
+      console.warn("[REGION_FORWARD_WARN]", err);
+      // Fall through to local processing if the regional handoff fails.
+    }
+  }
+
   let payload: any;
   try {
     payload = JSON.parse(rawBody || "{}");
