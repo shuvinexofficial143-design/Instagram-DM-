@@ -232,15 +232,8 @@ export const InboxPage: React.FC = () => {
 
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
             {groupedUsers.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500 font-medium space-y-3">
+              <div className="p-6 text-center text-xs text-slate-500 font-medium">
                 <p>No active conversations yet.</p>
-                <button
-                  onClick={() => setIsSimModalOpen(true)}
-                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs py-2 px-3.5 rounded-xl border border-indigo-200 inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-                >
-                  <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                  <span>Send Test DM</span>
-                </button>
               </div>
             ) : (
               groupedUsers.map((username) => {

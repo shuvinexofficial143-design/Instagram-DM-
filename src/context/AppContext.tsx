@@ -808,7 +808,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       created,
       ...prev.map((auto) =>
         pausedIds.has(auto.id)
-          ? { ...auto, status: 'paused', updated_at: now }
+          ? { ...auto, status: 'paused' as const, updated_at: now }
           : auto
       ),
     ]);
