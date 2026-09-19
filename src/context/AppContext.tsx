@@ -351,7 +351,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
   }, []);
 
-  // Check Admin privileges & sync user profile to backend Firestore
+  // Check Admin privileges & sync the user profile to Supabase.
   useEffect(() => {
     const currentEmail = firebaseUser?.email || user?.email || '';
     if (!currentEmail) {
@@ -375,7 +375,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     checkAdminStatus();
 
-    // Sync profile to Firestore users/{uid} collection directly via authenticated client SDK
+    // Sync the authenticated profile to Supabase.
     if (firebaseUser?.uid && currentEmail) {
       const isOwnerAdmin = currentEmail.toLowerCase() === 'devsinghparmar9589@gmail.com';
       const profileData = {
@@ -390,10 +390,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role: isOwnerAdmin ? 'admin' : 'user',
       };
 
-      // 1. Write directly to Firestore using client authenticated session (satisfies isOwner(userId))
+      // Write profile data through the Supabase-backed client helper.
       syncUserProfileDocument(firebaseUser.uid, profileData);
 
-      // 2. Synchronize to server in-memory registry for Admin panel
+      // Also synchronize the server-side profile registry. for Admin panel
       fetch('/api/user/sync-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -412,12 +412,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!uid) {
       // Guest workspaces use the same secure HttpOnly cookie as Instagram OAuth.
       // Poll the server-side workspace feed so live webhook DMs appear in Inbox
-      // and Contacts even without Google/Firebase authentication.
+      // and Contacts even without an app login.
       let cancelled = false;
       let pollTimer: ReturnType<typeof setInterval> | null = null;
       let profileRefreshRequested = false;
 
-      setGeminiKeys([]);
 
       const loadGuestWorkspace = async () => {
         try {
@@ -561,7 +560,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setContacts([]);
     setInboxMessages([]);
     setLogs([]);
-    setGeminiKeys([]);
 
     const unsubscribeAutomations = subscribeToUserCollection<Automation>(uid, 'automations', (data) => {
       if (data) {
@@ -746,7 +744,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setContacts([]);
     setInboxMessages([]);
     setLogs([]);
-    setGeminiKeys([]);
     setActiveTab('home');
   };
 
