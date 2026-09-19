@@ -1015,7 +1015,7 @@ async function startServer() {
       if (!ADMIN_CREDENTIALS.userId || !ADMIN_CREDENTIALS.password || !ADMIN_SESSION_SECRET) {
         return res.status(503).json({
           success: false,
-          error: 'Legacy admin credential login is not configured. Use Firebase admin access or configure server-only ADMIN_* variables.',
+          error: 'Legacy admin credential login is not configured. Use Supabase admin access or configure server-only ADMIN_* variables.',
         });
       }
 
