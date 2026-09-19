@@ -2,5 +2,5 @@
   "name": "AutoReply.io - Instagram DM Automation Platform",
   "description": "Full-stack Instagram DM & Comment Automation SaaS platform with live webhook engine, Meta OAuth support, and flow builder.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }
