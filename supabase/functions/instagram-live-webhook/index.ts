@@ -173,6 +173,63 @@ function extractDirectMessages(event: any) {
   });
 }
 
+async function loadTypingRuntimeContext(
+  admin: any,
+  ids: string[]
+) {
+  const candidates = [...new Set(
+    (ids || []).map((id) => String(id || "").trim()).filter(Boolean)
+  )];
+
+  if (!candidates.length) return null;
+
+  for (const id of candidates) {
+    const cached = runtimeContextMemory.get(id);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+  }
+
+  const { data, error } = await admin
+    .from("autoreply_runtime_context")
+    .select("ig_user_id,user_id,account,automation_id,automation")
+    .in("ig_user_id", candidates)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[LIVE_DM_TYPING_CONTEXT_WARN]", error);
+    return null;
+  }
+
+  if (!data?.user_id || !data?.account?.access_token) {
+    return null;
+  }
+
+  const value = {
+    user_id: data.user_id,
+    account: data.account,
+    automation: data.automation_id
+      ? {
+          ...(data.automation || {}),
+          id: data.automation_id,
+        }
+      : null,
+  };
+
+  const expiresAt = Date.now() + 30_000;
+  const igId = String(data.ig_user_id || data?.account?.ig_user_id || "");
+
+  if (igId) {
+    runtimeContextMemory.set(igId, { expiresAt, value });
+  }
+  for (const id of candidates) {
+    runtimeContextMemory.set(id, { expiresAt, value });
+  }
+
+  return value;
+}
+
 async function loadDmContext(
   admin: any,
   ids: string[],
@@ -842,6 +899,58 @@ async function generateReply(
   }
 }
 
+async function sendInstagramSenderAction(
+  igUserId: string,
+  recipientId: string,
+  accessToken: string,
+  action: "typing_on" | "typing_off"
+) {
+  if (!igUserId || !recipientId || !accessToken) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2500);
+
+  try {
+    const response = await fetch(
+      `https://graph.instagram.com/${GRAPH_VERSION}/${encodeURIComponent(
+        igUserId
+      )}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recipient: { id: recipientId },
+          sender_action: action,
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    if (!response.ok) {
+      const payload: any = await response.json().catch(() => null);
+      console.warn("[LIVE_DM_SENDER_ACTION_WARN]", {
+        action,
+        status: response.status,
+        error: payload?.error?.message || null,
+      });
+      return null;
+    }
+
+    return await response.json().catch(() => ({}));
+  } catch (err) {
+    console.warn("[LIVE_DM_SENDER_ACTION_ERROR]", {
+      action,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function sendInstagramText(
   igUserId: string,
   recipientId: string,
@@ -1016,11 +1125,57 @@ Deno.serve(async (req: Request) => {
     const contextStart = performance.now();
     let context: any = null;
     let contextSource = "supabase_runtime_context_v4";
+    let typingOnDispatchedMs: number | null = null;
+    let typingContextSource: "edge_memory" | "supabase_runtime_context" | "full_context" | null = null;
+    let typingStarted = false;
+
+    const startTyping = (runtime: any, source: "edge_memory" | "supabase_runtime_context" | "full_context") => {
+      if (typingStarted) return;
+      const account = runtime?.account || null;
+      const typingIgUserId = String(
+        account?.ig_user_id || item.entryId || item.recipientId || ""
+      );
+      const typingAccessToken = cleanToken(account?.access_token);
+
+      if (!typingIgUserId || !typingAccessToken || !item.senderId) return;
+
+      typingStarted = true;
+      typingContextSource = source;
+      typingOnDispatchedMs = Math.round(performance.now() - totalStart);
+
+      runInBackground(
+        sendInstagramSenderAction(
+          typingIgUserId,
+          item.senderId,
+          typingAccessToken,
+          "typing_on"
+        )
+      );
+    };
 
     const warmRuntime = runtimeContextMemory.get(businessId);
     const warmRuntimeValid = Boolean(
       warmRuntime && warmRuntime.expiresAt > Date.now()
     );
+
+    if (warmRuntimeValid) {
+      startTyping(warmRuntime!.value, "edge_memory");
+    }
+
+    // Cold isolates still launch a tiny indexed runtime-context lookup in
+    // parallel with the full dedupe/cache/history RPC. It exists only so
+    // typing_on can be dispatched as early as possible.
+    const typingContextPromise = warmRuntimeValid
+      ? Promise.resolve(warmRuntime!.value)
+      : loadTypingRuntimeContext(
+          admin,
+          [item.entryId, item.recipientId]
+        ).then((runtime) => {
+          if (runtime) {
+            startTyping(runtime, "supabase_runtime_context");
+          }
+          return runtime;
+        });
     const warmAutomationId = String(
       warmRuntime?.value?.automation?.id || ""
     );
@@ -1082,7 +1237,7 @@ Deno.serve(async (req: Request) => {
         );
       }
     } else {
-      context = await loadDmContext(
+      const fullContextPromise = loadDmContext(
         admin,
         [item.entryId, item.recipientId],
         item.messageId,
@@ -1091,7 +1246,14 @@ Deno.serve(async (req: Request) => {
         !instantReply
       );
 
+      // Both requests are already in flight. Await the full context needed for
+      // reply correctness, while typing_on may already be travelling to Meta.
+      context = await fullContextPromise;
+
       if (context?.user_id && context?.account?.access_token) {
+        if (!typingStarted) {
+          startTyping(context, "full_context");
+        }
         const runtimeValue = {
           user_id: context.user_id,
           account: context.account,
@@ -1147,6 +1309,9 @@ Deno.serve(async (req: Request) => {
         }
       }
     }
+
+    // Keep the lightweight typing lookup detached from the visible reply path.
+    void typingContextPromise;
 
     const contextMs = Math.round(performance.now() - contextStart);
 
@@ -1341,6 +1506,17 @@ Deno.serve(async (req: Request) => {
       const sendMs = Math.round(performance.now() - sendStart);
       const instagramMessageId = String(sendResult?.message_id || "");
 
+      if (typingStarted) {
+        runInBackground(
+          sendInstagramSenderAction(
+            igUserId,
+            item.senderId,
+            accessToken,
+            "typing_off"
+          )
+        );
+      }
+
       if (instagramMessageId) {
         runInBackground(
           markOutboundClaim(admin, workspaceId, instagramMessageId)
@@ -1406,6 +1582,8 @@ Deno.serve(async (req: Request) => {
               relay_to_edge_ms: relayToEdgeMs,
               fast_path: fastPath,
               context_source: contextSource,
+              typing_on_dispatched_ms: typingOnDispatchedMs,
+              typing_context_source: typingContextSource,
             }),
           ]);
         })()
@@ -1427,11 +1605,24 @@ Deno.serve(async (req: Request) => {
         relayToEdgeMs,
         fastPath,
         contextSource,
+        typingOnDispatchedMs,
+        typingContextSource,
         totalMs: Math.round(performance.now() - totalStart),
       });
     } catch (err) {
       const sendMs = Math.round(performance.now() - sendStart);
       const sendError = err instanceof Error ? err.message : String(err);
+
+      if (typingStarted) {
+        runInBackground(
+          sendInstagramSenderAction(
+            igUserId,
+            item.senderId,
+            accessToken,
+            "typing_off"
+          )
+        );
+      }
       console.error("[LIVE_DM_SEND_FAILED]", sendError);
 
       runInBackground(
@@ -1453,6 +1644,8 @@ Deno.serve(async (req: Request) => {
           meta_delivery_ms: metaDeliveryMs,
           meta_to_relay_ms: metaToRelayMs,
           relay_to_edge_ms: relayToEdgeMs,
+          typing_on_dispatched_ms: typingOnDispatchedMs,
+          typing_context_source: typingContextSource,
         })
       );
 
@@ -1469,6 +1662,8 @@ Deno.serve(async (req: Request) => {
         metaDeliveryMs,
         metaToRelayMs,
         relayToEdgeMs,
+        typingOnDispatchedMs,
+        typingContextSource,
         totalMs: Math.round(performance.now() - totalStart),
       });
     }
