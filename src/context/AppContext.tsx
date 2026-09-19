@@ -8,7 +8,6 @@ import {
   MetaConfig,
   WebhookLogEvent,
   TriggerType,
-  GeminiApiKeyItem,
 } from '../types';
 import {
   auth,
@@ -24,7 +23,6 @@ import {
   checkAndMigrateExistingData,
   isSupabaseInitialized,
 } from '../lib/supabase';
-import { generateGeminiChatReply } from '../lib/geminiKeyRotator';
 
 const defaultMetaConfig: MetaConfig = {
   app_id: '2300969844066002',
@@ -48,7 +46,6 @@ interface AppContextType {
   inboxMessages: InboxMessage[];
   metaConfig: MetaConfig;
   logs: WebhookLogEvent[];
-  geminiKeys: GeminiApiKeyItem[];
   pausedAiUsers: string[];
   isAdmin: boolean;
   activeTab: 'home' | 'automations' | 'contacts' | 'inbox' | 'settings' | 'about' | 'admin';
@@ -75,11 +72,6 @@ interface AppContextType {
   deleteAutomation: (id: string) => void;
   toggleAutomationStatus: (id: string) => void;
   
-  // Gemini Keys Management
-  addGeminiKey: (key: string, label: string) => void;
-  deleteGeminiKey: (id: string) => void;
-  updateGeminiKey: (id: string, updates: Partial<GeminiApiKeyItem>) => void;
-
   // Simulator & Webhook Engine
   simulateWebhookEvent: (triggerType: TriggerType, username: string, incomingText: string) => Promise<WebhookLogEvent>;
   triggerWebhookSimulation: (params: { trigger_type: TriggerType; username: string; text: string }) => Promise<WebhookLogEvent>;
@@ -252,7 +244,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([]);
   const [metaConfig, setMetaConfig] = useState<MetaConfig>(defaultMetaConfig);
   const [logs, setLogs] = useState<WebhookLogEvent[]>([]);
-  const [geminiKeys, setGeminiKeys] = useState<GeminiApiKeyItem[]>([]);
   const [pausedAiUsers, setPausedAiUsers] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
@@ -632,14 +623,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    const unsubscribeKeys = subscribeToUserCollection<GeminiApiKeyItem>(uid, 'gemini_api_keys', (data) => {
-      if (data) {
-        setGeminiKeys(data);
-      } else {
-        setGeminiKeys([]);
-      }
-    });
-
     const unsubscribeAccount = subscribeToUserCollection<InstagramAccount>(uid, 'instagram_account', (data) => {
       if (data && data.length > 0 && data[0]?.username) {
         const { access_token: _serverOnlyToken, ...safeAccount } = data[0];
@@ -654,7 +637,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribeContacts();
       unsubscribeInbox();
       unsubscribeLogs();
-      unsubscribeKeys();
       unsubscribeAccount();
     };
   }, [firebaseUser?.uid, isSupabaseInitialized]);
@@ -997,46 +979,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     persistAutomationRecord(updated, uid);
   };
 
-  // Gemini Key Management Actions (Scoped strictly by user UID)
-  const addGeminiKey = (key: string, label: string) => {
-    const uid = firebaseUser?.uid;
-    if (!uid) return;
-    const newKeyItem: GeminiApiKeyItem = {
-      id: `key_${Date.now()}`,
-      key: key.trim(),
-      label: label.trim(),
-      status: 'active',
-      cooldownUntil: null,
-      requestCount: 0,
-      errorCount: 0,
-      lastUsedAt: new Date().toISOString(),
-    };
-    setGeminiKeys((prev) => [newKeyItem, ...prev]);
-    saveUserDocument(uid, 'gemini_api_keys', newKeyItem);
-  };
-
-  const deleteGeminiKey = (id: string) => {
-    const uid = firebaseUser?.uid;
-    if (!uid) return;
-    setGeminiKeys((prev) => prev.filter((k) => k.id !== id));
-    removeUserDocument(uid, 'gemini_api_keys', id);
-  };
-
-  const updateGeminiKey = (id: string, updates: Partial<GeminiApiKeyItem>) => {
-    const uid = firebaseUser?.uid;
-    if (!uid) return;
-    setGeminiKeys((prev) =>
-      prev.map((k) => {
-        if (k.id === id) {
-          const updated = { ...k, ...updates };
-          saveUserDocument(uid, 'gemini_api_keys', updated);
-          return updated;
-        }
-        return k;
-      })
-    );
-  };
-
   // Simulator & Webhook Engine implementation
   const simulateWebhookEvent = async (triggerType: TriggerType, username: string, incomingText: string): Promise<WebhookLogEvent> => {
     const uid = firebaseUser?.uid;
@@ -1109,50 +1051,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .slice(-6);
 
       try {
-        if (aiAction.ai_model === 'gpt-4o-mini') {
-          const openAiRes = await fetch('/api/openai/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-              text: incomingText,
-              history: previousHistory.map((m) => ({
-                role: m.direction === 'in' ? 'user' : 'assistant',
-                content: m.message_text || '',
-              })),
-              systemInstruction:
-                aiAction.ai_system_instruction ||
-                'You are a helpful and polite Instagram assistant. Reply directly and briefly.',
-              maxReplyLength: 'Short',
-              language: 'Auto Detect',
-              personality: 'Friendly',
-              assistantName: 'AI Assistant',
-            }),
-          });
-
-          const payload = await openAiRes.json().catch(() => null);
-          if (!openAiRes.ok || !payload?.ok) {
-            throw new Error(payload?.error || 'GPT-4o mini request failed.');
-          }
-
-          responseSummary = String(payload.reply || '').trim();
-        } else {
-          const geminiHistory = previousHistory.map((m) => ({
-            role: (m.direction === 'in' ? 'user' : 'model') as 'user' | 'model',
-            text: m.message_text || '',
-          }));
-
-          const aiResponse = await generateGeminiChatReply({
-            history: geminiHistory,
-            incomingText,
+        const openAiRes = await fetch('/api/openai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            text: incomingText,
+            history: previousHistory.map((m) => ({
+              role: m.direction === 'in' ? 'user' : 'assistant',
+              content: m.message_text || '',
+            })),
             systemInstruction:
               aiAction.ai_system_instruction ||
-              'You are a helpful and polite Instagram assistant. Reply directly in 1 short sentence.',
-            model: (aiAction.ai_model as any) || 'gemini-3.1-flash-lite',
-            maxOutputTokens: 60,
-          });
-          responseSummary = aiResponse.reply;
+              'You are a helpful and polite Instagram assistant. Reply directly and briefly.',
+            maxReplyLength: 'Short',
+            language: 'Auto Detect',
+            personality: 'Friendly',
+            assistantName: 'AI Assistant',
+          }),
+        });
+
+        const payload = await openAiRes.json().catch(() => null);
+        if (!openAiRes.ok || !payload?.ok) {
+          throw new Error(payload?.error || 'GPT-4o mini request failed.');
         }
+
+        responseSummary = String(payload.reply || '').trim();
 
         if (!responseSummary) {
           responseSummary = 'Thanks for your message! How can I help you today?';
@@ -1503,7 +1427,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         inboxMessages,
         metaConfig,
         logs,
-        geminiKeys,
         pausedAiUsers,
         isAdmin,
         activeTab,
@@ -1523,9 +1446,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAutomation,
         deleteAutomation,
         toggleAutomationStatus,
-        addGeminiKey,
-        deleteGeminiKey,
-        updateGeminiKey,
         simulateWebhookEvent,
         triggerWebhookSimulation,
         sendManualReply,
