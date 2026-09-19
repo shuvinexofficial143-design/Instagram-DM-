@@ -16,6 +16,15 @@ const pendingOutboundMemory = new Map<
   string,
   { recipientId: string; expiresAt: number }
 >();
+const runtimeContextMemory = new Map<
+  string,
+  { expiresAt: number; value: any }
+>();
+const messageClaimMemory = new Map<string, number>();
+const replyCacheMemory = new Map<
+  string,
+  { expiresAt: number; responseText: string }
+>();
 
 const historyCache = new Map<
   string,
@@ -194,6 +203,30 @@ async function loadDmContext(
   return data || null;
 }
 
+async function claimMessageOnly(
+  admin: any,
+  workspaceId: string,
+  messageId: string,
+  incomingText: string,
+  senderId: string
+) {
+  if (!workspaceId) return "new";
+
+  const { data, error } = await admin.rpc("autoreply_claim_message_only", {
+    p_user_id: workspaceId,
+    p_message_id: String(messageId || ""),
+    p_query_key: normalizeReplyCacheKey(incomingText),
+    p_sender_id: String(senderId || ""),
+  });
+
+  if (error) {
+    console.warn("[LIVE_DM_BACKGROUND_CLAIM_WARN]", error);
+    return "new";
+  }
+
+  return String(data || "new");
+}
+
 async function markPendingOutbound(
   admin: any,
   workspaceId: string,
@@ -238,6 +271,14 @@ async function saveReplyCache(
 ) {
   const queryKey = normalizeReplyCacheKey(incomingText);
   if (!workspaceId || !automationId || !queryKey || !responseText) return;
+
+  replyCacheMemory.set(
+    `${workspaceId}:${automationId}:${queryKey}`,
+    {
+      responseText,
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    }
+  );
 
   const { error } = await admin
     .from("autoreply_reply_cache")
@@ -973,15 +1014,137 @@ Deno.serve(async (req: Request) => {
     }
 
     const contextStart = performance.now();
+    let context: any = null;
+    let contextSource = "supabase_runtime_context_v4";
 
-    const context = await loadDmContext(
-      admin,
-      [item.entryId, item.recipientId],
-      item.messageId,
-      item.text,
-      item.senderId,
-      !instantReply
+    const warmRuntime = runtimeContextMemory.get(businessId);
+    const warmRuntimeValid = Boolean(
+      warmRuntime && warmRuntime.expiresAt > Date.now()
     );
+    const warmAutomationId = String(
+      warmRuntime?.value?.automation?.id || ""
+    );
+    const warmReplyKey =
+      warmRuntime?.value?.user_id && warmAutomationId && incomingTextKey
+        ? `${warmRuntime.value.user_id}:${warmAutomationId}:${incomingTextKey}`
+        : "";
+    const warmReply = warmReplyKey
+      ? replyCacheMemory.get(warmReplyKey)
+      : undefined;
+    const warmReplyValid = Boolean(
+      warmReply && warmReply.expiresAt > Date.now()
+    );
+    const warmHistoryKey =
+      warmRuntime?.value?.user_id && item.senderId
+        ? `${warmRuntime.value.user_id}:${item.senderId}`
+        : "";
+    const warmHistory = warmHistoryKey
+      ? historyCache.get(warmHistoryKey)
+      : undefined;
+    const warmHistoryValid = Boolean(
+      warmHistory && warmHistory.expiresAt > Date.now()
+    );
+
+    if (
+      warmRuntimeValid &&
+      (instantReply || warmReplyValid || warmHistoryValid)
+    ) {
+      const workspaceId = String(warmRuntime!.value.user_id || "");
+      const claimKey = `${workspaceId}:${item.messageId}`;
+      const existingClaimExpiry = messageClaimMemory.get(claimKey) || 0;
+      const messageState =
+        item.messageId && existingClaimExpiry > Date.now()
+          ? "duplicate"
+          : "new";
+
+      if (item.messageId && messageState === "new") {
+        messageClaimMemory.set(claimKey, Date.now() + 30 * 60 * 1000);
+      }
+
+      context = {
+        ...warmRuntime!.value,
+        cached_reply: warmReplyValid ? warmReply!.responseText : null,
+        history: warmHistoryValid ? warmHistory!.messages.slice(-10) : [],
+        message_state: messageState,
+      };
+      contextSource = "edge_memory";
+
+      // Persist dedupe state cross-isolate without making the visible reply wait.
+      if (messageState === "new") {
+        runInBackground(
+          claimMessageOnly(
+            admin,
+            workspaceId,
+            item.messageId,
+            item.text,
+            item.senderId
+          )
+        );
+      }
+    } else {
+      context = await loadDmContext(
+        admin,
+        [item.entryId, item.recipientId],
+        item.messageId,
+        item.text,
+        item.senderId,
+        !instantReply
+      );
+
+      if (context?.user_id && context?.account?.access_token) {
+        const runtimeValue = {
+          user_id: context.user_id,
+          account: context.account,
+          automation: context.automation || null,
+        };
+        const expiresAt = Date.now() + 15_000;
+        const accountIgId = String(context?.account?.ig_user_id || businessId);
+
+        if (businessId) {
+          runtimeContextMemory.set(businessId, {
+            expiresAt,
+            value: runtimeValue,
+          });
+        }
+        if (accountIgId && accountIgId !== businessId) {
+          runtimeContextMemory.set(accountIgId, {
+            expiresAt,
+            value: runtimeValue,
+          });
+        }
+
+        if (item.messageId && context?.message_state === "new") {
+          messageClaimMemory.set(
+            `${context.user_id}:${item.messageId}`,
+            Date.now() + 30 * 60 * 1000
+          );
+        }
+
+        const automationId = String(context?.automation?.id || "");
+        if (automationId && context?.cached_reply && incomingTextKey) {
+          replyCacheMemory.set(
+            `${context.user_id}:${automationId}:${incomingTextKey}`,
+            {
+              responseText: String(context.cached_reply),
+              expiresAt: Date.now() + 60 * 60 * 1000,
+            }
+          );
+        }
+
+        if (item.senderId) {
+          historyCache.set(
+            `${context.user_id}:${item.senderId}`,
+            {
+              messages: Array.isArray(context?.history)
+                ? context.history.slice(-10)
+                : [],
+              expiresAt: Date.now() + 60_000,
+            }
+          );
+        }
+      }
+    }
+
     const contextMs = Math.round(performance.now() - contextStart);
 
     if (!context?.user_id || !context?.account?.access_token) {
@@ -1239,7 +1402,7 @@ Deno.serve(async (req: Request) => {
               meta_to_relay_ms: metaToRelayMs,
               relay_to_edge_ms: relayToEdgeMs,
               fast_path: fastPath,
-              context_source: "supabase_runtime_context_v4",
+              context_source: contextSource,
             }),
           ]);
         })()
@@ -1260,7 +1423,7 @@ Deno.serve(async (req: Request) => {
         metaToRelayMs,
         relayToEdgeMs,
         fastPath,
-        contextSource: "supabase_runtime_context_v4",
+        contextSource,
         totalMs: Math.round(performance.now() - totalStart),
       });
     } catch (err) {
