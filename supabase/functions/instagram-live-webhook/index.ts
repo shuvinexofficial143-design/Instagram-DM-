@@ -1113,7 +1113,10 @@ Deno.serve(async (req: Request) => {
           });
         }
 
-        if (item.messageId && context?.message_state === "new") {
+        if (item.messageId) {
+          // Remember every observed message id locally. Whether Supabase marked
+          // it new, duplicate, or outbound-echo, seeing it again on this warm
+          // isolate should never trigger another reply.
           messageClaimMemory.set(
             `${context.user_id}:${item.messageId}`,
             Date.now() + 30 * 60 * 1000
