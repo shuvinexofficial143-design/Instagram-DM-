@@ -296,3 +296,43 @@ set user_id=excluded.user_id,
     automation_id=excluded.automation_id,
     automation=excluded.automation,
     updated_at=excluded.updated_at;
+
+
+-- Stats-only automation updates must not invalidate the hot active-automation
+-- row or exact reply cache. Only routing/prompt/action/status changes do.
+create or replace function public.autoreply_automation_cache_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op='DELETE' then
+    if old.collection='automations' then
+      perform public.autoreply_refresh_active_automation(old.user_id);
+    end if;
+    return old;
+  end if;
+
+  if new.collection='automations' then
+    if tg_op='UPDATE'
+       and old.collection='automations'
+       and old.user_id=new.user_id
+       and (old.data - 'stats' - 'updated_at')
+           is not distinct from
+           (new.data - 'stats' - 'updated_at') then
+      return new;
+    end if;
+
+    perform public.autoreply_refresh_active_automation(new.user_id);
+  end if;
+
+  if tg_op='UPDATE'
+     and old.collection='automations'
+     and old.user_id is distinct from new.user_id then
+    perform public.autoreply_refresh_active_automation(old.user_id);
+  end if;
+
+  return new;
+end;
+$$;
