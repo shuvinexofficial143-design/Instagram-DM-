@@ -3,26 +3,9 @@ import {
   Instagram,
   RefreshCw,
   Trash2,
-  CheckCircle2,
-  AlertCircle,
-  User,
   LogOut,
   Mail,
   ShieldCheck,
-  Calendar,
-  Lock,
-  Zap,
-  Copy,
-  Check,
-  Webhook,
-  Activity,
-  Clock,
-  Send,
-  Cpu,
-  Server,
-  Image as ImageIcon,
-  Eye,
-  X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -33,143 +16,52 @@ export const SettingsPage: React.FC = () => {
     firebaseUser,
     logout,
     instagramAccount,
-    reauthorizeChannel,
     disconnectChannel,
     setIsConnectModalOpen,
-    triggerWebhookSimulation,
-    logs,
   } = useApp();
 
-  const [subscribing, setSubscribing] = useState(false);
-  const [subStatus, setSubStatus] = useState<{ success?: boolean; msg?: string } | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [testSimulating, setTestSimulating] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
-
-  // Profile Picture Refresh & Diagnostics State
-  const [refreshingPic, setRefreshingPic] = useState(false);
-  const [refreshPicMessage, setRefreshPicMessage] = useState<{ success: boolean; text: string } | null>(null);
-  const [debugModalOpen, setDebugModalOpen] = useState(false);
-  const [debugReport, setDebugReport] = useState<any>(null);
-  const [loadingDebug, setLoadingDebug] = useState(false);
-
-  const handleRefreshProfilePic = async () => {
-    setRefreshingPic(true);
-    setRefreshPicMessage(null);
-    if (!firebaseUser?.uid) return;
-    try {
-      const res = await fetch('/api/instagram/refresh-profile-pic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: firebaseUser.uid }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setRefreshPicMessage({ success: true, text: 'Profile picture refreshed from Meta Graph API!' });
-        setTimeout(() => {
-          window.location.reload();
-        }, 800);
-      } else {
-        setRefreshPicMessage({ success: false, text: data.error || 'Failed to refresh picture.' });
-      }
-    } catch (err: any) {
-      setRefreshPicMessage({ success: false, text: err?.message || 'Network error' });
-    } finally {
-      setRefreshingPic(false);
-    }
-  };
-
-  const handleLoadDiagnostics = async () => {
-    setLoadingDebug(true);
-    setDebugModalOpen(true);
-    try {
-      const res = await fetch('/api/instagram/debug-avatars');
-      const data = await res.json();
-      setDebugReport(data);
-      console.log('[DEBUG_AVATARS_REPORT]', data);
-    } catch (err: any) {
-      setDebugReport({ error: err?.message || String(err) });
-    } finally {
-      setLoadingDebug(false);
-    }
-  };
-
-  const webhookUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/webhook` : '/api/webhook';
-  const verifyToken = 'autoreply_meta_verify_secret_token_2026';
-
-  const copyText = (txt: string, fieldName: string) => {
-    navigator.clipboard.writeText(txt);
-    setCopiedField(fieldName);
-    setTimeout(() => setCopiedField(null), 2000);
-  };
-
-  const handleRunQuickTest = async () => {
-    setTestSimulating(true);
-    setTestResult(null);
-    try {
-      await triggerWebhookSimulation({
-        trigger_type: 'dm',
-        username: 'webhook_test_user',
-        text: 'Hello, this is a test webhook message to verify delivery.',
-      });
-      setTestResult('✅ Test webhook simulated successfully! Telemetry diagnostics trace logged below (marked as test event to keep Contacts & Inbox clean).');
-    } catch (err: any) {
-      setTestResult(`❌ Test webhook failed: ${err?.message || err}`);
-    } finally {
-      setTestSimulating(false);
-    }
-  };
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to sign out of your AutoReply.io account?')) {
-      setIsLoggingOut(true);
-      try {
-        await logout();
-      } catch (err) {
-        console.error('Logout error:', err);
-      } finally {
-        setIsLoggingOut(false);
-      }
+    if (!window.confirm('Are you sure you want to sign out?')) return;
+
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
-  const handleSubscribe = async () => {
-    setSubscribing(true);
-    setSubStatus(null);
+  const handleDisconnect = async () => {
+    if (!window.confirm('Remove this Instagram account from AutoReply.io?')) return;
+
+    setIsDisconnecting(true);
     try {
-      const res = await fetch('/api/instagram/subscribe', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSubStatus({ success: true, msg: 'Meta Subscribed Apps API executed successfully! Webhooks active.' });
-      } else {
-        setSubStatus({ success: false, msg: data.error || 'Subscription call returned warnings or requires live token.' });
-      }
-    } catch (err: any) {
-      setSubStatus({ success: false, msg: err?.message || 'Failed to trigger subscription endpoint.' });
+      await disconnectChannel();
     } finally {
-      setSubscribing(false);
+      setIsDisconnecting(false);
     }
   };
 
   return (
-    <div className="p-8 space-y-8 bg-[#F9F6FE] min-h-screen max-w-5xl mx-auto">
-      {/* 1. Account & Authentication Card */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
+    <div className="mx-auto min-h-screen max-w-5xl space-y-8 bg-[#F9F6FE] p-8">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
-            <h3 className="font-black text-slate-950 text-base">Account & Security</h3>
-            <p className="text-xs text-slate-600 font-semibold">
-              Manage your signed-in profile and authentication session
+            <h3 className="text-base font-black text-slate-950">Account & Security</h3>
+            <p className="text-xs font-semibold text-slate-600">
+              Manage your account and signed-in session.
             </p>
           </div>
-          <span className="text-xs font-black text-indigo-800 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
-            <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Isolated Session</span>
+          <span className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-800">
+            <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" />
+            Secure Session
           </span>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="mt-5 flex flex-col items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center">
           <div className="flex items-center gap-3.5">
             <UserAvatar
               src={user.avatar_url}
@@ -178,526 +70,106 @@ export const SettingsPage: React.FC = () => {
             />
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="font-black text-sm text-slate-950">{user.name}</h4>
-                <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+                <h4 className="text-sm font-black text-slate-950">{user.name}</h4>
+                <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-800">
                   {user.plan} Plan
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-slate-600 font-bold mt-0.5">
-                <Mail className="w-3.5 h-3.5 text-slate-400" />
-                <span>{firebaseUser?.email || user.email || 'No email attached'}</span>
+              <div className="mt-0.5 flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                <Mail className="h-3.5 w-3.5 text-slate-400" />
+                <span>{firebaseUser?.email || user.email || 'Account session'}</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button
-              onClick={handleLogout}
-              disabled={isLoggingOut}
-              className="w-full sm:w-auto bg-rose-50 hover:bg-rose-100 text-rose-700 font-black text-xs py-2.5 px-4 rounded-xl border border-rose-200 flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
-            >
-              <LogOut className="w-4 h-4 text-rose-600" />
-              <span>{isLoggingOut ? 'Signing out...' : 'Sign Out'}</span>
-            </button>
-          </div>
+          <button
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-black text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50 sm:w-auto"
+          >
+            <LogOut className="h-4 w-4" />
+            {isLoggingOut ? 'Signing out...' : 'Sign Out'}
+          </button>
         </div>
       </div>
 
-      {/* 2. Connected Instagram Channels Card */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
-            <h3 className="font-black text-slate-950 text-base">Connected Instagram Channels</h3>
-            <p className="text-xs text-slate-600 font-semibold">Manage Meta OAuth authorization tokens and channel access</p>
+            <h3 className="text-base font-black text-slate-950">Instagram Account</h3>
+            <p className="text-xs font-semibold text-slate-600">
+              Connect, switch, or remove the Instagram account used by automations.
+            </p>
           </div>
           {instagramAccount && (
-            <span className="text-xs font-black text-emerald-800 bg-emerald-50 border border-emerald-300 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span>Account Connected</span>
+            <span className="flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-800">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Connected
             </span>
           )}
         </div>
 
         {instagramAccount ? (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs">
+          <div className="mt-5 flex flex-col items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-3">
               <UserAvatar
                 src={instagramAccount.profile_pic_url}
                 username={instagramAccount.username}
-                showInstagramBadge={true}
+                showInstagramBadge
                 size="lg"
               />
               <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-black text-sm text-slate-950">@{instagramAccount.username}</h4>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
-                    Live Channel
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 font-bold mt-0.5">
-                  {instagramAccount.followers_count?.toLocaleString()} Followers • Connected on{' '}
-                  {new Date(instagramAccount.connected_at).toLocaleDateString()}
+                <h4 className="text-sm font-black text-slate-950">
+                  @{instagramAccount.username}
+                </h4>
+                <p className="mt-0.5 text-xs font-bold text-slate-600">
+                  {(instagramAccount.followers_count || 0).toLocaleString()} Followers
                 </p>
-                {refreshPicMessage && (
-                  <p
-                    className={`text-[11px] font-bold mt-1 ${
-                      refreshPicMessage.success ? 'text-emerald-700' : 'text-rose-600'
-                    }`}
-                  >
-                    {refreshPicMessage.text}
-                  </p>
-                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              <button
-                onClick={handleRefreshProfilePic}
-                disabled={refreshingPic}
-                title="Force refresh latest profile picture from Instagram API"
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs py-2 px-3.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 stroke-[2.2] ${refreshingPic ? 'animate-spin' : ''}`} />
-                <span>{refreshingPic ? 'Refreshing...' : 'Refresh Photo'}</span>
-              </button>
-
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               <button
                 onClick={() => setIsConnectModalOpen(true)}
-                title="Switch or update channel"
-                className="bg-indigo-50 hover:bg-indigo-100 text-[#3B5BFF] font-black text-xs py-2 px-3.5 rounded-xl border border-indigo-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-black text-indigo-700 transition-colors hover:bg-indigo-100 sm:flex-none"
               >
-                <RefreshCw className="w-3.5 h-3.5 stroke-[2.2]" />
-                <span>Switch / Update</span>
+                <RefreshCw className="h-3.5 w-3.5" />
+                Switch / Update
               </button>
 
               <button
-                onClick={handleLoadDiagnostics}
-                title="Inspect avatar status in Firestore & Meta API"
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs py-2 px-3.5 rounded-xl border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                onClick={handleDisconnect}
+                disabled={isDisconnecting}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-black text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50 sm:flex-none"
               >
-                <Eye className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Avatar Debug</span>
-              </button>
-
-              <button
-                onClick={handleSubscribe}
-                disabled={subscribing}
-                title="Test Meta Subscribed Apps Webhook"
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs py-2 px-3.5 rounded-xl border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{subscribing ? 'Testing...' : 'Test Webhooks'}</span>
-              </button>
-
-              <button
-                onClick={disconnectChannel}
-                className="bg-red-50 hover:bg-red-100 text-red-600 font-black text-xs py-2 px-3.5 rounded-xl border border-red-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Remove Profile</span>
+                <Trash2 className="h-3.5 w-3.5" />
+                {isDisconnecting ? 'Removing...' : 'Remove Profile'}
               </button>
             </div>
           </div>
         ) : (
-          <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-300 p-6 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white mx-auto shadow-md shadow-rose-500/20">
-              <Instagram className="w-6 h-6 stroke-[2.2]" />
+          <div className="mt-5 space-y-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 text-white shadow-md">
+              <Instagram className="h-6 w-6" />
             </div>
             <div>
-              <h4 className="font-black text-slate-900 text-base">No Instagram Account Linked</h4>
-              <p className="text-xs text-slate-600 font-semibold mt-1 max-w-sm mx-auto">
-                Connect your Instagram account to enable automatic DM replies, comment triggers, and contact sync.
+              <h4 className="text-base font-black text-slate-900">
+                No Instagram Account Linked
+              </h4>
+              <p className="mx-auto mt-1 max-w-sm text-xs font-semibold text-slate-600">
+                Connect Instagram to enable live DM automations.
               </p>
             </div>
-            <div className="flex flex-wrap justify-center gap-3 pt-2">
-              <button
-                onClick={() => setIsConnectModalOpen(true)}
-                className="bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:from-purple-500 hover:via-pink-500 hover:to-rose-400 text-white font-black text-xs py-2.5 px-5 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer"
-              >
-                <Instagram className="w-4 h-4 stroke-[2.2]" />
-                <span>Connect Instagram Channel</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {subStatus && (
-          <div
-            className={`p-3 rounded-xl border text-xs font-bold flex items-center gap-2 ${
-              subStatus.success
-                ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                : 'bg-amber-50 text-amber-900 border-amber-300'
-            }`}
-          >
-            {subStatus.success ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-            )}
-            <span>{subStatus.msg}</span>
+            <button
+              onClick={() => setIsConnectModalOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 px-5 py-2.5 text-xs font-black text-white shadow-md"
+            >
+              <Instagram className="h-4 w-4" />
+              Connect Instagram
+            </button>
           </div>
         )}
       </div>
-
-      {/* 3. Meta Developer Webhook Configuration Card */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-          <div>
-            <h3 className="font-black text-slate-950 text-base flex items-center gap-2">
-              <Webhook className="w-5 h-5 text-indigo-600" />
-              <span>Meta Webhook Integration</span>
-            </h3>
-            <p className="text-xs text-slate-600 font-semibold">
-              Configure your Meta Developer App to route live Instagram DMs and comments directly into this app
-            </p>
-          </div>
-          <span className="text-xs font-black text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
-            <Activity className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-            <span>Webhook Ready</span>
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Callback URL */}
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-700">Webhook Callback URL</span>
-              <button
-                onClick={() => copyText(webhookUrl, 'url')}
-                className="text-xs text-[#3B5BFF] hover:underline flex items-center gap-1 font-bold cursor-pointer"
-              >
-                {copiedField === 'url' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedField === 'url' ? 'Copied!' : 'Copy'}</span>
-              </button>
-            </div>
-            <div className="font-mono text-xs text-slate-900 bg-white p-2.5 rounded-lg border border-slate-200 break-all select-all font-semibold">
-              {webhookUrl}
-            </div>
-            <p className="text-[11px] text-slate-500">Paste into Meta App Dashboard &gt; Webhooks &gt; Callback URL</p>
-          </div>
-
-          {/* Verify Token */}
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-700">Verify Token</span>
-              <button
-                onClick={() => copyText(verifyToken, 'token')}
-                className="text-xs text-[#3B5BFF] hover:underline flex items-center gap-1 font-bold cursor-pointer"
-              >
-                {copiedField === 'token' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedField === 'token' ? 'Copied!' : 'Copy'}</span>
-              </button>
-            </div>
-            <div className="font-mono text-xs text-slate-900 bg-white p-2.5 rounded-lg border border-slate-200 break-all select-all font-semibold">
-              {verifyToken}
-            </div>
-            <p className="text-[11px] text-slate-500">Paste into Meta App Dashboard &gt; Webhooks &gt; Verify Token</p>
-          </div>
-        </div>
-
-        {/* Subscribed Fields Guide */}
-        <div className="bg-indigo-50/70 border border-indigo-200 p-4 rounded-xl space-y-2">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-indigo-700" />
-            <h4 className="text-xs font-black text-indigo-950">Required Meta Webhook Fields:</h4>
-          </div>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {['messages', 'messaging_postbacks', 'message_deliveries', 'message_reads', 'comments'].map((field) => (
-              <span key={field} className="font-mono text-[11px] font-bold bg-white text-indigo-900 px-2.5 py-1 rounded-lg border border-indigo-200 shadow-2xs">
-                {field}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Quick Test Webhook Button */}
-        <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <div className="text-xs font-black text-slate-900">Test Webhook Processing Engine</div>
-            <p className="text-[11px] text-slate-500">Sends a test event through the webhook engine to verify end-to-end delivery</p>
-          </div>
-          <button
-            onClick={handleRunQuickTest}
-            disabled={testSimulating}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer shrink-0"
-          >
-            <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
-            <span>{testSimulating ? 'Testing...' : 'Send Test Webhook'}</span>
-          </button>
-        </div>
-
-        {testResult && (
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800">
-            {testResult}
-          </div>
-        )}
-      </div>
-
-      {/* 4. Live DM Latency & Webhook Diagnostics Telemetry */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-          <div>
-            <h3 className="font-black text-slate-950 text-base flex items-center gap-2">
-              <Clock className="w-5 h-5 text-purple-600" />
-              <span>Real-Time Latency & Delivery Diagnostics</span>
-            </h3>
-            <p className="text-xs text-slate-600 font-semibold">
-              Live millisecond timestamp audit of incoming Meta requests and Instagram Graph API dispatch
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-black text-emerald-800 bg-emerald-50 border border-emerald-300 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
-              <Server className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Instance Warm (minInstances: 1)</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Telemetry Guide / Overview Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
-            <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Cold-Start Status</div>
-            <div className="text-sm font-black text-emerald-700 flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>0ms Cold Start (Warm)</span>
-            </div>
-            <p className="text-[11px] text-slate-600 font-medium">Instance permanently active in memory with in-RAM token caching</p>
-          </div>
-
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
-            <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Target Latency</div>
-            <div className="text-sm font-black text-indigo-700 flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-indigo-600" />
-              <span>&lt; 1,000ms End-to-End</span>
-            </div>
-            <p className="text-[11px] text-slate-600 font-medium">Fast-path reply sent prior to background DB logging</p>
-          </div>
-
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1">
-            <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider">AI Generation Mode</div>
-            <div className="text-sm font-black text-purple-700 flex items-center gap-1.5">
-              <Cpu className="w-4 h-4 text-purple-600" />
-              <span>gemini-1.5-flash (Fast)</span>
-            </div>
-            <p className="text-[11px] text-slate-600 font-medium">Max 120 tokens, last 2 msgs context; static rules bypass AI completely</p>
-          </div>
-        </div>
-
-        {/* Live Logs Table with Exact Measured Timestamps */}
-        <div className="space-y-3">
-          <div className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center justify-between">
-            <span>Recent Webhook Events & Timestamp Traces ({logs.length})</span>
-            <span className="text-[11px] font-bold text-slate-500 lowercase">live synchronized</span>
-          </div>
-
-          {logs.length === 0 ? (
-            <div className="p-6 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center text-xs font-bold text-slate-600">
-              No webhook events received yet. Send a test message on Instagram or click "Send Test Webhook" above to generate a trace.
-            </div>
-          ) : (
-            <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
-              {logs.slice(0, 10).map((log) => {
-                const receivedAt = log.webhook_received_at || log.timestamp;
-                const replyStart = log.reply_api_call_start;
-                const replyEnd = log.reply_api_call_end;
-                const igDuration = log.ig_api_duration_ms ?? log.api_response?.ig_api_duration_ms ?? null;
-                const transitDelay = log.meta_transit_delay_ms ?? log.api_response?.meta_transit_delay_ms ?? null;
-                const totalDuration = log.total_processing_duration_ms ?? log.api_response?.response_time_ms ?? null;
-
-                return (
-                  <div
-                    key={log.id}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition-colors space-y-2.5"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${log.status === 'triggered' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
-                        <span className="text-xs font-black text-slate-950">@{log.from_username || 'user'}</span>
-                        <span className="text-[10px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded border border-slate-200 uppercase">
-                          {log.trigger_type}
-                        </span>
-                        <span className="text-[11px] font-semibold text-slate-500">
-                          {log.matched_automation_name || 'Direct Message'}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        {totalDuration !== null && (
-                          <span className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${
-                            totalDuration < 1500
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                              : 'bg-amber-100 text-amber-800 border-amber-300'
-                          }`}>
-                            ⚡ Total: {totalDuration}ms
-                          </span>
-                        )}
-                        {igDuration !== null && (
-                          <span className="text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
-                            IG API: {igDuration}ms
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
-                      <div className="bg-white p-2.5 rounded-lg border border-slate-200 space-y-1">
-                        <div className="text-[10px] font-black text-slate-500 uppercase">Incoming Message:</div>
-                        <div className="text-slate-900 font-bold truncate">"{log.incoming_text}"</div>
-                        <div className="text-[10px] font-black text-slate-500 uppercase pt-1">Automated Reply:</div>
-                        <div className="text-indigo-900 font-bold truncate">"{log.response_sent}"</div>
-                      </div>
-
-                      <div className="bg-white p-2.5 rounded-lg border border-slate-200 space-y-1 text-[11px] text-slate-700">
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">1. Webhook Ingress:</span>
-                          <span className="font-bold text-slate-900">{receivedAt ? new Date(receivedAt).toLocaleTimeString() : 'N/A'}</span>
-                        </div>
-                        {transitDelay !== null && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">2. Meta Transit Delay:</span>
-                            <span className="font-bold text-amber-700">{transitDelay}ms</span>
-                          </div>
-                        )}
-                        {log.timing_breakdown?.cache_lookup_duration_ms !== undefined && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">3. RAM Cache Lookup:</span>
-                            <span className="font-bold text-emerald-700">{log.timing_breakdown.cache_lookup_duration_ms}ms</span>
-                          </div>
-                        )}
-                        {log.timing_breakdown?.rule_matching_duration_ms !== undefined && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">4. Rule Matching:</span>
-                            <span className="font-bold text-slate-900">{log.timing_breakdown.rule_matching_duration_ms}ms</span>
-                          </div>
-                        )}
-                        {log.timing_breakdown?.ai_gen_duration_ms !== undefined && log.timing_breakdown.ai_gen_duration_ms > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">5. Gemini AI Generation:</span>
-                            <span className="font-bold text-purple-700">{log.timing_breakdown.ai_gen_duration_ms}ms</span>
-                          </div>
-                        )}
-                        {replyStart && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">6. IG API Call Start:</span>
-                            <span className="font-bold text-slate-900">{new Date(replyStart).toLocaleTimeString()}</span>
-                          </div>
-                        )}
-                        {replyEnd && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">7. IG API Call End:</span>
-                            <span className="font-bold text-slate-900">{new Date(replyEnd).toLocaleTimeString()}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Diagnostic Avatar Status Modal */}
-      {debugModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 max-h-[85vh] overflow-y-auto space-y-4 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-xs">
-                  <Eye className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-black text-sm text-slate-900">Avatar & Profile Photo Diagnostics</h3>
-                  <p className="text-[11px] text-slate-500">Live inspection of Firestore data and Meta Graph API response</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setDebugModalOpen(false)}
-                className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {loadingDebug ? (
-              <div className="py-12 text-center text-xs text-slate-500 font-bold flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
-                <span>Inspecting Firestore documents and testing Meta API endpoints...</span>
-              </div>
-            ) : debugReport ? (
-              <div className="space-y-4 text-xs">
-                <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 leading-relaxed font-medium">
-                  {debugReport.analysis}
-                </div>
-
-                <div className="space-y-2">
-                  <h4 className="font-black text-slate-900">Firestore Account (instagram_account/primary):</h4>
-                  <pre className="bg-slate-900 text-emerald-400 p-3 rounded-xl overflow-x-auto text-[11px] font-mono">
-                    {JSON.stringify(
-                      {
-                        firestore_data: debugReport.firestore_account_primary,
-                        profile_pic_http_status: debugReport.account_profile_pic_http_status,
-                      },
-                      null,
-                      2
-                    )}
-                  </pre>
-                </div>
-
-                <div className="space-y-2">
-                  <h4 className="font-black text-slate-900">Live Meta Graph API Test (/v21.0/me):</h4>
-                  <pre className="bg-slate-900 text-amber-300 p-3 rounded-xl overflow-x-auto text-[11px] font-mono">
-                    {JSON.stringify(debugReport.graph_api_test, null, 2)}
-                  </pre>
-                </div>
-
-                <div className="space-y-2">
-                  <h4 className="font-black text-slate-900">
-                    Contacts in Firestore ({debugReport.firestore_contacts_count || 0} total):
-                  </h4>
-                  <pre className="bg-slate-900 text-slate-200 p-3 rounded-xl overflow-x-auto text-[11px] font-mono">
-                    {JSON.stringify(debugReport.firestore_contacts, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="pt-3 border-t border-slate-200 flex justify-end">
-              <button
-                onClick={() => setDebugModalOpen(false)}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs py-2 px-4 rounded-xl cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Footer */}
-      <footer className="pt-6 pb-2 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-medium">
-        <div className="flex items-center gap-2">
-          <Zap className="w-4 h-4 text-indigo-600 fill-indigo-600/20" />
-          <span className="font-bold text-slate-800">AutoReply.io</span>
-          <span>•</span>
-          <span>Official Meta Graph API Social Automation Engine</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => {
-              if (typeof window !== 'undefined') {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }
-            }}
-            className="hover:text-slate-800 transition-colors cursor-pointer"
-          >
-            Back to Top
-          </button>
-          <span>•</span>
-          <span>&copy; 2026 AutoReply.io. All rights reserved.</span>
-        </div>
-      </footer>
     </div>
   );
 };
