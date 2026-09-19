@@ -60,7 +60,7 @@ export interface ActionItem {
   comment_reply_text?: string;
   tag_name?: string;
   ai_system_instruction?: string;
-  ai_model?: 'gpt-4o-mini' | 'gemini-1.5-flash' | 'gemini-2.5-flash' | 'gemini-3.6-flash' | 'gemini-3.1-flash-lite' | string;
+  ai_model?: 'gpt-4o-mini' | string;
 }
 
 export interface Automation {
@@ -159,17 +159,6 @@ export interface SystemStats {
   comment_replies: number;
   dms_sent: number;
   unique_contacts: number;
-}
-
-export interface GeminiApiKeyItem {
-  id: string;
-  key: string;
-  label: string;
-  status: 'active' | 'cooldown';
-  cooldownUntil?: string | null;
-  requestCount: number;
-  errorCount: number;
-  lastUsedAt?: string;
 }
 
 export interface PromptAnalysisResult {
