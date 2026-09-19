@@ -6,19 +6,11 @@ import { createServer as createViteServer } from 'vite';
 import { Agent, setGlobalDispatcher } from 'undici';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import {
-  generateGeminiChatReply,
-  generateGeminiChatStream,
-  getLocalKeyPool,
-  setLocalKeyPool,
-  analyzeSystemPromptWithGemini,
-} from './src/lib/geminiKeyRotator';
-import {
   Automation,
   Contact,
   InboxMessage,
   InstagramAccount,
   WebhookLogEvent,
-  GeminiApiKeyItem,
   AdminUserOverviewItem,
 } from './src/types';
 
@@ -39,12 +31,11 @@ const SERVER_BOOT_TIMESTAMP = Date.now();
 const SERVER_BOOT_ISO = new Date().toISOString();
 console.log(`🚀 [SERVER_BOOT] Instance initialized at ${SERVER_BOOT_ISO} (${SERVER_BOOT_TIMESTAMP}ms) - Warm and ready for incoming Meta webhooks`);
 
-// Pre-warm TCP + TLS handshakes with Meta Graph & Gemini endpoints to eliminate cold DNS/TLS latency
+// Pre-warm TCP + TLS handshakes with Meta Graph & OpenAI endpoints to eliminate cold DNS/TLS latency
 function preWarmHttpConnections() {
   const hosts = [
     'https://graph.instagram.com',
     'https://graph.facebook.com',
-    'https://generativelanguage.googleapis.com',
     'https://api.openai.com',
   ];
   for (const host of hosts) {
@@ -2207,7 +2198,7 @@ async function startServer() {
     if (!replyText && isExplicitAiConversation) {
       const ai_start = Date.now();
       const aiAction = matchedAutomation?.actions?.find((a) => a.type === 'ai_chatbot');
-      const selectedModel = aiAction?.ai_model || 'gpt-4o-mini';
+      const selectedModel = 'gpt-4o-mini';
       const promptToUse =
         systemPrompt ||
         'You are a concise Instagram assistant. Reply politely and directly in 1 short sentence.';
@@ -2215,22 +2206,11 @@ async function startServer() {
       console.log(`🤖 4. AI Generation Started:   ${selectedModel}...`);
 
       try {
-        if (selectedModel === 'gpt-4o-mini') {
-          replyText = await generateOpenAIDmReply({
-            incomingText: messageText,
-            systemInstruction: promptToUse,
-            maxTokens: 90,
-          });
-        } else {
-          const aiRes = await generateGeminiChatReply({
-            history: [],
-            incomingText: messageText,
-            systemInstruction: promptToUse,
-            model: selectedModel as any,
-            maxOutputTokens: 60,
-          });
-          replyText = aiRes.reply || 'Thank you for reaching out! How can I help you today?';
-        }
+        replyText = await generateOpenAIDmReply({
+          incomingText: messageText,
+          systemInstruction: promptToUse,
+          maxTokens: 90,
+        });
       } catch (aiErr) {
         console.error('[AI_REPLY_GEN_ERROR]', selectedModel, aiErr);
         replyText = 'Thanks for reaching out! How can I help you today?';
@@ -2802,135 +2782,6 @@ async function startServer() {
       console.error('[SEND_DM_API_ERROR]', err);
       return res.status(500).json({ error: String(err?.message || err) });
     }
-  });
-
-  // 8. Gemini Multi-Key Rotation Chat API Endpoint
-  app.post('/api/gemini/chat', async (req: Request, res: Response) => {
-    try {
-      const { username, text, history, systemInstruction, model } = req.body;
-
-      if (!text) {
-        return res.status(400).json({ error: 'Missing required parameter: text' });
-      }
-
-      console.log(`[GEMINI CHAT API] Request from @${username || 'guest'}: "${text}"`);
-
-      const result = await generateGeminiChatReply({
-        history: history || [],
-        incomingText: text,
-        systemInstruction,
-        model,
-      });
-
-      return res.json({
-        success: true,
-        reply: result.reply,
-        usedKeyLabel: result.usedKeyLabel,
-        rotatedCount: result.rotatedCount,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err: any) {
-      console.error('[GEMINI CHAT API ERROR]', err);
-      return res.status(500).json({
-        error: 'Failed to process Gemini chat request',
-        details: String(err?.message || err),
-      });
-    }
-  });
-
-  // 8.5. Gemini Streaming Response API Endpoint
-  app.post('/api/gemini/stream', async (req: Request, res: Response) => {
-    try {
-      const { text, history, systemInstruction, model } = req.body;
-      if (!text) {
-        return res.status(400).json({ error: 'Missing required parameter: text' });
-      }
-
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-
-      const generator = generateGeminiChatStream({
-        history: history || [],
-        incomingText: text,
-        systemInstruction,
-        model,
-      });
-
-      for await (const data of generator) {
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-      }
-
-      res.write('data: [DONE]\n\n');
-      res.end();
-    } catch (err: any) {
-      console.error('[GEMINI STREAM API ERROR]', err);
-      res.status(500).json({ error: 'Streaming error', details: String(err?.message || err) });
-    }
-  });
-
-  // 8.6. Gemini Smart System Prompt Analyzer Endpoint
-  app.post('/api/gemini/analyze-prompt', async (req: Request, res: Response) => {
-    try {
-      const { prompt } = req.body;
-      const promptToAnalyze = typeof prompt === 'string' ? prompt : '';
-      console.log(`🧠 [GEMINI_PROMPT_ANALYZER] Analyzing prompt (${promptToAnalyze.length} chars)...`);
-
-      const analysis = await analyzeSystemPromptWithGemini(promptToAnalyze);
-      return res.json({
-        success: true,
-        analysis,
-      });
-    } catch (err: any) {
-      console.error('[GEMINI_PROMPT_ANALYZER_ERROR]', err);
-      return res.status(500).json({
-        error: 'Prompt analysis failed',
-        details: String(err?.message || err),
-      });
-    }
-  });
-
-  // 9. Gemini Multi-Key Pool Management Endpoints
-  app.get('/api/gemini/keys', (req: Request, res: Response) => {
-    const keys = getLocalKeyPool();
-    const sanitizedKeys = keys.map((k) => ({
-      ...k,
-      maskedKey: k.key.length > 8 ? `${k.key.slice(0, 6)}...${k.key.slice(-4)}` : '••••••••',
-    }));
-    return res.json({ keys: sanitizedKeys });
-  });
-
-  app.post('/api/gemini/keys', (req: Request, res: Response) => {
-    const { key, label } = req.body;
-    if (!key || !label) {
-      return res.status(400).json({ error: 'Missing key or label' });
-    }
-
-    const currentPool = getLocalKeyPool();
-    const keyId = `key_${Date.now()}`;
-    const newKeyItem: GeminiApiKeyItem = {
-      id: keyId,
-      key: key.trim(),
-      label: label.trim(),
-      status: 'active',
-      cooldownUntil: null,
-      requestCount: 0,
-      errorCount: 0,
-      lastUsedAt: new Date().toISOString(),
-    };
-
-    const updated = [newKeyItem, ...currentPool];
-    setLocalKeyPool(updated);
-
-    return res.json({ success: true, keys: updated });
-  });
-
-  app.delete('/api/gemini/keys/:id', (req: Request, res: Response) => {
-    const { id } = req.params;
-    const currentPool = getLocalKeyPool();
-    const updated = currentPool.filter((k) => k.id !== id);
-    setLocalKeyPool(updated);
-    return res.json({ success: true, keys: updated });
   });
 
   // Vite Middleware or Static Production File Serving
