@@ -12,6 +12,11 @@ const automationCache = new Map<
   string,
   { expiresAt: number; automation: any | null }
 >();
+const pendingOutboundMemory = new Map<
+  string,
+  { recipientId: string; expiresAt: number }
+>();
+
 const historyCache = new Map<
   string,
   { expiresAt: number; messages: any[] }
@@ -101,7 +106,10 @@ function normalizeReplyCacheKey(value: unknown): string {
   const normalized = String(value || "")
     .trim()
     .toLocaleLowerCase()
-    .replace(/\s+/g, " ");
+    .replace(/[!?.,;:()[\]{}"'\u2018\u2019\u201c\u201d]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
   return normalized.length <= 500 ? normalized : "";
 }
 
@@ -161,7 +169,8 @@ async function loadDmContext(
   ids: string[],
   messageId: string,
   incomingText: string,
-  senderId: string
+  senderId: string,
+  includeHistory: boolean
 ) {
   const candidates = [...new Set(
     (ids || []).map((id) => String(id || "").trim()).filter(Boolean)
@@ -169,11 +178,12 @@ async function loadDmContext(
 
   if (!candidates.length) return null;
 
-  const { data, error } = await admin.rpc("autoreply_claim_dm_context_v3", {
+  const { data, error } = await admin.rpc("autoreply_claim_dm_context_v4", {
     p_candidates: candidates,
     p_message_id: String(messageId || ""),
     p_query_key: normalizeReplyCacheKey(incomingText),
     p_sender_id: String(senderId || ""),
+    p_include_history: Boolean(includeHistory),
   });
 
   if (error) {
@@ -182,6 +192,26 @@ async function loadDmContext(
   }
 
   return data || null;
+}
+
+async function markPendingOutbound(
+  admin: any,
+  workspaceId: string,
+  responseText: string,
+  recipientId: string
+) {
+  const textKey = normalizeReplyCacheKey(responseText);
+  if (!workspaceId || !textKey || !recipientId) return;
+
+  const { error } = await admin.rpc("autoreply_mark_pending_outbound", {
+    p_user_id: workspaceId,
+    p_text_key: textKey,
+    p_recipient_id: recipientId,
+  });
+
+  if (error) {
+    console.warn("[LIVE_DM_PENDING_OUTBOUND_WARN]", error);
+  }
 }
 
 async function markOutboundClaim(
@@ -217,7 +247,7 @@ async function saveReplyCache(
         automation_id: automationId,
         query_key: queryKey,
         response_text: responseText,
-        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,automation_id,query_key" }
@@ -742,7 +772,7 @@ async function generateReply(
               "You are a helpful Instagram DM assistant. Reply naturally and briefly.",
           },
           ...history
-            .slice(-6)
+            .slice(-4)
             .filter((m: any) => m?.role && m?.content)
             .map((m: any) => ({
               role: m.role === "assistant" ? "assistant" : "user",
@@ -751,7 +781,7 @@ async function generateReply(
           { role: "user", content: incomingText },
         ],
         temperature: 0.3,
-        max_tokens: 100,
+        max_tokens: 72,
       }),
       signal: controller.signal,
     });
@@ -920,6 +950,27 @@ Deno.serve(async (req: Request) => {
 
   for (const item of messages) {
     const totalStart = performance.now();
+    const businessId = String(item.entryId || item.recipientId || "");
+    const incomingTextKey = normalizeReplyCacheKey(item.text);
+    const memoryKey = `${businessId}:${incomingTextKey}`;
+    const pendingMemory = pendingOutboundMemory.get(memoryKey);
+
+    if (pendingMemory && pendingMemory.expiresAt <= Date.now()) {
+      pendingOutboundMemory.delete(memoryKey);
+    } else if (
+      pendingMemory &&
+      pendingMemory.recipientId !== String(item.senderId || "")
+    ) {
+      results.push({
+        messageId: item.messageId,
+        ok: true,
+        ignored: true,
+        reason: "outbound_echo_memory",
+        totalMs: Math.round(performance.now() - totalStart),
+      });
+      continue;
+    }
+
     const contextStart = performance.now();
 
     const context = await loadDmContext(
@@ -927,7 +978,8 @@ Deno.serve(async (req: Request) => {
       [item.entryId, item.recipientId],
       item.messageId,
       item.text,
-      item.senderId
+      item.senderId,
+      !instantReply
     );
     const contextMs = Math.round(performance.now() - contextStart);
 
@@ -1080,6 +1132,22 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    const outgoingTextKey = normalizeReplyCacheKey(responseText);
+    const outgoingMemoryKey = `${igUserId}:${outgoingTextKey}`;
+    pendingOutboundMemory.set(outgoingMemoryKey, {
+      recipientId: item.senderId,
+      expiresAt: Date.now() + 10_000,
+    });
+
+    runInBackground(
+      markPendingOutbound(
+        admin,
+        workspaceId,
+        responseText,
+        item.senderId
+      )
+    );
+
     const sendStartEpoch = Date.now();
     const metaDeliveryMs = Math.max(
       0,
@@ -1171,6 +1239,7 @@ Deno.serve(async (req: Request) => {
               meta_to_relay_ms: metaToRelayMs,
               relay_to_edge_ms: relayToEdgeMs,
               fast_path: fastPath,
+              context_source: "supabase_runtime_context_v4",
             }),
           ]);
         })()
@@ -1191,6 +1260,7 @@ Deno.serve(async (req: Request) => {
         metaToRelayMs,
         relayToEdgeMs,
         fastPath,
+        contextSource: "supabase_runtime_context_v4",
         totalMs: Math.round(performance.now() - totalStart),
       });
     } catch (err) {
