@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { generateGeminiChatReply } from '../lib/geminiKeyRotator';
 import { Automation, InboxMessage } from '../types';
 
 export interface UseInstagramAutomationReturn {
@@ -50,8 +49,8 @@ export function useInstagramAutomation(): UseInstagramAutomationReturn {
   );
 
   /**
-   * Ultra-Fast Direct AI Reply Generator (< 1s Response)
-   * Uses gemini-1.5-flash + maxOutputTokens: 120 + minimal context history (last 2 messages)
+   * Direct AI Reply Generator
+   * Uses the server-side OpenAI endpoint with minimal recent context.
    */
   const generateInstantAiReply = useCallback(
     async (incomingText: string, senderUsername: string, systemInstruction?: string) => {
@@ -59,34 +58,44 @@ export function useInstagramAutomation(): UseInstagramAutomationReturn {
       const start = performance.now();
       try {
         const cleanUser = senderUsername.replace(/^@/, '').toLowerCase().trim();
-
-        // Optimized Context: Fetch ONLY the last 2 conversation messages
         const recentHistory = (inboxMessages || [])
           .filter((m: InboxMessage) => m?.from_username?.toLowerCase() === cleanUser)
           .sort((a, b) => new Date(a?.timestamp || 0).getTime() - new Date(b?.timestamp || 0).getTime())
           .slice(-2)
           .map((m) => ({
-            role: (m.direction === 'in' ? 'user' : 'model') as 'user' | 'model',
-            text: m.message_text || '',
+            role: m.direction === 'in' ? 'user' : 'assistant',
+            content: m.message_text || '',
           }));
 
-        const result = await generateGeminiChatReply({
-          history: recentHistory,
-          incomingText,
-          systemInstruction:
-            systemInstruction ||
-            'You are a friendly Instagram assistant. Reply politely and concisely in 1-2 short sentences (under 180 characters).',
-          model: 'gemini-1.5-flash',
-          maxOutputTokens: 120,
+        const response = await fetch('/api/openai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            text: incomingText,
+            history: recentHistory,
+            systemInstruction:
+              systemInstruction ||
+              'You are a friendly Instagram assistant. Reply politely and concisely.',
+            maxReplyLength: 'Short',
+            language: 'Auto Detect',
+            personality: 'Friendly',
+            assistantName: 'AI Assistant',
+          }),
         });
+
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || 'AI reply failed.');
+        }
 
         const elapsed = Math.round(performance.now() - start);
         setLastResponseLatencyMs(elapsed);
 
         return {
-          reply: result.reply,
+          reply: String(payload.reply || ''),
           latencyMs: elapsed,
-          usedKeyLabel: result.usedKeyLabel,
+          usedKeyLabel: 'GPT-4o mini',
         };
       } finally {
         setIsProcessing(false);
