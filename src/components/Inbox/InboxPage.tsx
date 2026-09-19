@@ -12,9 +12,6 @@ import {
   CheckSquare,
   Square,
   Zap,
-  Copy,
-  X,
-  Play,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -29,23 +26,11 @@ export const InboxPage: React.FC = () => {
     toggleAiForUser,
     deleteInboxThread,
     deleteInboxThreadsBulk,
-    triggerWebhookSimulation,
   } = useApp();
   const [inputText, setInputText] = useState('');
   const [search, setSearch] = useState('');
   const [selectedThreadUsernames, setSelectedThreadUsernames] = useState<string[]>([]);
   
-  // Test DM Simulation Modal
-  const [isSimModalOpen, setIsSimModalOpen] = useState(false);
-  const [simUsername, setSimUsername] = useState('customer_demo');
-  const [simText, setSimText] = useState('Hi! What is the price and how do I order?');
-  const [simType, setSimType] = useState<'dm' | 'comment'>('dm');
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [copiedWebhook, setCopiedWebhook] = useState(false);
-
-  const webhookUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/webhook` : '/api/webhook';
-  const verifyToken = 'autoreply_meta_verify_secret_token_2026';
-
   const myUsername = (instagramAccount?.username || '').toLowerCase();
 
   const isTestOrMockHandle = (uname: string): boolean => {
@@ -136,31 +121,6 @@ export const InboxPage: React.FC = () => {
     }
   };
 
-  const handleRunSimulation = async (customUser?: string, customTxt?: string) => {
-    const targetUser = customUser || simUsername || 'test_user';
-    const targetTxt = customTxt || simText || 'Hello!';
-    setIsSimulating(true);
-    try {
-      await triggerWebhookSimulation({
-        trigger_type: simType,
-        username: targetUser,
-        text: targetTxt,
-      });
-      setActiveUsername(targetUser.replace(/^@/, '').toLowerCase());
-      setIsSimModalOpen(false);
-    } catch (err) {
-      console.error('[SIMULATION_ERR]', err);
-    } finally {
-      setIsSimulating(false);
-    }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedWebhook(true);
-    setTimeout(() => setCopiedWebhook(false), 2000);
-  };
-
   const handleRemoveThread = async (usernameToRemove: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (
@@ -220,19 +180,10 @@ export const InboxPage: React.FC = () => {
             <span>Instagram Direct Messages & Inbox</span>
           </h2>
           <p className="text-xs text-slate-500 font-medium">
-            Real-time Meta Webhook synchronizer & AI auto-reply management
+            Instagram conversations and AI auto-reply management
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsSimModalOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-          >
-            <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
-            <span>Simulate Incoming DM</span>
-          </button>
-        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[78vh] flex flex-col md:flex-row">
@@ -375,60 +326,6 @@ export const InboxPage: React.FC = () => {
               <p className="text-xs text-slate-600 max-w-md mb-6 leading-relaxed">
                 Incoming Instagram DMs, story replies, and comments will show up here in real time. You can send manual replies or test the auto-reply engine below.
               </p>
-
-              {/* Quick Simulation Options */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs max-w-md w-full space-y-3 text-left">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                    <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-                    <span>Quick Test Simulator</span>
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-bold">1-Click Live Test</span>
-                </div>
-                <div className="grid grid-cols-1 gap-2">
-                  <button
-                    onClick={() => handleRunSimulation('dev_customer', 'Hi, how much does your service cost?')}
-                    className="p-2.5 rounded-xl border border-slate-200 hover:border-indigo-400 bg-slate-50 hover:bg-indigo-50/50 text-left transition-all text-xs cursor-pointer flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="font-bold text-slate-900">"Hi, how much does your service cost?"</div>
-                      <div className="text-[10px] text-slate-500 font-medium">Simulates DM from @dev_customer</div>
-                    </div>
-                    <Play className="w-3.5 h-3.5 text-indigo-600 shrink-0 ml-2" />
-                  </button>
-
-                  <button
-                    onClick={() => handleRunSimulation('shopper_alex', 'Can I get a discount link please?')}
-                    className="p-2.5 rounded-xl border border-slate-200 hover:border-indigo-400 bg-slate-50 hover:bg-indigo-50/50 text-left transition-all text-xs cursor-pointer flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="font-bold text-slate-900">"Can I get a discount link please?"</div>
-                      <div className="text-[10px] text-slate-500 font-medium">Simulates DM from @shopper_alex</div>
-                    </div>
-                    <Play className="w-3.5 h-3.5 text-indigo-600 shrink-0 ml-2" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Webhook Configuration Quick Copy */}
-              <div className="mt-4 p-3.5 rounded-xl bg-slate-100/80 border border-slate-200 max-w-md w-full text-left space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
-                  <span>Meta Webhook URL</span>
-                  <button
-                    onClick={() => copyToClipboard(webhookUrl)}
-                    className="text-[#3B5BFF] hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Copy className="w-3 h-3" />
-                    <span>{copiedWebhook ? 'Copied!' : 'Copy URL'}</span>
-                  </button>
-                </div>
-                <div className="text-[11px] font-mono bg-white p-2 rounded-lg border border-slate-200 truncate text-slate-700">
-                  {webhookUrl}
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  Verify Token: <code className="font-mono text-slate-800 font-bold">{verifyToken}</code>
-                </div>
-              </div>
             </div>
           ) : (
             <>
@@ -456,7 +353,7 @@ export const InboxPage: React.FC = () => {
                         </span>
                       )}
                     </h4>
-                    <p className="text-[10px] text-slate-500">Instagram DM Thread • Synced via Meta Webhook</p>
+                    <p className="text-[10px] text-slate-500">Instagram DM Thread • Synced from Instagram</p>
                   </div>
                 </div>
 
@@ -618,135 +515,6 @@ export const InboxPage: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* Simulation Modal */}
-      {isSimModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
-                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-                </div>
-                <div>
-                  <h3 className="font-black text-slate-900 text-sm">Simulate Incoming Instagram Message</h3>
-                  <p className="text-[11px] text-slate-500">Test your auto-replies, keyword triggers, and AI response</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsSimModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Trigger Channel</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSimType('dm')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
-                      simType === 'dm'
-                        ? 'bg-indigo-50 border-indigo-600 text-indigo-700'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    Direct Message (DM)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSimType('comment')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
-                      simType === 'comment'
-                        ? 'bg-indigo-50 border-indigo-600 text-indigo-700'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    Post / Reel Comment
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Sender Instagram Handle</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">@</span>
-                  <input
-                    type="text"
-                    value={simUsername}
-                    onChange={(e) => setSimUsername(e.target.value)}
-                    placeholder="customer_username"
-                    className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Incoming Message Text</label>
-                <textarea
-                  rows={3}
-                  value={simText}
-                  onChange={(e) => setSimText(e.target.value)}
-                  placeholder="Enter message text (e.g. 'price', 'link', 'hello')..."
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
-                />
-              </div>
-
-              {/* Sample Quick Fill Buttons */}
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
-                  Try Sample Inquiries:
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setSimText('price')}
-                    className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg font-medium cursor-pointer"
-                  >
-                    "price"
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSimText('send link')}
-                    className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg font-medium cursor-pointer"
-                  >
-                    "send link"
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSimText('Can you explain your features?')}
-                    className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg font-medium cursor-pointer"
-                  >
-                    "Can you explain your features?" (AI)
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsSimModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isSimulating || !simText.trim()}
-                onClick={() => handleRunSimulation()}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
-              >
-                <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
-                <span>{isSimulating ? 'Processing Auto-Reply...' : 'Simulate & Auto-Reply'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

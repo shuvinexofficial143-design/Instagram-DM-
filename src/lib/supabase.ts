@@ -1,6 +1,5 @@
 import { createClient, type User as SupabaseUser, type Session } from '@supabase/supabase-js';
 
-const viteEnv = ((import.meta as any).env || {}) as Record<string, string | undefined>;
 const SUPABASE_URL = 'https://dwgxmmftybxwpurgsxkx.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08';
 

@@ -46,7 +46,6 @@ export default async function handler(req: any, res: any) {
       automations: [],
       contacts: [],
       inboxMessages: [],
-      logs: [],
     });
   }
 
@@ -77,7 +76,6 @@ export default async function handler(req: any, res: any) {
       automations: Array.isArray(payload?.automations) ? payload.automations : [],
       contacts: Array.isArray(payload?.contacts) ? payload.contacts : [],
       inboxMessages: Array.isArray(payload?.inboxMessages) ? payload.inboxMessages : [],
-      logs: Array.isArray(payload?.logs) ? payload.logs : [],
     });
   } catch (err: any) {
     return res.status(500).json({

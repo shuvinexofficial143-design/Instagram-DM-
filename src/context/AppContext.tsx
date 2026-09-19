@@ -5,7 +5,6 @@ import {
   Automation,
   Contact,
   InboxMessage,
-  MetaConfig,
   WebhookLogEvent,
   TriggerType,
 } from '../types';
@@ -24,13 +23,6 @@ import {
   isSupabaseInitialized,
 } from '../lib/supabase';
 
-const defaultMetaConfig: MetaConfig = {
-  app_id: '2300969844066002',
-  app_secret: '',
-  webhook_verify_token: '',
-  redirect_uri: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/api/auth/instagram/callback`,
-};
-
 interface AppContextType {
   user: UserProfile;
   firebaseUser: User | null;
@@ -44,8 +36,6 @@ interface AppContextType {
   automations: Automation[];
   contacts: Contact[];
   inboxMessages: InboxMessage[];
-  metaConfig: MetaConfig;
-  logs: WebhookLogEvent[];
   pausedAiUsers: string[];
   isAdmin: boolean;
   activeTab: 'home' | 'automations' | 'contacts' | 'inbox' | 'settings' | 'about' | 'admin';
@@ -86,7 +76,6 @@ interface AppContextType {
   deleteInboxThreadsBulk: (usernames: string[]) => Promise<void>;
 
   // Channel & Config Actions
-  updateMetaConfig: (config: Partial<MetaConfig>) => void;
   reauthorizeChannel: () => void;
   disconnectChannel: () => Promise<void>;
   connectChannel: (account: Partial<InstagramAccount> | string) => Promise<void>;
@@ -242,8 +231,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([]);
-  const [metaConfig, setMetaConfig] = useState<MetaConfig>(defaultMetaConfig);
-  const [logs, setLogs] = useState<WebhookLogEvent[]>([]);
+  const [, setLogs] = useState<WebhookLogEvent[]>([]);
   const [pausedAiUsers, setPausedAiUsers] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
@@ -521,24 +509,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             )
           );
 
-          const guestLogs: WebhookLogEvent[] = (
-            Array.isArray(payload?.logs) ? payload.logs : []
-          ).map((log: any) => ({
-            ...log,
-            id: log.id || `log_${Date.now()}`,
-            timestamp: log.timestamp || new Date().toISOString(),
-            trigger_type: log.trigger_type || 'dm_ai_conversation',
-            from_username: log.from_username || 'instagram_user',
-            incoming_text: log.incoming_text || '',
-            status: log.status || 'triggered',
-          }));
-
-          setLogs(
-            guestLogs.sort(
-              (a, b) =>
-                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-            )
-          );
         } catch (err: any) {
           console.warn('[GUEST_WORKSPACE_LOAD_WARN]', err?.message || err);
         }
@@ -559,8 +529,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAutomations([]);
     setContacts([]);
     setInboxMessages([]);
-    setLogs([]);
-
     const unsubscribeAutomations = subscribeToUserCollection<Automation>(uid, 'automations', (data) => {
       if (data) {
         const sanitized: Automation[] = data.map(sanitizeAutomationRecord);
@@ -613,14 +581,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    const unsubscribeLogs = subscribeToUserCollection<WebhookLogEvent>(uid, 'webhook_logs', (data) => {
-      if (data) {
-        setLogs(data.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-      } else {
-        setLogs([]);
-      }
-    });
-
     const unsubscribeAccount = subscribeToUserCollection<InstagramAccount>(uid, 'instagram_account', (data) => {
       if (data && data.length > 0 && data[0]?.username) {
         const { access_token: _serverOnlyToken, ...safeAccount } = data[0];
@@ -634,7 +594,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribeAutomations();
       unsubscribeContacts();
       unsubscribeInbox();
-      unsubscribeLogs();
       unsubscribeAccount();
     };
   }, [firebaseUser?.uid, isSupabaseInitialized]);
@@ -1362,10 +1321,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updateMetaConfig = (config: Partial<MetaConfig>) => {
-    setMetaConfig((prev) => ({ ...prev, ...config }));
-  };
-
   const reauthorizeChannel = () => {
     setIsConnectModalOpen(true);
   };
@@ -1422,8 +1377,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         automations,
         contacts,
         inboxMessages,
-        metaConfig,
-        logs,
         pausedAiUsers,
         isAdmin,
         activeTab,
@@ -1450,7 +1403,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteContactsBulk,
         deleteInboxThread,
         deleteInboxThreadsBulk,
-        updateMetaConfig,
         reauthorizeChannel,
         disconnectChannel,
         connectChannel,

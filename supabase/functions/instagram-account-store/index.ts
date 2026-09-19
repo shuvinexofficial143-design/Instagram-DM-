@@ -368,7 +368,6 @@ Deno.serve(async (req: Request) => {
         "automations",
         "contacts",
         "inbox_messages",
-        "webhook_logs",
       ];
 
       const { data, error } = await admin
@@ -387,7 +386,6 @@ Deno.serve(async (req: Request) => {
         automations: [],
         contacts: [],
         inbox_messages: [],
-        webhook_logs: [],
       };
 
       for (const row of data || []) {
@@ -406,7 +404,6 @@ Deno.serve(async (req: Request) => {
         automations: result.automations,
         contacts: result.contacts,
         inboxMessages: result.inbox_messages,
-        logs: result.webhook_logs,
       });
     }
 
