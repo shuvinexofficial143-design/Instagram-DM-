@@ -160,7 +160,8 @@ async function loadDmContext(
   admin: any,
   ids: string[],
   messageId: string,
-  incomingText: string
+  incomingText: string,
+  senderId: string
 ) {
   const candidates = [...new Set(
     (ids || []).map((id) => String(id || "").trim()).filter(Boolean)
@@ -168,10 +169,11 @@ async function loadDmContext(
 
   if (!candidates.length) return null;
 
-  const { data, error } = await admin.rpc("autoreply_claim_dm_context_v2", {
+  const { data, error } = await admin.rpc("autoreply_claim_dm_context_v3", {
     p_candidates: candidates,
     p_message_id: String(messageId || ""),
     p_query_key: normalizeReplyCacheKey(incomingText),
+    p_sender_id: String(senderId || ""),
   });
 
   if (error) {
@@ -924,7 +926,8 @@ Deno.serve(async (req: Request) => {
       admin,
       [item.entryId, item.recipientId],
       item.messageId,
-      item.text
+      item.text,
+      item.senderId
     );
     const contextMs = Math.round(performance.now() - contextStart);
 
@@ -1018,8 +1021,10 @@ Deno.serve(async (req: Request) => {
     let responseText = "";
     let aiError = "";
     let aiMs = 0;
-    let history: any[] = [];
-    let historyMs = 0;
+    const history: any[] = Array.isArray(context?.history)
+      ? context.history.slice(-10)
+      : [];
+    const historyMs = 0;
     let fastPath: string | null = null;
     const instantReply = getInstantFastReply(item.text);
     const cachedReply = asText(context?.cached_reply, 1000);
@@ -1039,9 +1044,6 @@ Deno.serve(async (req: Request) => {
         messageId: item.messageId,
       });
     } else {
-      const historyStart = performance.now();
-      history = await loadHistory(admin, workspaceId, item.senderId);
-      const historyMs = Math.round(performance.now() - historyStart);
       const aiStart = performance.now();
 
       try {
