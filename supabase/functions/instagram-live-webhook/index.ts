@@ -97,6 +97,14 @@ function asText(value: unknown, max = 12000): string {
   return String(value || "").trim().slice(0, max);
 }
 
+function normalizeReplyCacheKey(value: unknown): string {
+  const normalized = String(value || "")
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/\s+/g, " ");
+  return normalized.length <= 500 ? normalized : "";
+}
+
 function extractDirectMessages(event: any) {
   const items: Array<{
     entryId: string;
@@ -151,7 +159,8 @@ function extractDirectMessages(event: any) {
 async function loadDmContext(
   admin: any,
   ids: string[],
-  messageId: string
+  messageId: string,
+  incomingText: string
 ) {
   const candidates = [...new Set(
     (ids || []).map((id) => String(id || "").trim()).filter(Boolean)
@@ -159,9 +168,10 @@ async function loadDmContext(
 
   if (!candidates.length) return null;
 
-  const { data, error } = await admin.rpc("autoreply_claim_dm_context", {
+  const { data, error } = await admin.rpc("autoreply_claim_dm_context_v2", {
     p_candidates: candidates,
     p_message_id: String(messageId || ""),
+    p_query_key: normalizeReplyCacheKey(incomingText),
   });
 
   if (error) {
@@ -184,6 +194,35 @@ async function markOutboundClaim(
   });
   if (error) {
     console.warn("[LIVE_DM_OUTBOUND_CLAIM_WARN]", error);
+  }
+}
+
+async function saveReplyCache(
+  admin: any,
+  workspaceId: string,
+  automationId: string,
+  incomingText: string,
+  responseText: string
+) {
+  const queryKey = normalizeReplyCacheKey(incomingText);
+  if (!workspaceId || !automationId || !queryKey || !responseText) return;
+
+  const { error } = await admin
+    .from("autoreply_reply_cache")
+    .upsert(
+      {
+        user_id: workspaceId,
+        automation_id: automationId,
+        query_key: queryKey,
+        response_text: responseText,
+        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,automation_id,query_key" }
+    );
+
+  if (error) {
+    console.warn("[LIVE_DM_REPLY_CACHE_SAVE_WARN]", error);
   }
 }
 
@@ -682,7 +721,7 @@ async function generateReply(
   if (!openaiKey) throw new Error("OPENAI_API_KEY is missing");
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 18000);
+  const timeout = setTimeout(() => controller.abort(), 12000);
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -701,15 +740,16 @@ async function generateReply(
               "You are a helpful Instagram DM assistant. Reply naturally and briefly.",
           },
           ...history
+            .slice(-6)
             .filter((m: any) => m?.role && m?.content)
             .map((m: any) => ({
               role: m.role === "assistant" ? "assistant" : "user",
-              content: asText(m.content, 4000),
+              content: asText(m.content, 1200),
             })),
           { role: "user", content: incomingText },
         ],
         temperature: 0.3,
-        max_tokens: 160,
+        max_tokens: 100,
       }),
       signal: controller.signal,
     });
@@ -883,7 +923,8 @@ Deno.serve(async (req: Request) => {
     const context = await loadDmContext(
       admin,
       [item.entryId, item.recipientId],
-      item.messageId
+      item.messageId,
+      item.text
     );
     const contextMs = Math.round(performance.now() - contextStart);
 
@@ -979,12 +1020,22 @@ Deno.serve(async (req: Request) => {
     let aiMs = 0;
     let history: any[] = [];
     let historyMs = 0;
+    let fastPath: string | null = null;
     const instantReply = getInstantFastReply(item.text);
+    const cachedReply = asText(context?.cached_reply, 1000);
 
     if (instantReply) {
       responseText = instantReply;
+      fastPath = "greeting";
       console.log("[LIVE_DM_FAST_PATH]", {
-        type: "greeting",
+        type: fastPath,
+        messageId: item.messageId,
+      });
+    } else if (cachedReply) {
+      responseText = cachedReply;
+      fastPath = "supabase_reply_cache";
+      console.log("[LIVE_DM_FAST_PATH]", {
+        type: fastPath,
         messageId: item.messageId,
       });
     } else {
@@ -1013,6 +1064,18 @@ Deno.serve(async (req: Request) => {
       }
 
       aiMs = Math.round(performance.now() - aiStart);
+
+      if (!aiError && responseText) {
+        runInBackground(
+          saveReplyCache(
+            admin,
+            workspaceId,
+            String(automation.id || ""),
+            item.text,
+            responseText
+          )
+        );
+      }
     }
 
     const sendStartEpoch = Date.now();
@@ -1105,7 +1168,7 @@ Deno.serve(async (req: Request) => {
               meta_delivery_ms: metaDeliveryMs,
               meta_to_relay_ms: metaToRelayMs,
               relay_to_edge_ms: relayToEdgeMs,
-              fast_path: instantReply ? "greeting" : null,
+              fast_path: fastPath,
             }),
           ]);
         })()
@@ -1125,7 +1188,7 @@ Deno.serve(async (req: Request) => {
         metaDeliveryMs,
         metaToRelayMs,
         relayToEdgeMs,
-        fastPath: instantReply ? "greeting" : null,
+        fastPath,
         totalMs: Math.round(performance.now() - totalStart),
       });
     } catch (err) {
