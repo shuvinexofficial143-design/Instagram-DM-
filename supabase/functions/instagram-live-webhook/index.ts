@@ -950,6 +950,7 @@ Deno.serve(async (req: Request) => {
 
   for (const item of messages) {
     const totalStart = performance.now();
+    const instantReply = getInstantFastReply(item.text);
     const businessId = String(item.entryId || item.recipientId || "");
     const incomingTextKey = normalizeReplyCacheKey(item.text);
     const memoryKey = `${businessId}:${incomingTextKey}`;
@@ -1078,7 +1079,6 @@ Deno.serve(async (req: Request) => {
       : [];
     const historyMs = 0;
     let fastPath: string | null = null;
-    const instantReply = getInstantFastReply(item.text);
     const cachedReply = asText(context?.cached_reply, 1000);
 
     if (instantReply) {
