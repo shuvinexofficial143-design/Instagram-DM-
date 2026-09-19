@@ -470,9 +470,9 @@ export const HomePage: React.FC = () => {
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-black text-slate-900 group-hover:text-emerald-700 transition-colors">
-                AI & Gemini Keys
+                AI Settings
               </div>
-              <div className="text-xs text-slate-600 font-semibold">Rotator & API options</div>
+              <div className="text-xs text-slate-600 font-semibold">Prompt & automation options</div>
             </div>
           </button>
         </div>
