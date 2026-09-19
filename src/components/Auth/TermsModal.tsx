@@ -99,10 +99,10 @@ export const TermsModal: React.FC<TermsModalProps> = ({ isOpen, onClose, type })
               </div>
 
               <div className="space-y-1">
-                <h4 className="font-bold text-slate-900 text-sm">4. Gemini AI Data Privacy</h4>
+                <h4 className="font-bold text-slate-900 text-sm">4. AI Processing</h4>
                 <p>
-                  Contextual prompts sent to Gemini models are utilized solely to synthesize contextual
-                  reply messages and are not used to train public models.
+                  Context needed to generate automated replies is sent only to the configured AI service
+                  for processing the requested response.
                 </p>
               </div>
             </>
@@ -111,7 +111,7 @@ export const TermsModal: React.FC<TermsModalProps> = ({ isOpen, onClose, type })
           <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-2.5 text-slate-700">
             <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
             <span className="text-[11px] font-medium">
-              Your security and privacy are guaranteed under standard Meta Graph API and Firebase encryption policies.
+              Your account data is handled through the configured Meta Graph API and Supabase-backed application services.
             </span>
           </div>
         </div>
