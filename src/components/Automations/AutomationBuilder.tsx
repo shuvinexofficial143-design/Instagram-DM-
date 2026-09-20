@@ -298,6 +298,10 @@ Answer only about the business.`
 
   if (!isBuilderOpen) return null;
 
+  // Readability layer: larger, clearer typography without changing builder behavior.
+  const builderReadabilityClass =
+    "[&_label]:text-[15px] [&_label]:font-semibold [&_p]:text-[14px] [&_p]:leading-6 [&_button]:text-[14px] [&_input]:text-[15px] [&_textarea]:text-[15px] [&_select]:text-[15px] [&_.text-xs]:text-[13px] [&_.text-\\[10px\\]]:text-[12px] [&_.text-\\[11px\\]]:text-[13px] [&_.text-\\[12px\\]]:text-[14px] [&_.text-sm]:text-[15px]";
+
   // Add keyword handler
   const handleAddKeyword = () => {
     const trimmed = newKeyword.trim().toUpperCase();
@@ -556,7 +560,7 @@ Answer only about the business.`
       : 'Direct Message (DM)';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/75 p-2 sm:p-4 md:p-6">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/75 p-2 sm:p-4 md:p-6 ${builderReadabilityClass}`}>
       <div className="flex h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-white/90 bg-gradient-to-b from-[#F7FAFF] via-[#FBFCFF] to-[#F8F6FF] shadow-2xl">
         
         {/* ================= HEADER / STEP 0: AUTOMATION HEADER & TEMPLATES ================= */}
