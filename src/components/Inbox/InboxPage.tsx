@@ -231,12 +231,12 @@ export const InboxPage: React.FC = () => {
                 <button
                   onClick={toggleSelectAllThreads}
                   title={isAllThreadsSelected ? "Deselect All" : "Select All"}
-                  className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 cursor-pointer"
+                  className="rounded-xl border border-indigo-100 bg-indigo-50/80 p-2 text-indigo-600 hover:bg-indigo-100 cursor-pointer"
                 >
                   {isAllThreadsSelected ? (
-                    <CheckSquare className="w-4 h-4 text-[#3B5BFF]" />
+                    <CheckSquare className="h-5 w-5 text-indigo-600 drop-shadow-sm" />
                   ) : (
-                    <Square className="w-4 h-4 stroke-[2.2]" />
+                    <Square className="h-5 w-5 text-indigo-500 stroke-[2.5]" />
                   )}
                 </button>
               )}
@@ -269,12 +269,12 @@ export const InboxPage: React.FC = () => {
                       {/* Select Checkbox */}
                       <button
                         onClick={(e) => toggleSelectOneThread(username, e)}
-                        className="text-slate-300 hover:text-slate-600 cursor-pointer shrink-0"
+                        className="shrink-0 rounded-lg border border-indigo-100 bg-white p-1.5 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
                       >
                         {isSelected ? (
-                          <CheckSquare className="w-4 h-4 text-[#3B5BFF]" />
+                          <CheckSquare className="h-5 w-5 text-indigo-600 drop-shadow-sm" />
                         ) : (
-                          <Square className="w-4 h-4" />
+                          <Square className="h-5 w-5 text-indigo-500 stroke-[2.5]" />
                         )}
                       </button>
 
