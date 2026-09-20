@@ -108,36 +108,29 @@ export const HomePage: React.FC = () => {
           <p className="text-xs sm:text-sm md:text-base font-semibold text-slate-700 max-w-2xl leading-relaxed">
             Sit back while our AI automation engine handles your Instagram DMs, replies to post comments, and converts followers into customers 24/7 in real-time.
           </p>
-
-          {/* Quick Live Stats Pills */}
-          <div className="flex items-center gap-3 flex-wrap pt-1">
-            <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-white/80 px-3.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm backdrop-blur-md">
-              <Send className="h-3.5 w-3.5 text-indigo-600 stroke-[2.2]" />
-              <span>{totalDms} DMs Sent</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-white/80 px-3.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm backdrop-blur-md">
-              <MessageCircle className="h-3.5 w-3.5 text-blue-600 stroke-[2.2]" />
-              <span>{commentReplies} Comments Replied</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-white/80 px-3.5 py-1.5 text-xs font-extrabold text-slate-700 shadow-sm backdrop-blur-md">
-              <Sparkles className="h-3.5 w-3.5 text-violet-600 stroke-[2.2]" />
-              <span>{totalUniqueUsers} People Reached</span>
+          {/* Automation setup guidance */}
+          <div className="pt-3 max-w-2xl">
+            <div className="rounded-2xl border border-indigo-200/70 bg-indigo-50/55 p-4 sm:p-5">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-500">Simple Setup</p>
+              <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-lg font-black text-transparent sm:text-xl">
+                How to set up automation
+              </h2>
+              <p className="mt-1.5 text-xs font-semibold leading-5 text-slate-600 sm:text-sm">
+                Review your Instagram connection and automation settings, then create your workflow in a few simple steps.
+              </p>
             </div>
           </div>
         </div>
 
-        {/* CTA Button */}
+        {/* Setup CTA */}
         <div className="relative z-10">
           <button
-            onClick={() => {
-              const el = document.getElementById('top-performers-section');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }}
+            onClick={() => setActiveTab('settings')}
             className="inline-flex cursor-pointer items-center gap-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-6 py-3.5 text-xs font-black text-white shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.98] md:text-sm"
           >
-            <Sparkles className="h-4 w-4 text-white/90" />
-            <span>See Top Performers</span>
-            <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+            <Settings className="h-4 w-4" />
+            <span>How to set up automation</span>
+            <ArrowRight className="h-4 w-4 stroke-[2.5]" />
           </button>
         </div>
       </div>
