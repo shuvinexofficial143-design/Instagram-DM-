@@ -15,6 +15,7 @@ import {
   ChevronDown,
   MessageCircle,
   Bot,
+  BadgeCheck,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -86,14 +87,17 @@ export const SettingsPage: React.FC = () => {
 
         <div className="mt-5 flex flex-col items-start justify-between gap-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-blue-50/65 to-violet-50/45 p-4 sm:flex-row sm:items-center">
           <div className="flex items-center gap-3.5">
-            <UserAvatar
-              src={user.avatar_url}
-              username={user.name}
-              size="lg"
-            />
+            <div className="relative">
+              <UserAvatar
+                src={firebaseUser?.photoURL || user.avatar_url}
+                username={firebaseUser?.displayName || user.name}
+                size="lg"
+              />
+              <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-white text-[11px] font-black text-blue-600 shadow-sm">G</span>
+            </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="text-sm font-black text-slate-950">{user.name}</h4>
+                <h4 className="text-sm font-black text-slate-950">{firebaseUser?.displayName || user.name}</h4>
                 <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-800">
                   {user.plan} Plan
                 </span>
@@ -101,6 +105,7 @@ export const SettingsPage: React.FC = () => {
               <div className="mt-0.5 flex items-center gap-1.5 text-xs font-bold text-slate-600">
                 <Mail className="h-3.5 w-3.5 text-slate-400" />
                 <span>{firebaseUser?.email || user.email || 'Account session'}</span>
+                {firebaseUser?.uid && <span className="hidden sm:inline text-slate-400">• ID {firebaseUser.uid.slice(0, 8)}</span>}
               </div>
             </div>
           </div>
