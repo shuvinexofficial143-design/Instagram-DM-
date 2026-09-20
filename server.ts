@@ -2715,6 +2715,32 @@ async function startServer() {
     }
   });
 
+  // 7.4. Generate a personalized bulk DM draft with the same OpenAI integration used by AI Conversation.
+  app.post('/api/ai/bulk-message', async (req: Request, res: Response) => {
+    try {
+      const { instruction, username } = req.body || {};
+      if (!instruction || !String(instruction).trim()) {
+        return res.status(400).json({ success: false, error: 'AI instruction is required' });
+      }
+
+      const cleanUsername = String(username || '').replace(/^@/, '').trim();
+      const personalized = await generateOpenAIDmReply({
+        incomingText: `Recipient Instagram username: @${cleanUsername || 'contact'}\nMessage goal/instruction: ${String(instruction).trim()}\nWrite only the final DM text. Do not explain your answer.`,
+        systemInstruction:
+          'You write concise, natural Instagram direct messages. Follow the supplied message goal faithfully. Personalize only from facts explicitly provided; never invent personal details. Keep the message useful and human, normally 1-3 short sentences. Do not mention AI, automation, spam filters, or platform safeguards.',
+        maxTokens: 120,
+      });
+
+      return res.json({ success: true, message: personalized });
+    } catch (err: any) {
+      console.error('[BULK_AI_GENERATION_ERROR]', err);
+      return res.status(500).json({
+        success: false,
+        error: String(err?.message || 'AI message generation failed'),
+      });
+    }
+  });
+
   // 7.5. Send Manual DM API Endpoint (for Inbox manual replies)
   app.post('/api/instagram/send-dm', async (req: Request, res: Response) => {
     try {
