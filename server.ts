@@ -1083,6 +1083,22 @@ async function startServer() {
     { id: 'business', name: 'Business', price_inr: 1299, total_messages: 75000, ai_replies: 40000, instagram_accounts: 5, automations_limit: null, billing_days: 30, is_active: true, sort_order: 3 },
   ];
 
+  // Public plan catalog. Safe fields only; no admin data is exposed.
+  app.get('/api/plans', async (_req: Request, res: Response) => {
+    try {
+      if (!serverSupabase) return res.json({ success: true, plans: DEFAULT_ADMIN_PLANS });
+      const { data, error } = await serverSupabase
+        .from('autoreply_plans')
+        .select('id,name,price_inr,total_messages,ai_replies,instagram_accounts,automations_limit,billing_days,is_active,sort_order')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+      if (error || !data?.length) return res.json({ success: true, plans: DEFAULT_ADMIN_PLANS.filter((p) => p.is_active) });
+      return res.json({ success: true, plans: data });
+    } catch {
+      return res.json({ success: true, plans: DEFAULT_ADMIN_PLANS.filter((p) => p.is_active) });
+    }
+  });
+
   app.get('/api/admin/control-center', async (req: Request, res: Response) => {
     try {
       const admin = await getVerifiedAdmin(req);
