@@ -5,7 +5,7 @@ import { useApp } from '../../context/AppContext';
 export const PlanBanner: React.FC = () => {
   const { user, setIsRenewModalOpen } = useApp();
 
-  const isTrial = user?.plan === 'trial' || user?.plan === 'free';
+  const isTrial = user?.plan === 'trial';
   if (!isTrial) return null;
 
   return (
