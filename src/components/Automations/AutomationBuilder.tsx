@@ -732,7 +732,7 @@ Answer only about the business.`
                   <div className="border-b border-slate-100 pb-4">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-[#2563eb]"></div>
-                      <h3 className="text-sm font-black text-slate-900 tracking-tight uppercase">
+                      <h3 className="text-base font-black text-slate-900 tracking-tight">
                         Step 1 – Automation Details
                       </h3>
                     </div>
@@ -1594,7 +1594,7 @@ Please rephrase your question or our support team will assist you.`}
                         Message
                       </h4>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        Enter the automated reply message to be delivered directly to the user's Instagram DM.
+                        This is the private message automatically sent to the user’s Instagram DM.
                       </p>
                     </div>
 
@@ -1643,13 +1643,13 @@ Please rephrase your question or our support team will assist you.`}
 
                 {/* Public Comment Reply Field if Comment Trigger */}
                 {triggerType === 'comment' && (
-                  <div className="bg-purple-50/40 p-5 rounded-2xl border border-purple-200/80 shadow-xs space-y-3">
+                  <div className="bg-white/90 p-5 sm:p-6 rounded-2xl border border-purple-200 shadow-sm space-y-3">
                     <div>
                       <h4 className="text-xs font-black text-purple-950 uppercase tracking-wider">
-                        Public Comment Reply (Optional)
+                        Public Comment Reply
                       </h4>
                       <p className="text-[11px] text-purple-700 mt-0.5">
-                        This comment reply will be publicly posted on their comment under your post/reel.
+                        For Comment automations, this message is posted automatically as a public reply under the matching comment. Leave it blank if you do not want a public comment reply.
                       </p>
                     </div>
                     <input
@@ -1667,10 +1667,10 @@ Please rephrase your question or our support team will assist you.`}
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                     <div>
                       <h4 className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xs font-black uppercase tracking-wider text-transparent">
-                        Interactive CTA Link Buttons (In-DM)
+                        DM Link Buttons
                       </h4>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        Attach clickable web link buttons below your message inside Instagram DMs.
+                        Optional: add a clickable button below the private DM, such as Visit Website, View Product, or Book Now.
                       </p>
                     </div>
                     {buttons.length < 3 && (
@@ -1721,7 +1721,7 @@ Please rephrase your question or our support team will assist you.`}
                 </div>
 
                 {/* ACTION CONTROLS / BOTTOM BAR */}
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-4">
+                <div className="sticky bottom-0 z-10 rounded-2xl border border-slate-200 bg-[#F7FAFF]/95 p-3 shadow-sm backdrop-blur pt-3 flex flex-wrap items-center justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => setCurrentStep(1)}
