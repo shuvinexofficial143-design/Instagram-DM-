@@ -7,7 +7,12 @@ export interface UserProfile {
   email: string;
   name: string;
   avatar_url?: string;
-  plan: 'free' | 'pro' | 'agency' | 'trial';
+  plan: 'free' | 'starter' | 'pro' | 'business' | 'agency' | 'trial';
+  message_usage?: number;
+  ai_reply_usage?: number;
+  carry_forward_messages?: number;
+  carry_forward_ai_replies?: number;
+  carry_forward_expires_at?: string;
   trial_expires_at: string; // ISO String
   created_at: string;
 }
