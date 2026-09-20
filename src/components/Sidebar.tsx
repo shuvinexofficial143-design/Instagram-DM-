@@ -88,7 +88,7 @@ export const Sidebar: React.FC = () => {
 
   return (
     <aside
-      className={`relative bg-white border-r border-slate-200 shadow-sm flex flex-col justify-between h-[100dvh] sticky top-0 z-30 select-none transition-[width] duration-200 ease-out ${
+      className={`relative bg-white border-r border-slate-200 shadow-sm flex flex-col h-[100dvh] sticky top-0 z-30 select-none transition-[width] duration-200 ease-out ${
         isCollapsed ? 'w-[72px]' : 'w-[250px]'
       }`}
     >
@@ -107,7 +107,7 @@ export const Sidebar: React.FC = () => {
       </button>
 
       {/* Top Header & Logo */}
-      <div className="overflow-x-hidden">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className={`p-4 border-b border-slate-200 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-violet-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/25 shrink-0">
@@ -246,7 +246,7 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Bottom User Card & Plan Notice */}
-      <div className="p-3 border-t border-slate-200/80 overflow-x-hidden bg-white">
+      <div className="shrink-0 p-3 border-t border-slate-200/80 overflow-x-hidden bg-white">
         {!isCollapsed && (
           <div className="mb-2 flex items-center justify-between px-1">
             <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Current Plan</span>
