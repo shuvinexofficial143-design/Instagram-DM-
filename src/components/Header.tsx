@@ -7,6 +7,7 @@ import {
   Settings,
   Info,
   Instagram,
+  CreditCard,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -25,8 +26,8 @@ export const Header: React.FC = () => {
     { id: 'automations' as const, label: 'Automations', icon: Zap },
     { id: 'contacts' as const, label: 'Contacts', icon: Users },
     { id: 'inbox' as const, label: 'Inbox', icon: MessageSquare },
+    { id: 'billing' as const, label: 'Billing', icon: CreditCard },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
-    { id: 'about' as const, label: 'About', icon: Info },
   ];
 
   const unreadCount = (inboxMessages || []).filter((m) => m?.direction === 'in').length;
