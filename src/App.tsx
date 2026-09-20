@@ -13,6 +13,7 @@ import { AutomationBuilder } from './components/Automations/AutomationBuilder';
 import { ContactsPage } from './components/Contacts/ContactsPage';
 import { InboxPage } from './components/Inbox/InboxPage';
 import { SettingsPage } from './components/Settings/SettingsPage';
+import { BillingUsagePage } from './components/Billing/BillingUsagePage';
 import { AboutUsPage } from './components/About/AboutUsPage';
 import { AdminPage } from './components/Admin/AdminPage';
 import { LoginPage } from './components/Auth/LoginPage';
@@ -29,6 +30,7 @@ const MainContent: React.FC = () => {
         {activeTab === 'automations' && <AutomationsPage />}
         {activeTab === 'contacts' && <ContactsPage />}
         {activeTab === 'inbox' && <InboxPage />}
+        {activeTab === 'billing' && <BillingUsagePage />}
         {activeTab === 'settings' && <SettingsPage />}
         {activeTab === 'about' && <AboutUsPage />}
         {activeTab === 'admin' && <AdminPage />}
