@@ -1045,6 +1045,203 @@ async function startServer() {
     }
   });
 
+  // Secure Supabase-backed Admin Control Center.
+  // This route never trusts an email supplied by the browser; it verifies the active
+  // Supabase access token and then checks the verified email against the admin allowlist.
+  async function getVerifiedAdmin(req: Request) {
+    if (!serverSupabase) {
+      return { ok: false as const, status: 503, error: 'SUPABASE_SERVICE_ROLE_KEY is not configured on the server.' };
+    }
+
+    const authHeader = String(req.headers.authorization || '');
+    const accessToken = authHeader.toLowerCase().startsWith('bearer ')
+      ? authHeader.slice(7).trim()
+      : '';
+
+    if (!accessToken) {
+      return { ok: false as const, status: 401, error: 'Admin authentication is required.' };
+    }
+
+    const { data, error } = await serverSupabase.auth.getUser(accessToken);
+    const verifiedUser = data?.user;
+    const verifiedEmail = String(verifiedUser?.email || '').trim().toLowerCase();
+
+    if (error || !verifiedUser || !verifiedEmail) {
+      return { ok: false as const, status: 401, error: 'Admin session is invalid or expired.' };
+    }
+    if (!isUserAdminEmail(verifiedEmail)) {
+      return { ok: false as const, status: 403, error: 'This Google account is not authorized for the Admin Panel.' };
+    }
+
+    return { ok: true as const, user: verifiedUser, email: verifiedEmail };
+  }
+
+  const DEFAULT_ADMIN_PLANS = [
+    { id: 'free', name: 'Free', price_inr: 0, total_messages: 1500, ai_replies: 1000, instagram_accounts: 1, automations_limit: 5, billing_days: 30, is_active: true, sort_order: 0 },
+    { id: 'starter', name: 'Starter', price_inr: 299, total_messages: 7500, ai_replies: 5000, instagram_accounts: 1, automations_limit: null, billing_days: 30, is_active: true, sort_order: 1 },
+    { id: 'pro', name: 'Pro', price_inr: 599, total_messages: 25000, ai_replies: 15000, instagram_accounts: 2, automations_limit: null, billing_days: 30, is_active: true, sort_order: 2 },
+    { id: 'business', name: 'Business', price_inr: 1299, total_messages: 75000, ai_replies: 40000, instagram_accounts: 5, automations_limit: null, billing_days: 30, is_active: true, sort_order: 3 },
+  ];
+
+  app.get('/api/admin/control-center', async (req: Request, res: Response) => {
+    try {
+      const admin = await getVerifiedAdmin(req);
+      if (!admin.ok) return res.status(admin.status).json({ success: false, error: admin.error });
+
+      const [profilesResult, documentsResult, usageResult, plansResult, auditResult] = await Promise.all([
+        serverSupabase!.from('autoreply_profiles').select('user_id,email,display_name,avatar_url,role,last_login_at,last_active_at'),
+        serverSupabase!.from('autoreply_documents').select('user_id,collection,id,data,updated_at'),
+        serverSupabase!.from('autoreply_usage_monthly').select('*').order('updated_at', { ascending: false }).limit(500),
+        serverSupabase!.from('autoreply_plans').select('*').order('sort_order', { ascending: true }),
+        serverSupabase!.from('autoreply_admin_audit_logs').select('*').order('created_at', { ascending: false }).limit(30),
+      ]);
+
+      const profiles = profilesResult.data || [];
+      const documents = documentsResult.data || [];
+      const usageRows = usageResult.error ? [] : (usageResult.data || []);
+      const plans = plansResult.error || !plansResult.data?.length ? DEFAULT_ADMIN_PLANS : plansResult.data;
+      const auditLogs = auditResult.error ? [] : (auditResult.data || []);
+
+      const byUser = new Map<string, any>();
+      for (const profile of profiles) {
+        const uid = String(profile.user_id || '');
+        if (!uid) continue;
+        byUser.set(uid, {
+          uid,
+          email: profile.email || '',
+          displayName: profile.display_name || profile.email?.split('@')[0] || 'User',
+          photoURL: profile.avatar_url || '',
+          role: profile.role || 'user',
+          last_login_at: profile.last_login_at || null,
+          last_active_at: profile.last_active_at || null,
+          instagramAccounts: 0,
+          instagramUsernames: [],
+          automations: 0,
+          contacts: 0,
+          messages: 0,
+          aiReplies: 0,
+        });
+      }
+
+      for (const docRow of documents) {
+        const uid = String(docRow.user_id || '');
+        if (!uid) continue;
+        if (!byUser.has(uid)) {
+          byUser.set(uid, {
+            uid, email: '', displayName: 'User', photoURL: '', role: 'user',
+            last_login_at: null, last_active_at: null, instagramAccounts: 0,
+            instagramUsernames: [], automations: 0, contacts: 0, messages: 0, aiReplies: 0,
+          });
+        }
+        const item = byUser.get(uid);
+        const collectionName = String(docRow.collection || '');
+        const data = docRow.data || {};
+        if (collectionName === 'instagram_account' && data?.username) {
+          item.instagramAccounts += 1;
+          if (!item.instagramUsernames.includes(data.username)) item.instagramUsernames.push(data.username);
+        } else if (collectionName === 'automations') {
+          item.automations += 1;
+        } else if (collectionName === 'contacts') {
+          item.contacts += 1;
+        } else if (collectionName === 'inbox_messages' && data?.direction === 'out' && data?.is_automated) {
+          item.messages += 1;
+          if (data?.automation_type === 'ai' || data?.is_ai === true) item.aiReplies += 1;
+        }
+      }
+
+      for (const row of usageRows) {
+        const uid = String((row as any).user_id || '');
+        const item = byUser.get(uid);
+        if (!item) continue;
+        const total = Number((row as any).total_messages ?? (row as any).message_count ?? (row as any).messages_used ?? 0);
+        const ai = Number((row as any).ai_replies ?? (row as any).ai_reply_count ?? (row as any).ai_replies_used ?? 0);
+        item.messages = Math.max(item.messages, total);
+        item.aiReplies = Math.max(item.aiReplies, ai);
+      }
+
+      const users = Array.from(byUser.values());
+      const now = Date.now();
+      const active24h = users.filter((u) => u.last_active_at && now - new Date(u.last_active_at).getTime() <= 86400000).length;
+      const active7d = users.filter((u) => u.last_active_at && now - new Date(u.last_active_at).getTime() <= 7 * 86400000).length;
+      const active30d = users.filter((u) => u.last_active_at && now - new Date(u.last_active_at).getTime() <= 30 * 86400000).length;
+
+      return res.json({
+        success: true,
+        admin: { email: admin.email },
+        stats: {
+          totalUsers: users.length,
+          active24h,
+          active7d,
+          active30d,
+          connectedInstagram: users.reduce((n, u) => n + Number(u.instagramAccounts || 0), 0),
+          totalAutomations: users.reduce((n, u) => n + Number(u.automations || 0), 0),
+          totalMessages: users.reduce((n, u) => n + Number(u.messages || 0), 0),
+          totalAiReplies: users.reduce((n, u) => n + Number(u.aiReplies || 0), 0),
+        },
+        users,
+        plans,
+        auditLogs,
+      });
+    } catch (err: any) {
+      console.error('[ADMIN_CONTROL_CENTER_GET_ERR]', err);
+      return res.status(500).json({ success: false, error: err?.message || 'Could not load admin control center.' });
+    }
+  });
+
+  app.patch('/api/admin/plans/:planId', async (req: Request, res: Response) => {
+    try {
+      const admin = await getVerifiedAdmin(req);
+      if (!admin.ok) return res.status(admin.status).json({ success: false, error: admin.error });
+
+      const planId = String(req.params.planId || '').trim().toLowerCase();
+      if (!['free', 'starter', 'pro', 'business'].includes(planId)) {
+        return res.status(400).json({ success: false, error: 'Unknown plan.' });
+      }
+
+      const body = req.body || {};
+      const clean = {
+        price_inr: Math.max(0, Math.round(Number(body.price_inr) || 0)),
+        total_messages: Math.max(0, Math.round(Number(body.total_messages) || 0)),
+        ai_replies: Math.max(0, Math.round(Number(body.ai_replies) || 0)),
+        instagram_accounts: Math.max(0, Math.round(Number(body.instagram_accounts) || 0)),
+        automations_limit: body.automations_limit === null || body.automations_limit === '' ? null : Math.max(0, Math.round(Number(body.automations_limit) || 0)),
+        billing_days: Math.max(1, Math.round(Number(body.billing_days) || 30)),
+        is_active: body.is_active !== false,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (clean.ai_replies > clean.total_messages) {
+        return res.status(400).json({ success: false, error: 'AI replies cannot be greater than total automated messages.' });
+      }
+
+      const beforeResult = await serverSupabase!.from('autoreply_plans').select('*').eq('id', planId).maybeSingle();
+      const before = beforeResult.data || DEFAULT_ADMIN_PLANS.find((p) => p.id === planId) || null;
+      const base = DEFAULT_ADMIN_PLANS.find((p) => p.id === planId)!;
+      const { data: saved, error } = await serverSupabase!
+        .from('autoreply_plans')
+        .upsert({ ...base, ...clean, id: planId }, { onConflict: 'id' })
+        .select('*')
+        .single();
+
+      if (error) throw error;
+
+      await serverSupabase!.from('autoreply_admin_audit_logs').insert({
+        admin_user_id: admin.user.id,
+        admin_email: admin.email,
+        action: 'plan.updated',
+        entity_type: 'plan',
+        entity_id: planId,
+        before_data: before,
+        after_data: saved,
+      });
+
+      return res.json({ success: true, plan: saved });
+    } catch (err: any) {
+      console.error('[ADMIN_PLAN_UPDATE_ERR]', err);
+      return res.status(500).json({ success: false, error: err?.message || 'Could not update plan.' });
+    }
+  });
+
   // 3. Admin Overview & Dashboard Endpoint: Aggregates all registered users, connected IG accounts & usage stats
   const handleAdminDashboardOverview = async (req: Request, res: Response) => {
     try {
