@@ -420,6 +420,30 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 
   return null;
 }
+async function getPlanQuota(admin: any, workspaceId: string) {
+  const { data: profile } = await admin.from("autoreply_profiles").select("data").eq("user_id", workspaceId).maybeSingle();
+  const plan = String(profile?.data?.plan || "free").toLowerCase();
+  const limits: Record<string,{messages:number;ai:number}> = {
+    free:{messages:1500,ai:1000}, starter:{messages:7500,ai:5000}, pro:{messages:25000,ai:15000}, business:{messages:75000,ai:40000}
+  };
+  const base = limits[plan] || limits.free;
+  const carryMessages = Number(profile?.data?.carry_forward_messages || 0);
+  const carryAi = Number(profile?.data?.carry_forward_ai_replies || 0);
+  const carryExpiry = Date.parse(String(profile?.data?.carry_forward_expires_at || ""));
+  const carryActive = Number.isFinite(carryExpiry) && carryExpiry > Date.now();
+  const { data: usage } = await admin.rpc("autoreply_get_usage", { p_user_id: workspaceId });
+  return {
+    plan, totalUsed:Number(usage?.total_messages || 0), aiUsed:Number(usage?.ai_replies || 0),
+    totalLimit:base.messages + (carryActive ? carryMessages : 0),
+    aiLimit:base.ai + (carryActive ? carryAi : 0)
+  };
+}
+
+async function incrementUsage(admin:any, workspaceId:string, isAi:boolean) {
+  const { error } = await admin.rpc("autoreply_increment_usage", { p_user_id: workspaceId, p_is_ai: isAi });
+  if (error) console.warn("[USAGE_INCREMENT_WARN]", error);
+}
+
 async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
   const cached = automationCache.get(workspaceId);
   if (cached && cached.expiresAt > Date.now()) {
@@ -1384,6 +1408,16 @@ Deno.serve(async (req: Request) => {
       continue;
     }
 
+    const quota = await getPlanQuota(admin, workspaceId);
+    if (quota.totalUsed >= quota.totalLimit) {
+      results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_message_limit_reached" });
+      continue;
+    }
+    if (quota.aiUsed >= quota.aiLimit) {
+      results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_ai_limit_reached" });
+      continue;
+    }
+
     const aiAction = (automation?.actions || []).find(
       (a: any) => a?.type === "ai_chatbot"
     );
@@ -1517,6 +1551,7 @@ Instagram DM style rules:
 
       const sendMs = Math.round(performance.now() - sendStart);
       const instagramMessageId = String(sendResult?.message_id || "");
+      runInBackground(incrementUsage(admin, workspaceId, true));
 
       if (typingStarted) {
         runInBackground(
