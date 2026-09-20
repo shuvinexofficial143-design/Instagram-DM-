@@ -36,6 +36,16 @@ export const InboxPage: React.FC = () => {
   
   const myUsername = (instagramAccount?.username || '').toLowerCase();
 
+  const cleanMessagePreview = (value?: string | null): string => {
+    if (!value) return 'Instagram message';
+    const cleaned = value
+      .replace(/\\r\\n|\\n|\\r/g, ' ')
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return cleaned || 'Instagram message';
+  };
+
   const isTestOrMockHandle = (uname: string): boolean => {
     if (!uname) return true;
     const lower = uname.toLowerCase().trim();
@@ -279,7 +289,7 @@ export const InboxPage: React.FC = () => {
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-xs text-slate-900 truncate">@{username}</span>
                         </div>\n\n                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                          {lastMsg ? lastMsg.message_text : 'Instagram Direct Message'}
+                          {lastMsg ? cleanMessagePreview(lastMsg.message_text) : 'Instagram message'}
                         </div>
                       </div>
                     </div>
