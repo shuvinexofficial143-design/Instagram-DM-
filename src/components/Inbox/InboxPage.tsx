@@ -12,6 +12,8 @@ import {
   CheckSquare,
   Square,
   Zap,
+  ArrowLeft,
+  MoreVertical,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -30,6 +32,7 @@ export const InboxPage: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [search, setSearch] = useState('');
   const [selectedThreadUsernames, setSelectedThreadUsernames] = useState<string[]>([]);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   
   const myUsername = (instagramAccount?.username || '').toLowerCase();
 
@@ -171,25 +174,25 @@ export const InboxPage: React.FC = () => {
   };
 
   return (
-    <div className="p-8 bg-[#F7FAFF] min-h-screen">
+    <div className="min-h-screen bg-[#F7FAFF] p-4 sm:p-6 lg:p-8">
       {/* Top Banner / Header Actions */}
-      <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="mb-5 rounded-3xl border border-indigo-100 bg-gradient-to-br from-white/90 via-blue-50/75 to-violet-50/80 p-5 shadow-[0_14px_42px_rgba(72,95,145,0.08)] sm:p-6">
         <div>
-          <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+          <h2 className="flex items-center gap-2 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
             <Instagram className="w-5 h-5 text-pink-600" />
             <span>Instagram Direct Messages & Inbox</span>
           </h2>
-          <p className="text-xs text-slate-500 font-medium">
+          <p className="mt-1 text-sm font-medium text-slate-600">
             Instagram conversations and AI auto-reply management
           </p>
         </div>
 
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[78vh] flex flex-col md:flex-row">
+      <div className="flex h-[76vh] overflow-hidden rounded-3xl border border-white/90 bg-white/85 shadow-[0_14px_45px_rgba(72,95,145,0.08)] backdrop-blur-sm">
         {/* Left Conversation List */}
-        <div className="w-full md:w-80 border-r border-slate-200 flex flex-col bg-slate-50">
-          <div className="p-4 border-b border-slate-200 bg-white space-y-3">
+        <div className={`${mobileChatOpen ? 'hidden md:flex' : 'flex'} w-full flex-col border-r border-indigo-100 bg-[#FBFCFF] md:w-72 lg:w-80`}>
+          <div className="space-y-3 border-b border-indigo-100 bg-white/80 p-4">
             <div className="flex items-center justify-between">
               <h3 className="font-black text-slate-950 text-sm">Conversations ({groupedUsers.length})</h3>
               {selectedThreadUsernames.length > 0 && (
@@ -247,9 +250,9 @@ export const InboxPage: React.FC = () => {
                 return (
                   <div
                     key={username}
-                    onClick={() => setActiveUsername(username)}
+                    onClick={() => { setActiveUsername(username); setMobileChatOpen(true); }}
                     className={`group w-full p-3.5 text-left transition-all flex items-center justify-between gap-2.5 cursor-pointer ${
-                      isActive ? 'bg-white border-l-4 border-l-[#3B5BFF] shadow-2xs' : 'hover:bg-slate-100/60'
+                      isActive ? 'bg-gradient-to-r from-indigo-50 to-violet-50/60 border-l-4 border-l-[#3B5BFF]' : 'hover:bg-indigo-50/45'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -275,18 +278,7 @@ export const InboxPage: React.FC = () => {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-xs text-slate-900 truncate">@{username}</span>
-                          {isUserAiPaused ? (
-                            <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-black shrink-0">
-                              Human
-                            </span>
-                          ) : (
-                            <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black shrink-0">
-                              AI ON
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                        </div>\n\n                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
                           {lastMsg ? lastMsg.message_text : 'Instagram Direct Message'}
                         </div>
                       </div>
@@ -309,7 +301,7 @@ export const InboxPage: React.FC = () => {
         </div>
 
         {/* Right Active Message Thread */}
-        <div className="flex-1 flex flex-col bg-white">
+        <div className={`${mobileChatOpen ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-white/70`}>
           {!selectedUser ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/40">
               <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-[#3B5BFF] flex items-center justify-center mb-4 border border-indigo-100 shadow-sm">
@@ -323,8 +315,9 @@ export const InboxPage: React.FC = () => {
           ) : (
             <>
               {/* Thread Header */}
-              <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-100 bg-white/85 p-3.5 sm:p-4">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <button type="button" onClick={() => setMobileChatOpen(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-600 hover:bg-indigo-50 md:hidden" aria-label="Back to conversations"><ArrowLeft className="h-4 w-4" /></button>
                   <UserAvatar
                     src={getContactAvatar(selectedUser)}
                     username={selectedUser}
@@ -334,19 +327,8 @@ export const InboxPage: React.FC = () => {
                   <div>
                     <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                       <span>@{selectedUser}</span>
-                      {isCurrentAiPaused ? (
-                        <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-2.5 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
-                          <UserCheck className="w-3 h-3 text-amber-700" />
-                          <span>Human Takeover (AI Paused)</span>
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-emerald-600" />
-                          <span>AI Auto-Reply Active</span>
-                        </span>
-                      )}
                     </h4>
-                    <p className="text-[10px] text-slate-500">Instagram DM Thread • Synced from Instagram</p>
+                    <p className="text-[11px] font-medium text-slate-500">Instagram conversation</p>
                   </div>
                 </div>
 
@@ -390,16 +372,16 @@ export const InboxPage: React.FC = () => {
                     type="button"
                     onClick={() => handleRemoveThread(selectedUser)}
                     title="Delete entire chat thread from database permanently"
-                    className="bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs py-1.5 px-3 rounded-xl border border-red-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-100 bg-rose-50/70 text-rose-500 transition-colors hover:bg-rose-100 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete</span>
+                    
                   </button>
                 </div>
               </div>
 
               {/* Chat Bubbles Container */}
-              <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50/30">
+              <div className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-[#F9FBFF] to-[#F7FAFF] p-4 sm:p-6">
                 {/* Human Interference Alert Banner if AI is Paused */}
                 {isCurrentAiPaused && (
                   <div className="bg-amber-50/95 border border-amber-200/90 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-2xs">
@@ -441,25 +423,13 @@ export const InboxPage: React.FC = () => {
                     return (
                       <div key={msg.id} className={`flex flex-col ${isOut ? 'items-end' : 'items-start'} space-y-1`}>
                         <div
-                          className={`max-w-md p-3.5 rounded-2xl text-xs leading-relaxed shadow-2xs ${
+                          className={`max-w-[82%] sm:max-w-[72%] p-3.5 rounded-2xl text-sm leading-relaxed shadow-2xs ${
                             isOut
                               ? 'bg-[#3B5BFF] text-white rounded-br-xs'
                               : 'bg-white border border-slate-200 text-slate-800 rounded-bl-xs'
                           }`}
                         >
                           <p>{msg.message_text}</p>
-
-                          {msg.is_automated ? (
-                            <div className="mt-2 pt-2 border-t border-white/20 text-[10px] text-indigo-100 flex items-center gap-1 font-semibold">
-                              <Bot className="w-3 h-3 text-amber-300" />
-                              <span>Automated Reply</span>
-                            </div>
-                          ) : isOut ? (
-                            <div className="mt-2 pt-2 border-t border-white/20 text-[10px] text-blue-100 flex items-center gap-1 font-semibold">
-                              <UserCheck className="w-3 h-3 text-amber-200" />
-                              <span>Manual Reply (AI Paused)</span>
-                            </div>
-                          ) : null}
                         </div>
 
                         <span className="text-[10px] text-slate-400 px-1 font-medium">
@@ -472,19 +442,19 @@ export const InboxPage: React.FC = () => {
               </div>
 
               {/* Input Box */}
-              <div className="p-4 border-t border-slate-200 bg-white space-y-2">
+              <div className="space-y-2 border-t border-indigo-100 bg-white/90 p-3 sm:p-4">
                 <form onSubmit={handleSend} className="flex items-center gap-3">
                   <input
                     type="text"
                     placeholder={`Send a manual DM reply to @${selectedUser}...`}
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-[#3B5BFF] focus:outline-hidden"
+                    className="min-w-0 flex-1 rounded-2xl border border-indigo-100 bg-[#F8FAFF] px-4 py-3 text-sm font-medium text-slate-900 focus:ring-2 focus:ring-indigo-200 focus:outline-hidden"
                   />
                   <button
                     type="submit"
                     disabled={!inputText.trim()}
-                    className="bg-[#3B5BFF] hover:bg-indigo-700 disabled:opacity-50 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-3 text-xs font-black text-white shadow-md transition-all hover:shadow-lg disabled:opacity-50 cursor-pointer"
                   >
                     <Send className="w-4 h-4" />
                     <span>Send DM</span>
