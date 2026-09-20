@@ -17,6 +17,7 @@ export const Header: React.FC = () => {
     instagramAccount,
     setIsConnectModalOpen,
     inboxMessages,
+    firebaseUser,
   } = useApp();
 
   const navItems = [
@@ -32,7 +33,7 @@ export const Header: React.FC = () => {
 
   return (
     <>
-      <header className="md:hidden sticky top-0 z-40 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <header className="md:hidden sticky top-0 z-40 border-b border-indigo-100 bg-gradient-to-r from-[#F7FAFF] via-blue-50 to-violet-50 px-4 py-3 shadow-[0_8px_28px_rgba(72,95,145,0.08)]">
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
