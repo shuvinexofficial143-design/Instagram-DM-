@@ -34,6 +34,7 @@ export const ContactsPage: React.FC = () => {
   const [bulkAudience, setBulkAudience] = useState<'selected' | 'all'>('selected');
   const [bulkMessage, setBulkMessage] = useState('');
   const [bulkSending, setBulkSending] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState('');
 
   // Checkbox Selection State for Bulk Operations
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
@@ -172,14 +173,41 @@ export const ContactsPage: React.FC = () => {
           <button type="button" disabled={bulkSending || !bulkMessage.trim() || (bulkAudience === 'selected' && selectedContactIds.length === 0)} onClick={async () => {
             const targets = bulkAudience === 'all' ? filteredContacts : filteredContacts.filter((contact) => selectedContactIds.includes(contact.id));
             if (!targets.length) return;
-            if (bulkMode === 'ai') { window.alert('AI Personalized mode is ready in the UI, but it will not send until an AI generation endpoint is connected. Use Normal mode for live sending.'); return; }
-            if (!window.confirm(`Send this message to ${targets.length} contact(s)?`)) return;
+            if (!window.confirm(`Send ${bulkMode === 'ai' ? 'AI-personalized ' : ''}message to ${targets.length} contact(s)?`)) return;
             setBulkSending(true);
-            try { for (const contact of targets) { const username = contact.ig_username || contact.ig_user_id; if (username) await Promise.resolve(sendManualReply(username, bulkMessage.trim())); } setBulkMessage(''); }
-            finally { setBulkSending(false); }
+            setBulkStatus('');
+            let sent = 0;
+            let failed = 0;
+            try {
+              for (const contact of targets) {
+                const username = contact.ig_username || contact.ig_user_id;
+                if (!username) { failed += 1; continue; }
+                try {
+                  let finalMessage = bulkMessage.trim();
+                  if (bulkMode === 'ai') {
+                    const aiRes = await fetch('/api/ai/bulk-message', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ instruction: bulkMessage.trim(), username }),
+                    });
+                    const aiData = await aiRes.json().catch(() => ({}));
+                    if (!aiRes.ok || !aiData?.message) throw new Error(aiData?.error || 'AI generation failed');
+                    finalMessage = String(aiData.message).trim();
+                  }
+                  await Promise.resolve(sendManualReply(username, finalMessage));
+                  sent += 1;
+                } catch (error) {
+                  console.warn('[BULK_MESSAGE_ITEM_FAILED]', username, error);
+                  failed += 1;
+                }
+              }
+              setBulkStatus(`Completed: ${sent} queued for sending${failed ? `, ${failed} failed` : ''}.`);
+              if (sent > 0) setBulkMessage('');
+            } finally { setBulkSending(false); }
           }} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 text-xs font-black text-white shadow-md disabled:cursor-not-allowed disabled:opacity-40"><WandSparkles className="h-4 w-4" />{bulkSending ? 'Sending…' : 'Send Message'}</button>
         </div>
-        {bulkMode === 'ai' && <p className="mt-3 rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2 text-xs font-semibold leading-5 text-violet-800">AI mode is shown as a separate option, but live AI bulk sending stays disabled until a real AI-generation endpoint is connected. It will be used for genuine personalization, not to bypass Instagram safeguards.</p>}
+        {bulkMode === 'ai' && <p className="mt-3 rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2 text-xs font-semibold leading-5 text-violet-800">AI mode uses the same OpenAI integration as AI Conversation to create a personalized DM for each chosen contact before sending.</p>}
+        {bulkStatus && <p className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs font-bold text-emerald-800">{bulkStatus}</p>}
       </section>
 
       {/* Filter & Action Toolbar */}
@@ -252,9 +280,9 @@ export const ContactsPage: React.FC = () => {
                     className="text-slate-600 hover:text-slate-900 cursor-pointer"
                   >
                     {isAllSelected ? (
-                      <CheckSquare className="w-4 h-4 text-[#3B5BFF]" />
+                      <CheckSquare className="h-5 w-5 text-indigo-600 drop-shadow-sm" />
                     ) : (
-                      <Square className="w-4 h-4 stroke-[2.2]" />
+                      <Square className="h-5 w-5 text-indigo-500 stroke-[2.5]" />
                     )}
                   </button>
                 </th>
@@ -288,9 +316,9 @@ export const ContactsPage: React.FC = () => {
                           className="text-slate-500 hover:text-slate-800 cursor-pointer"
                         >
                           {isSelected ? (
-                            <CheckSquare className="w-4 h-4 text-[#3B5BFF]" />
+                            <CheckSquare className="h-5 w-5 text-indigo-600 drop-shadow-sm" />
                           ) : (
-                            <Square className="w-4 h-4 stroke-[2.2]" />
+                            <Square className="h-5 w-5 text-indigo-500 stroke-[2.5]" />
                           )}
                         </button>
                       </td>
