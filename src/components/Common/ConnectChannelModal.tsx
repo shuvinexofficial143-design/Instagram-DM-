@@ -125,114 +125,113 @@ export const ConnectChannelModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/75 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-      <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[2px]">
+      <div className="relative w-full max-w-[460px] overflow-hidden rounded-[28px] border border-blue-100 bg-[#FCFDFF] shadow-[0_24px_70px_rgba(30,64,175,0.16)] animate-in fade-in zoom-in-95 duration-200">
+        <div className="h-1.5 w-full bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500" />
+
         <button
           onClick={() => setIsConnectModalOpen(false)}
           aria-label="Close modal"
-          className="absolute top-4 right-4 w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer border border-slate-200"
+          className="absolute right-4 top-5 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
         >
-          <X className="w-5 h-5" />
+          <X className="h-5 w-5" />
         </button>
 
-        <div className="flex items-center gap-3.5 mb-5 pr-10">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-md shadow-rose-500/20 ring-2 ring-rose-500/20">
-            <Instagram className="w-6 h-6 stroke-[2.2]" />
+        <div className="px-6 pb-6 pt-7 sm:px-8 sm:pb-8">
+          <div className="mb-6 flex items-center gap-4 pr-11">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-violet-600 via-fuchsia-500 to-rose-500 text-white shadow-lg shadow-violet-500/15">
+              <Instagram className="h-7 w-7 stroke-[2.2]" />
+            </div>
+            <div className="min-w-0">
+              <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-indigo-500">Instagram</p>
+              <h2 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
+                {instagramAccount ? 'Instagram connected' : 'Connect your account'}
+              </h2>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-black text-slate-950 tracking-tight">Connect Instagram Account</h2>
-            <p className="text-xs font-semibold text-slate-500">
-              Secure connection through the official Meta OAuth flow
-            </p>
-          </div>
-        </div>
 
-        {instagramAccount && (
-          <div className="mb-5 p-3.5 bg-emerald-50/80 rounded-2xl border border-emerald-200 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <UserAvatar
-                src={instagramAccount.profile_pic_url}
-                username={instagramAccount.username}
-                showInstagramBadge={true}
-                size="md"
-              />
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-black text-slate-950 truncate">@{instagramAccount.username}</span>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full border border-emerald-300">
-                    Meta verified
-                  </span>
+          {instagramAccount ? (
+            <div className="mb-5 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <UserAvatar
+                  src={instagramAccount.profile_pic_url}
+                  username={instagramAccount.username}
+                  showInstagramBadge={true}
+                  size="md"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-bold text-slate-950">@{instagramAccount.username}</span>
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  </div>
+                  <p className="mt-0.5 text-xs font-medium text-slate-600">
+                    {instagramAccount.followers_count?.toLocaleString() || 0} followers · Connected
+                  </p>
                 </div>
-                <p className="text-[11px] font-bold text-slate-600 truncate">
-                  {instagramAccount.followers_count?.toLocaleString() || 0} followers
-                </p>
+              </div>
+              <button
+                onClick={handleDisconnect}
+                className="shrink-0 cursor-pointer rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <div className="mb-5 rounded-2xl border border-blue-100 bg-[#F7FAFF] p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm ring-1 ring-blue-100">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Secure Meta connection</h3>
+                  <p className="mt-1 text-[13px] font-medium leading-5 text-slate-600">
+                    Sign in through Instagram and approve access. Your password stays with Meta.
+                  </p>
+                </div>
               </div>
             </div>
-            <button
-              onClick={handleDisconnect}
-              className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-xl transition-colors shrink-0 cursor-pointer shadow-2xs"
-            >
-              Disconnect
-            </button>
-          </div>
-        )}
-
-        {feedback && (
-          <div
-            className={`mb-4 p-3 rounded-xl border text-xs font-bold flex items-start gap-2 ${
-              feedback.type === 'success'
-                ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                : 'bg-rose-50 text-rose-900 border-rose-300'
-            }`}
-          >
-            {feedback.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-            )}
-            <span className="leading-relaxed">{feedback.message}</span>
-          </div>
-        )}
-
-        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-3 mb-5">
-          <div className="flex items-start gap-2.5">
-            <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-            <div>
-              <h3 className="text-sm font-black text-slate-900">Official Meta authorization only</h3>
-              <p className="text-xs text-slate-600 font-semibold mt-1 leading-relaxed">
-                AutoReply.io will only mark an Instagram account as connected after Meta returns a valid OAuth token and the Instagram Graph API verifies the professional account.
-              </p>
-            </div>
-          </div>
-          <ul className="text-[11px] text-slate-600 font-semibold space-y-1.5 pl-7 list-disc">
-            <li>No username-only fake connection.</li>
-            <li>No access-token field in the browser.</li>
-            <li>Business or Creator Instagram account required.</li>
-          </ul>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleOAuthLaunch}
-          disabled={isLaunching}
-          className="w-full bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:from-purple-500 hover:via-pink-500 hover:to-rose-400 text-white font-black py-3 px-4 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {isLaunching ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>Opening Meta authorization...</span>
-            </>
-          ) : (
-            <>
-              <ExternalLink className="w-4 h-4 stroke-[2.5]" />
-              <span>{instagramAccount ? 'Reauthorize with Instagram' : 'Connect with Instagram'}</span>
-            </>
           )}
-        </button>
 
-        <p className="text-[10px] text-slate-400 font-semibold text-center mt-3 leading-relaxed">
-          Your Instagram password is entered only on Meta/Instagram. AutoReply.io never asks for or stores your Instagram password.
-        </p>
+          {feedback && (
+            <div className={`mb-4 flex items-start gap-2 rounded-xl border p-3 text-[13px] font-semibold ${
+              feedback.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : 'border-rose-200 bg-rose-50 text-rose-800'
+            }`}>
+              {feedback.type === 'success' ? (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              ) : (
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              )}
+              <span className="leading-5">{feedback.message}</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleOAuthLaunch}
+            disabled={isLaunching}
+            className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-5 py-3.5 text-[15px] font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLaunching ? (
+              <>
+                <RefreshCw className="h-5 w-5 animate-spin" />
+                <span>Connecting...</span>
+              </>
+            ) : (
+              <>
+                <Instagram className="h-5 w-5" />
+                <span>{instagramAccount ? 'Reconnect Instagram' : 'Continue with Instagram'}</span>
+                <ExternalLink className="h-4 w-4 opacity-80" />
+              </>
+            )}
+          </button>
+
+          <div className="mt-4 flex items-center justify-center gap-2 text-center text-xs font-medium text-slate-500">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-slate-400" />
+            <span>Official Meta authorization · Business or Creator account</span>
+          </div>
+        </div>
       </div>
     </div>
   );
