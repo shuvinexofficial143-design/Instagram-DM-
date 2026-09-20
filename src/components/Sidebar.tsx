@@ -203,15 +203,15 @@ export const Sidebar: React.FC = () => {
                   onClick={() => setActiveTab(item.id)}
                   aria-label={item.label}
                   className={`w-full flex items-center ${
-                    isCollapsed ? 'justify-center p-2.5' : 'justify-between px-3 py-2'
-                  } rounded-xl font-medium text-xs md:text-sm transition-all cursor-pointer ${
+                    isCollapsed ? 'justify-center p-2.5' : 'justify-between px-3 py-2.5'
+                  } rounded-xl font-semibold text-sm md:text-[15px] transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-[#EEF2FF] text-[#3B5BFF] font-semibold shadow-2xs'
+                      ? 'bg-[#EEF2FF] text-[#3B5BFF] font-bold shadow-2xs'
                       : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'
                   }`}
                 >
-                  <div className={`flex items-center ${isCollapsed ? 'justify-center relative' : 'gap-2.5'}`}>
-                    <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-[#3B5BFF]' : 'text-slate-400'}`} />
+                  <div className={`flex items-center ${isCollapsed ? 'justify-center relative' : 'gap-3'}`}>
+                    <Icon className={`w-[21px] h-[21px] shrink-0 ${isActive ? 'text-[#3B5BFF]' : 'text-slate-400'}`} />
                     {!isCollapsed && <span>{item.label}</span>}
                     {isCollapsed && item.badge && item.badge > 0 ? (
                       <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 bg-[#3B5BFF] rounded-full ring-2 ring-white"></span>
