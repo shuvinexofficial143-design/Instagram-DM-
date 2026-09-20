@@ -20,7 +20,7 @@ const MainContent: React.FC = () => {
   const { activeTab } = useApp();
 
   return (
-    <main className="min-w-0 flex-1 bg-[#F7FAFF] pb-24 md:pb-0">
+    <main className="app-unified-theme min-w-0 flex-1 bg-[#F7FAFF] pb-24 md:pb-0">
       <PlanBanner />
 
       <ErrorBoundary>
