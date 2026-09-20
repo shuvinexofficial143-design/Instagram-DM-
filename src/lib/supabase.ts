@@ -110,6 +110,22 @@ export async function signInWithRedirect(_auth: typeof auth, _provider: typeof g
 }
 
 export async function getRedirectResult(_auth: typeof auth) {
+  // Supabase OAuth may return with the auth code in the URL before the SDK's
+  // background exchange has finished. Explicitly exchange it so refresh/login
+  // cannot fall back to the sign-in screen after Google consent.
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      const { data: exchanged, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      if (exchangeError) throw exchangeError;
+      const user = toCompatUser(exchanged.session?.user || exchanged.user || null, exchanged.session);
+      auth.currentUser = user;
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+      return user ? { user } : null;
+    }
+  }
+
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
   const user = toCompatUser(data.session?.user || null, data.session);
