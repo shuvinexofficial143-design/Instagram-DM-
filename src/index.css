@@ -12,7 +12,7 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     color: #0f172a; /* slate-900 */
-    background-color: #F9F6FE;
+    background-color: #F7FAFF;
   }
 }
 
@@ -285,5 +285,62 @@
   }
   .app-unified-theme table {
     min-width: 680px;
+  }
+}
+
+
+/* Readability pass — slightly larger, clearer typography without bulky weight */
+.app-unified-theme {
+  font-size: 16px;
+  font-weight: 450;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.app-unified-theme .text-xs {
+  font-size: 0.8125rem !important;
+  line-height: 1.25rem !important;
+}
+
+.app-unified-theme .text-\[11px\] {
+  font-size: 0.75rem !important;
+  line-height: 1.1rem !important;
+}
+
+.app-unified-theme .text-\[10px\] {
+  font-size: 0.75rem !important;
+  line-height: 1.1rem !important;
+}
+
+.app-unified-theme .text-sm {
+  font-size: 0.9375rem !important;
+  line-height: 1.4rem !important;
+}
+
+.app-unified-theme .font-medium {
+  font-weight: 550 !important;
+}
+
+.app-unified-theme .text-slate-400 {
+  color: #64748b !important;
+}
+
+.app-unified-theme .text-slate-500 {
+  color: #475569 !important;
+}
+
+.app-unified-theme input,
+.app-unified-theme textarea,
+.app-unified-theme select,
+.app-unified-theme button {
+  font-weight: 550;
+}
+
+@media (max-width: 767px) {
+  .app-unified-theme .text-xs {
+    font-size: 0.84rem !important;
+  }
+  .app-unified-theme .text-sm {
+    font-size: 0.95rem !important;
   }
 }
