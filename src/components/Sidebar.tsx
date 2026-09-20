@@ -88,7 +88,7 @@ export const Sidebar: React.FC = () => {
 
   return (
     <aside
-      className={`relative bg-white border-r border-slate-200 shadow-sm flex flex-col justify-between h-screen sticky top-0 z-30 select-none transition-all duration-300 ease-in-out ${
+      className={`relative bg-white border-r border-slate-200 shadow-sm flex flex-col justify-between h-[100dvh] fixed left-0 top-0 z-30 select-none transition-[width] duration-200 ease-out ${
         isCollapsed ? 'w-[72px]' : 'w-[250px]'
       }`}
     >
@@ -247,6 +247,12 @@ export const Sidebar: React.FC = () => {
 
       {/* Bottom User Card & Plan Notice */}
       <div className="p-3 border-t border-slate-200/80 overflow-x-hidden bg-white">
+        {!isCollapsed && (
+          <div className="mb-2 flex items-center justify-between px-1">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Current Plan</span>
+            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-black uppercase text-indigo-700">{String(user?.plan || 'free')}</span>
+          </div>
+        )}
         {/* Profile Card */}
         <div className="relative group">
           <div
@@ -266,10 +272,10 @@ export const Sidebar: React.FC = () => {
               />
               {!isCollapsed && (
                 <div className="min-w-0">
-                  <p className="text-xs font-black text-slate-950 truncate group-hover:text-indigo-600 transition-colors">
+                  <p className="text-sm font-black text-slate-950 truncate group-hover:text-indigo-600 transition-colors">
                     {accountName}
                   </p>
-                  <p className="mt-0.5 text-[11px] font-semibold text-slate-600 truncate">
+                  <p className="mt-0.5 text-xs font-bold text-slate-600 truncate">
                     {accountEmail ? accountEmail.split('@')[0] : `${user.plan} plan`}
                   </p>
                 </div>
