@@ -246,14 +246,45 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Bottom User Card & Plan Notice */}
-      <div className="shrink-0 p-3 border-t border-slate-200/80 overflow-x-hidden bg-white">
+      <div className="shrink-0 border-t border-slate-200/80 bg-white p-3 overflow-visible">
+        {/* Profile Card — keep the signed-in Google identity visibly above Current Plan */}
         {!isCollapsed && (
-          <div className="mb-2 flex items-center justify-between px-1">
+          <div className="relative group mb-2">
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-2 shadow-sm">
+              <button
+                onClick={() => setActiveTab('settings')}
+                className="flex min-w-0 flex-1 items-center gap-2.5 text-left cursor-pointer"
+                title="Google Account Settings"
+              >
+                <UserAvatar src={accountPhoto} name={accountName} size="md" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-950">{accountName}</p>
+                  <p className="mt-0.5 truncate text-xs font-bold text-slate-600">
+                    {accountEmail || 'Signed in with Google'}
+                  </p>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm('Sign out of AutoReply.io?')) logout();
+                }}
+                title="Sign Out"
+                className="shrink-0 p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+        {!isCollapsed && (
+          <div className="flex items-center justify-between px-1">
             <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Current Plan</span>
             <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-black uppercase text-indigo-700">{String(user?.plan || 'free')}</span>
           </div>
         )}
-        {/* Profile Card */}
+        {/* Compact profile icon remains available when sidebar is collapsed */}
+        {isCollapsed && (
+        /* Profile Card */}
         <div className="relative group">
           <div
             className={`flex items-center ${
@@ -304,6 +335,7 @@ export const Sidebar: React.FC = () => {
             </div>
           )}
         </div>
+        )}
       </div>
     </aside>
   );
