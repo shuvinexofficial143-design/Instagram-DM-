@@ -17,16 +17,23 @@ import {
   CheckSquare,
   Square,
   Sparkles,
+  Bot,
+  Send,
+  WandSparkles,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Contact } from '../../types';
 import { UserAvatar } from '../Common/UserAvatar';
 
 export const ContactsPage: React.FC = () => {
-  const { contacts, deleteContact, deleteContactsBulk } = useApp();
+  const { contacts, deleteContact, deleteContactsBulk, sendManualReply } = useApp();
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
+  const [bulkMode, setBulkMode] = useState<'normal' | 'ai'>('normal');
+  const [bulkAudience, setBulkAudience] = useState<'selected' | 'all'>('selected');
+  const [bulkMessage, setBulkMessage] = useState('');
+  const [bulkSending, setBulkSending] = useState(false);
 
   // Checkbox Selection State for Bulk Operations
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
@@ -139,6 +146,42 @@ export const ContactsPage: React.FC = () => {
           </div>
         </div>
       </section>
+      <section className="rounded-3xl border border-indigo-100 bg-gradient-to-br from-white/90 via-blue-50/65 to-violet-50/80 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.07)] sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-md shadow-indigo-500/20"><Send className="h-4 w-4" /></div>
+            <div><div className="text-xs font-black uppercase tracking-[0.16em] text-indigo-500">Bulk Messages</div><h2 className="mt-1 text-xl font-black text-slate-950">Send to your contacts</h2><p className="mt-1 max-w-2xl text-xs font-medium leading-5 text-slate-600">Choose selected contacts or all visible contacts. Messages are sent only through the existing Instagram messaging flow.</p></div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setBulkAudience('selected')} className={`rounded-xl border px-3 py-2 text-xs font-black transition-all ${bulkAudience === 'selected' ? 'border-indigo-200 bg-indigo-600 text-white' : 'border-indigo-100 bg-white/80 text-slate-700'}`}>Selected ({selectedContactIds.length})</button>
+            <button type="button" onClick={() => setBulkAudience('all')} className={`rounded-xl border px-3 py-2 text-xs font-black transition-all ${bulkAudience === 'all' ? 'border-indigo-200 bg-indigo-600 text-white' : 'border-indigo-100 bg-white/80 text-slate-700'}`}>All Visible ({filteredContacts.length})</button>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-[180px_1fr_auto] lg:items-end">
+          <div>
+            <label className="mb-2 block text-[11px] font-black uppercase tracking-wider text-slate-500">Message Mode</label>
+            <div className="flex rounded-xl border border-indigo-100 bg-white/80 p-1">
+              <button type="button" onClick={() => setBulkMode('normal')} className={`flex-1 rounded-lg px-2 py-2 text-xs font-black ${bulkMode === 'normal' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500'}`}>Normal</button>
+              <button type="button" onClick={() => setBulkMode('ai')} className={`flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-black ${bulkMode === 'ai' ? 'bg-violet-50 text-violet-700' : 'text-slate-500'}`}><Bot className="h-3.5 w-3.5" />AI</button>
+            </div>
+          </div>
+          <div>
+            <label className="mb-2 block text-[11px] font-black uppercase tracking-wider text-slate-500">{bulkMode === 'ai' ? 'AI instruction / base message' : 'Message'}</label>
+            <textarea value={bulkMessage} onChange={(e) => setBulkMessage(e.target.value)} rows={2} placeholder={bulkMode === 'ai' ? 'Write the intent for a personalized message…' : 'Write the message to send…'} className="w-full resize-none rounded-xl border border-indigo-100 bg-white/90 px-3.5 py-2.5 text-sm font-medium text-slate-900 outline-none focus:ring-2 focus:ring-indigo-200" />
+          </div>
+          <button type="button" disabled={bulkSending || !bulkMessage.trim() || (bulkAudience === 'selected' && selectedContactIds.length === 0)} onClick={async () => {
+            const targets = bulkAudience === 'all' ? filteredContacts : filteredContacts.filter((contact) => selectedContactIds.includes(contact.id));
+            if (!targets.length) return;
+            if (bulkMode === 'ai') { window.alert('AI Personalized mode is ready in the UI, but it will not send until an AI generation endpoint is connected. Use Normal mode for live sending.'); return; }
+            if (!window.confirm(`Send this message to ${targets.length} contact(s)?`)) return;
+            setBulkSending(true);
+            try { for (const contact of targets) { const username = contact.ig_username || contact.ig_user_id; if (username) await Promise.resolve(sendManualReply(username, bulkMessage.trim())); } setBulkMessage(''); }
+            finally { setBulkSending(false); }
+          }} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 text-xs font-black text-white shadow-md disabled:cursor-not-allowed disabled:opacity-40"><WandSparkles className="h-4 w-4" />{bulkSending ? 'Sending…' : 'Send Message'}</button>
+        </div>
+        {bulkMode === 'ai' && <p className="mt-3 rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2 text-xs font-semibold leading-5 text-violet-800">AI mode is shown as a separate option, but live AI bulk sending stays disabled until a real AI-generation endpoint is connected. It will be used for genuine personalization, not to bypass Instagram safeguards.</p>}
+      </section>
+
       {/* Filter & Action Toolbar */}
       <div className="flex flex-col items-stretch justify-between gap-4 rounded-3xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm md:flex-row md:items-center">
         <div className="relative flex-1 w-full">
