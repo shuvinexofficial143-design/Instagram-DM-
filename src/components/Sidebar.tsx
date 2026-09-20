@@ -6,7 +6,6 @@ import {
   MessageSquare,
   Settings,
   LogOut,
-  AlertCircle,
   ChevronRight,
   ChevronLeft,
   ShieldCheck,
@@ -26,7 +25,6 @@ export const Sidebar: React.FC = () => {
     logout,
     instagramAccount,
     inboxMessages,
-    setIsRenewModalOpen,
     setIsConnectModalOpen,
     isAdmin,
   } = useApp();
@@ -82,7 +80,6 @@ export const Sidebar: React.FC = () => {
       ]
     : baseNavItems;
 
-  const isTrial = user?.plan === 'trial' || user?.plan === 'free';
   const accountName =
     firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || user?.name || 'Account';
   const accountEmail = firebaseUser?.email || user?.email || '';
@@ -249,42 +246,6 @@ export const Sidebar: React.FC = () => {
 
       {/* Bottom User Card & Plan Notice */}
       <div className="p-2.5 border-t border-slate-200/80 space-y-2.5 overflow-x-hidden">
-        {/* Trial Upgrade Nudge if applicable */}
-        {isTrial && (
-          <div className="relative group">
-            {isCollapsed ? (
-              <button
-                onClick={() => setIsRenewModalOpen(true)}
-                className="w-full h-10 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-xl flex items-center justify-center text-amber-600 transition-colors cursor-pointer"
-                aria-label="Upgrade Plan"
-              >
-                <AlertCircle className="w-5 h-5" />
-              </button>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3 text-xs">
-                <div className="flex items-center gap-1.5 text-amber-800 font-semibold mb-1">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>Trial Expires Soon</span>
-                </div>
-                <p className="text-[11px] text-amber-700 mb-2 leading-relaxed">
-                  Upgrade to Pro for unlimited DM replies & Meta Graph API sync.
-                </p>
-                <button
-                  onClick={() => setIsRenewModalOpen(true)}
-                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-1.5 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
-                >
-                  Upgrade Plan ($29/mo)
-                </button>
-              </div>
-            )}
-            {isCollapsed && (
-              <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-50">
-                Upgrade Plan ($29/mo)
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Profile Card */}
         <div className="relative group">
           <div
@@ -307,8 +268,8 @@ export const Sidebar: React.FC = () => {
                   <p className="text-xs font-black text-slate-950 truncate group-hover:text-indigo-600 transition-colors">
                     {accountName}
                   </p>
-                  <p className="mt-0.5 text-[10px] font-semibold text-slate-600 truncate" title={accountEmail}>
-                    {accountEmail || `${user.plan} plan`}
+                  <p className="mt-0.5 text-[11px] font-semibold text-slate-600 truncate">
+                    {accountEmail ? accountEmail.split('@')[0] : `${user.plan} plan`}
                   </p>
                 </div>
               )}
@@ -332,7 +293,7 @@ export const Sidebar: React.FC = () => {
           {isCollapsed && (
             <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-50 flex flex-col gap-0.5">
               <span>{accountName}</span>
-              <span className="text-[10px] text-slate-300 font-normal">{accountEmail || `${user.plan} Plan`}</span>
+              <span className="text-[10px] text-slate-300 font-normal">{accountEmail ? accountEmail.split('@')[0] : `${user.plan} Plan`}</span>
             </div>
           )}
         </div>
