@@ -8,6 +8,10 @@ import {
   ShieldCheck,
   Settings2,
   Sparkles,
+  CheckCircle2,
+  ArrowRight,
+  MessageSquareText,
+  WandSparkles,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -62,6 +66,35 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       </section>
+      <section id="automation-setup" className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-blue-50/85 via-white/80 to-violet-50/90 p-5 shadow-[0_14px_42px_rgba(72,95,145,0.08)] sm:p-7">
+        <div className="text-center">
+          <div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">Simple Setup</div>
+          <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-black text-transparent sm:text-3xl">How to Set Up Automation</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">Connect Instagram, create your workflow, then turn it live. Your existing automation and account data stay unchanged.</p>
+        </div>
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-blue-100 bg-white/80 p-4 shadow-sm">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-600"><Instagram className="h-4 w-4" /></div>
+            <div className="text-sm font-black text-slate-900">1. Connect Instagram</div>
+            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Use the official Meta connection below and confirm the correct Instagram profile is connected.</p>
+          </div>
+          <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-sm">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600"><MessageSquareText className="h-4 w-4" /></div>
+            <div className="text-sm font-black text-slate-900">2. Build Your Workflow</div>
+            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Open Automations, choose Comment, Story, DM or AI Conversation, then add triggers and replies.</p>
+          </div>
+          <div className="rounded-2xl border border-violet-100 bg-white/80 p-4 shadow-sm">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><WandSparkles className="h-4 w-4" /></div>
+            <div className="text-sm font-black text-slate-900">3. Activate & Monitor</div>
+            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Save the automation, switch it live and monitor conversations and activity from your workspace.</p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-slate-600">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Official Meta OAuth</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-indigo-700"><ArrowRight className="h-3.5 w-3.5" />Connect → Build → Go Live</span>
+        </div>
+      </section>
+
       <div className="rounded-3xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm sm:p-6">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
