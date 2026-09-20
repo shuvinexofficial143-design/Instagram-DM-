@@ -12,6 +12,9 @@ import {
   ArrowRight,
   MessageSquareText,
   WandSparkles,
+  ChevronDown,
+  MessageCircle,
+  Bot,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -28,6 +31,7 @@ export const SettingsPage: React.FC = () => {
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [openGuide, setOpenGuide] = useState<string | null>(null);
 
   const handleLogout = async () => {
     if (!window.confirm('Are you sure you want to sign out?')) return;
@@ -66,35 +70,6 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       </section>
-      <section id="automation-setup" className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-blue-50/85 via-white/80 to-violet-50/90 p-5 shadow-[0_14px_42px_rgba(72,95,145,0.08)] sm:p-7">
-        <div className="text-center">
-          <div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">Simple Setup</div>
-          <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-black text-transparent sm:text-3xl">How to Set Up Automation</h2>
-          <p className="mx-auto mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">Connect Instagram, create your workflow, then turn it live. Your existing automation and account data stay unchanged.</p>
-        </div>
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-blue-100 bg-white/80 p-4 shadow-sm">
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-600"><Instagram className="h-4 w-4" /></div>
-            <div className="text-sm font-black text-slate-900">1. Connect Instagram</div>
-            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Use the official Meta connection below and confirm the correct Instagram profile is connected.</p>
-          </div>
-          <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-sm">
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600"><MessageSquareText className="h-4 w-4" /></div>
-            <div className="text-sm font-black text-slate-900">2. Build Your Workflow</div>
-            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Open Automations, choose Comment, Story, DM or AI Conversation, then add triggers and replies.</p>
-          </div>
-          <div className="rounded-2xl border border-violet-100 bg-white/80 p-4 shadow-sm">
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><WandSparkles className="h-4 w-4" /></div>
-            <div className="text-sm font-black text-slate-900">3. Activate & Monitor</div>
-            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Save the automation, switch it live and monitor conversations and activity from your workspace.</p>
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-slate-600">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Official Meta OAuth</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-indigo-700"><ArrowRight className="h-3.5 w-3.5" />Connect → Build → Go Live</span>
-        </div>
-      </section>
-
       <div className="rounded-3xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm sm:p-6">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
@@ -218,6 +193,71 @@ export const SettingsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      <section id="automation-setup" className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-blue-50/85 via-white/80 to-violet-50/90 p-5 shadow-[0_14px_42px_rgba(72,95,145,0.08)] sm:p-7">
+        <div className="text-center">
+          <div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">Simple Setup</div>
+          <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-black text-transparent sm:text-3xl">How to Set Up Automation</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">Connect Instagram, create your workflow, then turn it live. Your existing automation and account data stay unchanged.</p>
+        </div>
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-blue-100 bg-white/80 p-4 shadow-sm">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-600"><Instagram className="h-4 w-4" /></div>
+            <div className="text-sm font-black text-slate-900">1. Connect Instagram</div>
+            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Use the official Meta connection below and confirm the correct Instagram profile is connected.</p>
+          </div>
+          <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-sm">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600"><MessageSquareText className="h-4 w-4" /></div>
+            <div className="text-sm font-black text-slate-900">2. Build Your Workflow</div>
+            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Open Automations, choose Comment, Story, DM or AI Conversation, then add triggers and replies.</p>
+          </div>
+          <div className="rounded-2xl border border-violet-100 bg-white/80 p-4 shadow-sm">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><WandSparkles className="h-4 w-4" /></div>
+            <div className="text-sm font-black text-slate-900">3. Activate & Monitor</div>
+            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Save the automation, switch it live and monitor conversations and activity from your workspace.</p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-slate-600">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Official Meta OAuth</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-indigo-700"><ArrowRight className="h-3.5 w-3.5" />Connect → Build → Go Live</span>
+        </div>
+      </section>
+
+
+      <section className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white/90 via-blue-50/70 to-violet-50/85 p-5 shadow-[0_14px_42px_rgba(72,95,145,0.08)] sm:p-7">
+        <div className="text-center">
+          <div className="text-xs font-black uppercase tracking-[0.2em] text-violet-500">Step-by-step Guides</div>
+          <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-black text-transparent sm:text-3xl">How to Create Automation</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">जिस automation को बनाना है, उस पर tap करें। नीचे Hindi + English में उसका setup खुल जाएगा।</p>
+        </div>
+        <div className="mt-6 space-y-3">
+          {[
+            { id: 'comment', icon: MessageSquareText, title: 'Comment Reply', sub: 'Comment आने पर automatic DM / reply', en: 'Create Automation → Comment Reply चुनें → All Messaging या Keywords चुनें → जरूरत हो तो Instagram post/reel select करें → Next: Configure Message में reply लिखें → Save करके automation Live करें।', hi: 'Create Automation खोलें → Comment Reply चुनें → सभी comments के लिए All Messaging या खास शब्दों के लिए Keywords चुनें → जरूरत हो तो Post/Reel चुनें → अगले step में भेजा जाने वाला reply लिखें → Save करके Live करें।' },
+            { id: 'story', icon: Instagram, title: 'Story Reply', sub: 'Story reply/mention पर automatic response', en: 'Create Automation → Story Reply चुनें → trigger condition set करें → Response step में message configure करें → Save and activate the workflow.', hi: 'Create Automation में Story Reply चुनें → किस story interaction पर trigger होना है वह सेट करें → Response में अपना message लिखें → Save करके automation चालू करें।' },
+            { id: 'dm', icon: MessageCircle, title: 'DM Reply', sub: 'Incoming DM या keyword का automatic reply', en: 'Create Automation → DM Reply चुनें → All Messaging or Messages with Keywords चुनें → keyword जोड़ें if needed → configure the reply → Save and go Live.', hi: 'DM Reply चुनें → हर DM के लिए All Messaging या खास शब्दों के लिए Messages with Keywords चुनें → जरूरत के keywords जोड़ें → reply message सेट करें → Save करके Live करें।' },
+            { id: 'ai', icon: Bot, title: 'AI Conversation', sub: 'AI से multi-turn Instagram conversation', en: 'Create Automation → DM AI Conversation चुनें → AI instructions/prompt और response behavior configure करें → review the settings → Save and activate.', hi: 'DM AI Conversation चुनें → AI को क्या काम करना है उसकी instructions/prompt दें → response behavior सेट करें → settings check करें → Save करके Live करें।' },
+          ].map((guide) => {
+            const Icon = guide.icon;
+            const isOpen = openGuide === guide.id;
+            return (
+              <div key={guide.id} className="overflow-hidden rounded-2xl border border-indigo-100 bg-white/80 shadow-sm">
+                <button type="button" onClick={() => setOpenGuide(isOpen ? null : guide.id)} className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-indigo-50/50">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-100 to-violet-100 text-indigo-600"><Icon className="h-4.5 w-4.5" /></div>
+                  <div className="min-w-0 flex-1"><div className="text-sm font-black text-slate-900">{guide.title}</div><div className="mt-0.5 text-xs font-medium text-slate-600">{guide.sub}</div></div>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-indigo-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {isOpen && (
+                  <div className="grid gap-3 border-t border-indigo-100 bg-gradient-to-br from-blue-50/45 to-violet-50/40 p-4 md:grid-cols-2">
+                    <div className="rounded-xl border border-blue-100 bg-white/80 p-3"><div className="mb-1 text-[11px] font-black uppercase tracking-wider text-blue-600">English</div><p className="text-xs font-medium leading-5 text-slate-700">{guide.en}</p></div>
+                    <div className="rounded-xl border border-violet-100 bg-white/80 p-3"><div className="mb-1 text-[11px] font-black uppercase tracking-wider text-violet-600">हिंदी</div><p className="text-xs font-medium leading-5 text-slate-700">{guide.hi}</p></div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
     </div>
   );
 };
