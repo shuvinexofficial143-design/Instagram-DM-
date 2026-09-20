@@ -232,3 +232,58 @@
   min-height: 100vh;
   color: #0f172a;
 }
+
+
+/* AutoReply.io unified visual system — matches About page */
+.app-unified-theme,
+.app-unified-theme > div,
+.app-unified-theme [class*="min-h-screen"] {
+  background-color: #F7FAFF;
+}
+
+.app-unified-theme [class*="bg-[#F9F6FE]"],
+.app-unified-theme [class*="bg-[#FBFCFF]"] {
+  background-color: #F7FAFF !important;
+}
+
+/* Reduce stark white surfaces while keeping forms readable */
+.app-unified-theme [class~="bg-white"] {
+  background-color: #FCFDFF !important;
+}
+.app-unified-theme [class*="bg-white/85"],
+.app-unified-theme [class*="bg-white/90"],
+.app-unified-theme [class*="bg-white/80"],
+.app-unified-theme [class*="bg-white/75"] {
+  background-color: rgba(252, 253, 255, 0.88) !important;
+}
+
+.app-unified-theme input,
+.app-unified-theme textarea,
+.app-unified-theme select {
+  background-color: #FCFDFF;
+}
+
+/* Clean mobile layout: prevent long labels/actions from overlapping */
+.app-unified-theme button,
+.app-unified-theme input,
+.app-unified-theme textarea,
+.app-unified-theme select {
+  min-width: 0;
+}
+.app-unified-theme p,
+.app-unified-theme h1,
+.app-unified-theme h2,
+.app-unified-theme h3,
+.app-unified-theme span {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px) {
+  .app-unified-theme [class*="p-8"] {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+  .app-unified-theme table {
+    min-width: 680px;
+  }
+}
