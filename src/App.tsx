@@ -23,7 +23,7 @@ const MainContent: React.FC = () => {
   const { activeTab } = useApp();
 
   return (
-    <main className="app-unified-theme min-w-0 flex-1 bg-[#F7FAFF] pb-24 md:pb-0">
+    <main className="app-unified-theme min-w-0 flex-1 bg-[#F7FAFF] pb-24 md:pb-0 md:overflow-y-auto md:overscroll-contain">
       <PlanBanner />
 
       <ErrorBoundary>
@@ -70,9 +70,9 @@ const AppShell: React.FC = () => {
   return (
     <ErrorBoundary>
       {showSplash && <IntroSplash onComplete={() => setShowSplash(false)} />}
-      <div className="flex min-h-[100dvh] w-full overflow-x-clip bg-[#F7FAFF] font-sans text-slate-900">
+      <div className="flex min-h-[100dvh] w-full overflow-x-clip bg-[#F7FAFF] font-sans text-slate-900 md:h-[100dvh] md:overflow-hidden">
         <div className="hidden shrink-0 md:block"><Sidebar /></div>
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col md:h-[100dvh] md:min-h-0">
           <Header />
           <MainContent />
         </div>
