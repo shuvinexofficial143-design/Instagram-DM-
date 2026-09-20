@@ -746,7 +746,7 @@ Answer only about the business.`
                         if (e.target.value.trim()) setNameError('');
                       }}
                       placeholder="e.g. Welcome Message, Order Support, Lead Capture"
-                      className={`w-full px-4 py-3 bg-slate-50/50 hover:bg-slate-50 focus:bg-white border rounded-xl text-xs font-semibold text-slate-900 focus:outline-hidden transition-all ${
+                      className={`w-full px-4 py-3 bg-blue-50/35 hover:bg-slate-50 focus:bg-white border rounded-xl text-xs font-semibold text-slate-900 focus:outline-hidden transition-all ${
                         nameError
                           ? 'border-red-500 focus:ring-2 focus:ring-red-200'
                           : 'border-slate-200 focus:border-[#2563eb] focus:ring-2 focus:ring-blue-500/10'
@@ -1624,7 +1624,7 @@ Please rephrase your question or our support team will assist you.`}
                         setAiPrompt(e.target.value);
                       }}
                       placeholder="e.g. Hey {first_name}! 👋 Thanks for contacting us. Here is the link you requested: https://example.com"
-                      className="w-full p-4 bg-slate-50/50 hover:bg-slate-50 focus:bg-white border border-slate-200 focus:border-[#2563eb] rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-blue-500/10 focus:outline-hidden transition-all leading-relaxed"
+                      className="w-full p-4 bg-blue-50/35 hover:bg-slate-50 focus:bg-white border border-slate-200 focus:border-[#2563eb] rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-blue-500/10 focus:outline-hidden transition-all leading-relaxed"
                     />
                     <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium pt-1">
                       <span>Personalization tags: <code className="text-[#2563eb] font-bold">{'{first_name}'}</code>, <code className="text-[#2563eb] font-bold">{'{username}'}</code></span>
