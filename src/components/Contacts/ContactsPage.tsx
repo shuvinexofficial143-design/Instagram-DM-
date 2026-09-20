@@ -120,7 +120,7 @@ export const ContactsPage: React.FC = () => {
   };
 
   return (
-    <div className="p-8 space-y-6 bg-[#F9F6FE] min-h-screen">
+    <div className="p-8 space-y-6 bg-[#F7FAFF] min-h-screen">
       {/* Filter & Action Toolbar */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="relative flex-1 w-full">
