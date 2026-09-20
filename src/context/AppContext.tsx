@@ -638,22 +638,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uid = firebaseUser?.uid;
 
     const fetchAccountData = async () => {
+      if (!uid) {
+        setInstagramAccountState(null);
+        return;
+      }
+
+      // Authenticated workspaces are isolated by the Google/Supabase user id.
+      // Never hydrate one signed-in user's Instagram account from the shared guest cookie.
       try {
-        const res = await fetch('/api/instagram/account', { credentials: 'same-origin' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.account && data.account.username) {
-            const formatted = { ...data.account, id: 'primary' };
-            setInstagramAccount(formatted);
-            if (uid) {
-              saveUserDocument(uid, 'instagram_account', formatted).catch(() => {});
-            }
-          } else {
-            setInstagramAccount(null);
-          }
+        const saved = await import('../lib/supabase').then(({ getUserDocument }) =>
+          getUserDocument<InstagramAccount>(uid, 'instagram_account', 'primary')
+        );
+        if (saved?.username) {
+          const { access_token: _serverOnlyToken, ...safeAccount } = saved as any;
+          setInstagramAccountState(safeAccount as InstagramAccount);
+        } else {
+          setInstagramAccountState(null);
         }
       } catch (err) {
-        console.warn('[FETCH_IG_ACCOUNT_ERR]', err);
+        console.warn('[FETCH_USER_IG_ACCOUNT_ERR]', err);
+        setInstagramAccountState(null);
       }
     };
 
