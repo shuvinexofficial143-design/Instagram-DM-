@@ -178,6 +178,7 @@ export const ContactsPage: React.FC = () => {
             setBulkStatus('');
             let sent = 0;
             let failed = 0;
+            let lastError = '';
             try {
               for (const contact of targets) {
                 const username = contact.ig_username || contact.ig_user_id;
@@ -185,23 +186,31 @@ export const ContactsPage: React.FC = () => {
                 try {
                   let finalMessage = bulkMessage.trim();
                   if (bulkMode === 'ai') {
-                    const aiRes = await fetch('/api/ai/bulk-message', {
+                    const aiRes = await fetch('/api/openai/chat', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ instruction: bulkMessage.trim(), username }),
+                      body: JSON.stringify({
+                        text: `Recipient Instagram username: @${String(username).replace(/^@/, '')}\nMessage goal/instruction: ${bulkMessage.trim()}\nWrite only the final DM text. Do not explain your answer.`,
+                        systemInstruction: 'You write concise, natural Instagram direct messages. Follow the supplied message goal faithfully. Personalize only from facts explicitly provided and never invent personal details. Keep it useful and human, normally 1-3 short sentences. Do not mention AI or platform safeguards.',
+                        personality: 'Friendly',
+                        language: 'Auto Detect',
+                        assistantName: 'Sales Assistant',
+                        maxReplyLength: 'short',
+                      }),
                     });
                     const aiData = await aiRes.json().catch(() => ({}));
-                    if (!aiRes.ok || !aiData?.message) throw new Error(aiData?.error || 'AI generation failed');
-                    finalMessage = String(aiData.message).trim();
+                    if (!aiRes.ok || !aiData?.reply) throw new Error(aiData?.error || 'AI generation failed');
+                    finalMessage = String(aiData.reply).trim();
                   }
                   await Promise.resolve(sendManualReply(username, finalMessage));
                   sent += 1;
                 } catch (error) {
                   console.warn('[BULK_MESSAGE_ITEM_FAILED]', username, error);
+                  lastError = error instanceof Error ? error.message : String(error || 'Unknown error');
                   failed += 1;
                 }
               }
-              setBulkStatus(`Completed: ${sent} queued for sending${failed ? `, ${failed} failed` : ''}.`);
+              setBulkStatus(`Completed: ${sent} queued for sending${failed ? `, ${failed} failed${lastError ? ` — ${lastError}` : ''}` : ''}.`);
               if (sent > 0) setBulkMessage('');
             } finally { setBulkSending(false); }
           }} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 text-xs font-black text-white shadow-md disabled:cursor-not-allowed disabled:opacity-40"><WandSparkles className="h-4 w-4" />{bulkSending ? 'Sending…' : 'Send Message'}</button>
