@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+// Sidebar UI revision: 2026-09-20-profile-footer-v2
 import {
   LayoutDashboard,
   Zap,
@@ -245,7 +246,7 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Bottom User Card & Plan Notice */}
-      <div className="p-2.5 border-t border-slate-200/80 space-y-2.5 overflow-x-hidden">
+      <div className="p-3 border-t border-slate-200/80 overflow-x-hidden bg-white">
         {/* Profile Card */}
         <div className="relative group">
           <div
