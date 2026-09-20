@@ -1,1184 +1,293 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ShieldAlert,
-  ShieldCheck,
-  Users,
-  Search,
-  RefreshCw,
-  Download,
-  Instagram,
-  Zap,
-  MessageSquare,
-  Clock,
-  Calendar,
-  ChevronUp,
-  ChevronDown,
-  ArrowUpDown,
-  ExternalLink,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Mail,
-  UserCheck,
-  Eye,
-  EyeOff,
-  X,
-  Lock,
-  ArrowLeft,
-  KeyRound,
-  Filter,
-  LogOut,
-  Sparkles,
-  Activity,
+  Activity, Bot, Check, ChevronRight, CircleDollarSign, Instagram,
+  Loader2, MessageSquare, RefreshCw, Save, Search, ShieldCheck,
+  SlidersHorizontal, Sparkles, Users, Workflow, X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { AdminUserOverviewItem, AdminOverviewResponse } from '../../types';
 import { UserAvatar } from '../Common/UserAvatar';
 
+type Plan = {
+  id: 'free' | 'starter' | 'pro' | 'business';
+  name: string;
+  price_inr: number;
+  total_messages: number;
+  ai_replies: number;
+  instagram_accounts: number;
+  automations_limit: number | null;
+  billing_days: number;
+  is_active: boolean;
+  sort_order: number;
+};
+
+type AdminUser = {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  role: string;
+  last_login_at?: string | null;
+  last_active_at?: string | null;
+  instagramAccounts: number;
+  instagramUsernames: string[];
+  automations: number;
+  contacts: number;
+  messages: number;
+  aiReplies: number;
+};
+
+type ControlCenter = {
+  success: boolean;
+  error?: string;
+  admin?: { email: string };
+  stats: {
+    totalUsers: number;
+    active24h: number;
+    active7d: number;
+    active30d: number;
+    connectedInstagram: number;
+    totalAutomations: number;
+    totalMessages: number;
+    totalAiReplies: number;
+  };
+  users: AdminUser[];
+  plans: Plan[];
+  auditLogs: Array<{
+    id: number;
+    admin_email: string;
+    action: string;
+    entity_id?: string;
+    created_at: string;
+  }>;
+};
+
+const nf = new Intl.NumberFormat('en-IN');
+
+const defaultPlans: Plan[] = [
+  { id: 'free', name: 'Free', price_inr: 0, total_messages: 1500, ai_replies: 1000, instagram_accounts: 1, automations_limit: 5, billing_days: 30, is_active: true, sort_order: 0 },
+  { id: 'starter', name: 'Starter', price_inr: 299, total_messages: 7500, ai_replies: 5000, instagram_accounts: 1, automations_limit: null, billing_days: 30, is_active: true, sort_order: 1 },
+  { id: 'pro', name: 'Pro', price_inr: 599, total_messages: 25000, ai_replies: 15000, instagram_accounts: 2, automations_limit: null, billing_days: 30, is_active: true, sort_order: 2 },
+  { id: 'business', name: 'Business', price_inr: 1299, total_messages: 75000, ai_replies: 40000, instagram_accounts: 5, automations_limit: null, billing_days: 30, is_active: true, sort_order: 3 },
+];
+
 export const AdminPage: React.FC = () => {
-  const { firebaseUser, user, setActiveTab } = useApp();
+  const { firebaseUser, isAdmin, setActiveTab } = useApp();
+  const [section, setSection] = useState<'overview' | 'users' | 'plans' | 'activity'>('overview');
+  const [data, setData] = useState<ControlCenter | null>(null);
+  const [plans, setPlans] = useState<Plan[]>(defaultPlans);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  const currentEmail = (firebaseUser?.email || user?.email || '').trim().toLowerCase();
-
-  // Admin Login Portal State
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    try {
-      return sessionStorage.getItem('admin_session_auth') === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  const [adminUserIdInput, setAdminUserIdInput] = useState<string>('Nazhalijing');
-  const [adminPasswordInput, setAdminPasswordInput] = useState<string>('');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [loginLoading, setLoginLoading] = useState<boolean>(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
-
-  // Dashboard Data States
-  const [loading, setLoading] = useState<boolean>(true);
-  const [data, setData] = useState<AdminOverviewResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isAccessDenied, setIsAccessDenied] = useState<boolean>(false);
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
-
-  // Search, Filter & Sort states
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'connected' | 'disconnected' | 'admins'>('all');
-  const [sortBy, setSortBy] = useState<'last_login' | 'signup_date' | 'dms' | 'automations' | 'email'>('last_login');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-
-  // Selected User Detail Modal
-  const [selectedUser, setSelectedUser] = useState<AdminUserOverviewItem | null>(null);
-
-  // Handle Admin Credentials Login
-  const handleAdminLogin = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setLoginLoading(true);
-    setLoginError(null);
-
-    try {
-      const res = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: adminUserIdInput.trim(),
-          password: adminPasswordInput.trim(),
-        }),
-      });
-
-      const result = await res.json();
-      if (!res.ok || !result.success) {
-        throw new Error(result.error || 'Invalid User ID or Password.');
-      }
-
-      // Store in session storage
-      try {
-        sessionStorage.setItem('admin_session_auth', 'true');
-        sessionStorage.setItem('admin_session_token', result.token || 'admin_session_valid_nazhalijing_9589');
-      } catch {}
-
-      setIsAdminAuthenticated(true);
-      setAdminPasswordInput('');
-    } catch (err: any) {
-      setLoginError(err?.message || 'Login failed. Please check your credentials.');
-    } finally {
-      setLoginLoading(false);
-    }
+  const authHeaders = async () => {
+    if (!firebaseUser) throw new Error('Please sign in again.');
+    const token = await firebaseUser.getIdToken();
+    return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
   };
 
-  const handleAdminLogout = () => {
-    try {
-      sessionStorage.removeItem('admin_session_auth');
-      sessionStorage.removeItem('admin_session_token');
-    } catch {}
-    setIsAdminAuthenticated(false);
-    setAdminPasswordInput('');
-  };
-
-  // Fetch dashboard overview data from backend admin API
-  const fetchDashboardOverview = async () => {
-    if (!isAdminAuthenticated) return;
-
+  const load = async () => {
     setLoading(true);
-    setError(null);
-    setIsAccessDenied(false);
-
+    setError('');
     try {
-      const emailParam = encodeURIComponent(currentEmail);
-      const token = sessionStorage.getItem('admin_session_token') || 'admin_session_valid_nazhalijing_9589';
-
-      const res = await fetch(`/api/admin/dashboard-overview?email=${emailParam}`, {
-        headers: {
-          'x-user-email': currentEmail,
-          'x-admin-token': token,
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (res.status === 403) {
-        setIsAccessDenied(true);
-        const errData = await res.json().catch(() => ({}));
-        setError(errData.error || 'Access Denied: You do not have administrator permissions.');
-        setLoading(false);
-        return;
-      }
-
-      if (!res.ok) {
-        throw new Error(`Server returned HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const result: AdminOverviewResponse = await res.json();
-      if (!result.success) {
-        throw new Error(result.error || 'Could not fetch admin overview.');
-      }
-
-      setData(result);
-      setLastRefreshedAt(new Date());
-    } catch (err: any) {
-      console.error('[ADMIN_FETCH_ERR]', err);
-      setError(err?.message || 'Failed to load dashboard overview.');
+      const headers = await authHeaders();
+      const res = await fetch('/api/admin/control-center', { headers, cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) throw new Error(json.error || 'Could not load Admin Panel.');
+      setData(json);
+      setPlans(Array.isArray(json.plans) && json.plans.length ? json.plans : defaultPlans);
+    } catch (e: any) {
+      setError(e?.message || 'Could not load Admin Panel.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (isAdminAuthenticated) {
-      fetchDashboardOverview();
-    }
-  }, [isAdminAuthenticated, currentEmail]);
+  useEffect(() => { if (isAdmin && firebaseUser) void load(); }, [isAdmin, firebaseUser?.uid]);
 
-  // Format Dates nicely
-  const formatDate = (dateStr?: string | null) => {
-    if (!dateStr) return '—';
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return data?.users || [];
+    return (data?.users || []).filter((u) =>
+      [u.email, u.displayName, u.uid, ...(u.instagramUsernames || [])]
+        .some((v) => String(v || '').toLowerCase().includes(q))
+    );
+  }, [data?.users, search]);
+
+  const savePlan = async () => {
+    if (!editingPlan) return;
+    if (editingPlan.ai_replies > editingPlan.total_messages) {
+      setError('AI replies total automated messages से ज्यादा नहीं हो सकते।');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setNotice('');
     try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return '—';
-      return d.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
+      const headers = await authHeaders();
+      const res = await fetch(`/api/admin/plans/${editingPlan.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(editingPlan),
       });
-    } catch {
-      return '—';
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) throw new Error(json.error || 'Plan update failed.');
+      setPlans((prev) => prev.map((p) => p.id === editingPlan.id ? json.plan : p));
+      setEditingPlan(null);
+      setNotice(`${json.plan.name} plan updated successfully.`);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'Plan update failed.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const formatDateTime = (dateStr?: string | null) => {
-    if (!dateStr) return '—';
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return '—';
-      return d.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return '—';
-    }
-  };
-
-  const formatRelativeTime = (dateStr?: string | null) => {
-    if (!dateStr) return 'Never';
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return 'Never';
-      const now = new Date();
-      const diffMs = now.getTime() - d.getTime();
-      const diffMins = Math.floor(diffMs / (1000 * 60));
-      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (diffDays === 1) return 'Yesterday';
-      if (diffDays < 30) return `${diffDays}d ago`;
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } catch {
-      return '—';
-    }
-  };
-
-  // Toggle sort order or column
-  const handleSort = (column: typeof sortBy) => {
-    if (sortBy === column) {
-      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortBy(column);
-      setSortOrder('desc');
-    }
-  };
-
-  // Filter and sort the user list
-  const filteredAndSortedUsers = useMemo(() => {
-    if (!data?.users) return [];
-
-    let list = [...data.users];
-
-    // 1. Search filter by email, displayName, ig_username, or uid
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter((u) => {
-        const emailMatch = (u.email || '').toLowerCase().includes(q);
-        const nameMatch = (u.displayName || '').toLowerCase().includes(q);
-        const igMatch = (u.instagram?.username || '').toLowerCase().includes(q);
-        const uidMatch = (u.uid || '').toLowerCase().includes(q);
-        return emailMatch || nameMatch || igMatch || uidMatch;
-      });
-    }
-
-    // 2. Status filter
-    if (statusFilter === 'connected') {
-      list = list.filter((u) => u.instagram?.status === 'active' && u.instagram?.username);
-    } else if (statusFilter === 'disconnected') {
-      list = list.filter((u) => u.instagram?.status !== 'active' || !u.instagram?.username);
-    } else if (statusFilter === 'admins') {
-      list = list.filter((u) => u.role === 'admin');
-    }
-
-    // 3. Sorting
-    list.sort((a, b) => {
-      let comparison = 0;
-
-      if (sortBy === 'email') {
-        comparison = (a.email || '').localeCompare(b.email || '');
-      } else if (sortBy === 'signup_date') {
-        const timeA = new Date(a.first_login_at || 0).getTime();
-        const timeB = new Date(b.first_login_at || 0).getTime();
-        comparison = timeA - timeB;
-      } else if (sortBy === 'last_login') {
-        const timeA = new Date(a.last_login_at || a.last_active_at || 0).getTime();
-        const timeB = new Date(b.last_login_at || b.last_active_at || 0).getTime();
-        comparison = timeA - timeB;
-      } else if (sortBy === 'dms') {
-        comparison = (a.stats?.total_dms_sent || 0) - (b.stats?.total_dms_sent || 0);
-      } else if (sortBy === 'automations') {
-        comparison = (a.stats?.total_automations || 0) - (b.stats?.total_automations || 0);
-      }
-
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-
-    return list;
-  }, [data?.users, searchQuery, statusFilter, sortBy, sortOrder]);
-
-  // Overall Stats calculation
-  const totalRegisteredUsers = data?.overviewStats?.totalRegisteredUsers ?? data?.totalUsers ?? (data?.users?.length || 0);
-  const totalConnectedInstagram =
-    data?.overviewStats?.totalConnectedInstagram ??
-    (data?.users || []).filter((u) => u.instagram?.status === 'active' && u.instagram?.username).length;
-  const totalDmsSentCombined =
-    data?.overviewStats?.totalDmsSent ??
-    data?.totalAutomatedDms ??
-    (data?.users || []).reduce((acc, u) => acc + (u.stats?.total_dms_sent || 0), 0);
-  const totalActiveAutomationsCombined =
-    data?.overviewStats?.totalActiveAutomations ??
-    data?.totalAutomations ??
-    (data?.users || []).reduce((acc, u) => acc + (u.stats?.total_automations || 0), 0);
-
-  // CSV Export handler
-  const handleExportCsv = () => {
-    if (!filteredAndSortedUsers.length) return;
-
-    const headers = [
-      'Email/Gmail ID',
-      'Display Name',
-      'Role',
-      'Signup Date',
-      'Last Login Date & Time',
-      'Connected Instagram Account',
-      'Instagram Connection Date',
-      'Total DMs Sent',
-      'Total Automations Created',
-      'Account Status',
-      'Firestore UID',
-    ];
-
-    const rows = filteredAndSortedUsers.map((u) => [
-      `"${u.email || ''}"`,
-      `"${u.displayName || ''}"`,
-      `"${u.role || 'user'}"`,
-      `"${u.first_login_at || ''}"`,
-      `"${u.last_login_at || ''}"`,
-      `"${u.instagram?.username ? '@' + u.instagram.username : 'Not Connected'}"`,
-      `"${u.instagram?.connected_at || ''}"`,
-      u.stats?.total_dms_sent || 0,
-      u.stats?.total_automations || 0,
-      `"${u.instagram?.status === 'active' && u.instagram?.username ? 'Active' : 'Inactive'}"`,
-      `"${u.uid}"`,
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `autoreply_admin_users_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // ----------------------------------------------------
-  // 1. ADMIN CREDENTIALS LOGIN GATE
-  // ----------------------------------------------------
-  if (!isAdminAuthenticated) {
+  if (!isAdmin) {
     return (
-      <div className="min-h-[85vh] flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 shadow-xl p-8 space-y-6">
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center mx-auto text-indigo-600 shadow-xs">
-              <Lock className="w-8 h-8" />
-            </div>
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Admin Dashboard Login</h2>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Restricted owner area. Please enter your administrator user ID and password to access the panel.
-            </p>
-          </div>
-
-          {loginError && (
-            <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-semibold flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
-              <span>{loginError}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            {/* User ID Field */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-slate-400" />
-                <span>Admin User ID</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={adminUserIdInput}
-                onChange={(e) => setAdminUserIdInput(e.target.value)}
-                placeholder="Enter User ID (e.g. Nazhalijing)"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
-              />
-            </div>
-
-            {/* Password Field */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <KeyRound className="w-3.5 h-3.5 text-slate-400" />
-                <span>Admin Password</span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={adminPasswordInput}
-                  onChange={(e) => setAdminPasswordInput(e.target.value)}
-                  placeholder="Enter Password"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 font-medium pr-10 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loginLoading || !adminUserIdInput || !adminPasswordInput}
-              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              {loginLoading ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Verifying Credentials...</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Access Admin Dashboard</span>
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Return button */}
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>Primary Owner: devsinghparmar9589@gmail.com</span>
-            <button
-              onClick={() => setActiveTab('home')}
-              className="font-bold text-slate-700 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to App</span>
-            </button>
-          </div>
+      <div className="min-h-[75vh] flex items-center justify-center p-6">
+        <div className="max-w-lg w-full rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <ShieldCheck className="mx-auto h-12 w-12 text-indigo-600" />
+          <h2 className="mt-4 text-2xl font-black text-slate-950">Admin access required</h2>
+          <p className="mt-2 text-sm font-semibold text-slate-600">यह area केवल authorized owner/admin Google account के लिए है।</p>
+          <button onClick={() => setActiveTab('home')} className="mt-6 rounded-xl bg-slate-950 px-5 py-3 text-sm font-bold text-white">Back to Home</button>
         </div>
       </div>
     );
   }
 
-  // ----------------------------------------------------
-  // 2. ACCESS DENIED VIEW (if email not whitelisted on backend)
-  // ----------------------------------------------------
-  if (isAccessDenied) {
-    return (
-      <div className="min-h-[85vh] flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white rounded-3xl border border-red-200 shadow-xl p-8 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center mx-auto mb-5 shadow-inner">
-            <ShieldAlert className="w-9 h-9 text-red-600" />
-          </div>
+  const stats = data?.stats || { totalUsers: 0, active24h: 0, active7d: 0, active30d: 0, connectedInstagram: 0, totalAutomations: 0, totalMessages: 0, totalAiReplies: 0 };
+  const statCards = [
+    ['Total Users', stats.totalUsers, Users],
+    ['Active · 24h', stats.active24h, Activity],
+    ['Instagram Accounts', stats.connectedInstagram, Instagram],
+    ['Automations', stats.totalAutomations, Workflow],
+    ['Automated Messages', stats.totalMessages, MessageSquare],
+    ['AI Replies', stats.totalAiReplies, Bot],
+  ] as const;
 
-          <h2 className="text-2xl font-black text-slate-900 mb-2">Access Denied</h2>
-          <p className="text-sm font-bold text-red-600 mb-4 uppercase tracking-wider">
-            Unauthorized Administrator Email
-          </p>
-
-          <p className="text-sm text-slate-600 leading-relaxed mb-6">
-            The Admin Dashboard requires authorized administrator email privileges. Your current account{' '}
-            <span className="font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
-              {currentEmail || 'Anonymous'}
-            </span>{' '}
-            is not on the authorized administrator whitelist.
-          </p>
-
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-left mb-6 text-xs text-slate-600 space-y-2">
-            <div className="flex items-center gap-2 font-bold text-slate-800">
-              <Lock className="w-3.5 h-3.5 text-slate-500" />
-              <span>Backend Access Security</span>
-            </div>
-            <p>
-              Access is strictly governed by the backend whitelist in <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">server.ts</code> and <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">ADMIN_EMAILS</code>.
-            </p>
-            <p className="text-[11px] text-slate-500">
-              Authorized Owner Email: <span className="font-mono text-indigo-600 font-semibold">devsinghparmar9589@gmail.com</span>
-            </p>
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={handleAdminLogout}
-              className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
-            >
-              Sign Out of Admin
-            </button>
-            <button
-              onClick={() => setActiveTab('home')}
-              className="flex-1 py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Go to Home</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ----------------------------------------------------
-  // 3. FULL ADMIN DASHBOARD VIEW
-  // ----------------------------------------------------
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Top Header Card */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 md:p-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shadow-2xs">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-black tracking-tight text-slate-900">Admin Dashboard</h1>
-                  <span className="px-2.5 py-0.5 text-xs font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300/60 rounded-full">
-                    Owner Active
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Aggregated platform overview, user directory, and automation usage metrics from Firestore.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 shrink-0">
-            <button
-              onClick={fetchDashboardOverview}
-              disabled={loading}
-              className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-300 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
-              title="Refresh Dashboard Overview"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : 'text-slate-500'}`} />
-              <span>Refresh</span>
-            </button>
-
-            <button
-              onClick={handleExportCsv}
-              disabled={loading || !filteredAndSortedUsers.length}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-xs shadow-indigo-600/20 cursor-pointer disabled:opacity-50"
-              title="Export all users to CSV"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export CSV</span>
-            </button>
-
-            <button
-              onClick={handleAdminLogout}
-              className="px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-700 hover:border-red-200 text-slate-600 text-xs font-bold border border-slate-200 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-              title="Lock Admin Session"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Lock Panel</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Status Bar */}
-        <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>
-              Admin User ID: <strong className="text-slate-900 font-semibold font-mono">Nazhalijing</strong>
-            </span>
-            <span className="text-slate-300">•</span>
-            <span>
-              Email: <strong className="text-slate-900 font-semibold">{currentEmail || 'devsinghparmar9589@gmail.com'}</strong>
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span>Last sync: {lastRefreshedAt.toLocaleTimeString()}</span>
-            <span className="text-slate-300">•</span>
-            <span className="font-mono text-[11px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-              /api/admin/dashboard-overview
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* ---------------------------------------------------- */}
-      {/* OVERVIEW STATS (TOP SECTION - 4 CARDS) */}
-      {/* ---------------------------------------------------- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Registered Users */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between transition-all hover:shadow-md">
-          <div className="space-y-1">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Registered Users</p>
-            <p className="text-3xl font-black text-slate-900 tracking-tight">
-              {loading ? '—' : totalRegisteredUsers.toLocaleString()}
-            </p>
-            <p className="text-[11px] text-slate-500 font-medium">All Google & Email signups</p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs">
-            <Users className="w-6 h-6" />
-          </div>
-        </div>
-
-        {/* Card 2: Total Connected Instagram Accounts */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between transition-all hover:shadow-md">
-          <div className="space-y-1">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Connected Instagram</p>
-            <p className="text-3xl font-black text-pink-600 tracking-tight">
-              {loading ? '—' : totalConnectedInstagram.toLocaleString()}
-            </p>
-            <p className="text-[11px] text-slate-500 font-medium">Active live Instagram channels</p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-pink-50 border border-pink-100 flex items-center justify-center text-pink-600 shadow-2xs">
-            <Instagram className="w-6 h-6" />
-          </div>
-        </div>
-
-        {/* Card 3: Total DMs Sent (Combined) */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between transition-all hover:shadow-md">
-          <div className="space-y-1">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Total DMs Sent</p>
-            <p className="text-3xl font-black text-blue-600 tracking-tight">
-              {loading ? '—' : totalDmsSentCombined.toLocaleString()}
-            </p>
-            <p className="text-[11px] text-slate-500 font-medium">Combined automated direct messages</p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-2xs">
-            <MessageSquare className="w-6 h-6" />
-          </div>
-        </div>
-
-        {/* Card 4: Total Active Automations (Combined) */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between transition-all hover:shadow-md">
-          <div className="space-y-1">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Active Automations</p>
-            <p className="text-3xl font-black text-violet-600 tracking-tight">
-              {loading ? '—' : totalActiveAutomationsCombined.toLocaleString()}
-            </p>
-            <p className="text-[11px] text-slate-500 font-medium">Combined keyword & story rules</p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-violet-50 border border-violet-100 flex items-center justify-center text-violet-600 shadow-2xs">
-            <Zap className="w-6 h-6" />
-          </div>
-        </div>
-      </div>
-
-      {/* ---------------------------------------------------- */}
-      {/* DETAILED USERS TABLE */}
-      {/* ---------------------------------------------------- */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-        {/* Table Controls Bar */}
-        <div className="p-5 border-b border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Search bar */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search by email, name, Instagram handle..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs md:text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Filter Pills */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                statusFilter === 'all'
-                  ? 'bg-slate-900 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              All ({data?.users?.length || 0})
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('connected')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                statusFilter === 'connected'
-                  ? 'bg-emerald-600 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Connected ({totalConnectedInstagram})</span>
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('disconnected')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                statusFilter === 'disconnected'
-                  ? 'bg-slate-600 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              <span>Not Connected</span>
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('admins')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                statusFilter === 'admins'
-                  ? 'bg-indigo-600 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Admins</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Table Content */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs md:text-sm text-slate-700">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[11px] font-bold uppercase tracking-wider select-none">
-              <tr>
-                {/* 1. Email/Gmail ID */}
-                <th className="py-3.5 px-4 font-bold">
-                  <button
-                    onClick={() => handleSort('email')}
-                    className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
-                  >
-                    <span>Email / Gmail ID</span>
-                    {sortBy === 'email' ? (
-                      sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-indigo-600" /> : <ChevronDown className="w-3 h-3 text-indigo-600" />
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                    )}
-                  </button>
-                </th>
-
-                {/* 2. Signup Date */}
-                <th className="py-3.5 px-4 font-bold">
-                  <button
-                    onClick={() => handleSort('signup_date')}
-                    className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
-                  >
-                    <span>Signup Date</span>
-                    {sortBy === 'signup_date' ? (
-                      sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-indigo-600" /> : <ChevronDown className="w-3 h-3 text-indigo-600" />
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                    )}
-                  </button>
-                </th>
-
-                {/* 3. Last Login Date & Time */}
-                <th className="py-3.5 px-4 font-bold">
-                  <button
-                    onClick={() => handleSort('last_login')}
-                    className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
-                  >
-                    <span>Last Login Date & Time</span>
-                    {sortBy === 'last_login' ? (
-                      sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-indigo-600" /> : <ChevronDown className="w-3 h-3 text-indigo-600" />
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                    )}
-                  </button>
-                </th>
-
-                {/* 4. Connected Instagram Account */}
-                <th className="py-3.5 px-4 font-bold">
-                  <span>Connected Instagram Account</span>
-                </th>
-
-                {/* 5. Instagram Connection Date */}
-                <th className="py-3.5 px-4 font-bold">
-                  <span>Connection Date</span>
-                </th>
-
-                {/* 6. Total DMs Sent */}
-                <th className="py-3.5 px-4 font-bold">
-                  <button
-                    onClick={() => handleSort('dms')}
-                    className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
-                  >
-                    <span>Total DMs Sent</span>
-                    {sortBy === 'dms' ? (
-                      sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-indigo-600" /> : <ChevronDown className="w-3 h-3 text-indigo-600" />
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                    )}
-                  </button>
-                </th>
-
-                {/* 7. Total Automations Created */}
-                <th className="py-3.5 px-4 font-bold">
-                  <button
-                    onClick={() => handleSort('automations')}
-                    className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
-                  >
-                    <span>Automations</span>
-                    {sortBy === 'automations' ? (
-                      sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-indigo-600" /> : <ChevronDown className="w-3 h-3 text-indigo-600" />
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                    )}
-                  </button>
-                </th>
-
-                {/* 8. Account Status */}
-                <th className="py-3.5 px-4 font-bold text-center">
-                  <span>Account Status</span>
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-500">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
-                      <p className="font-semibold text-sm">Aggregating users and activity stats from Firestore...</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : filteredAndSortedUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-500">
-                    <div className="flex flex-col items-center justify-center gap-2 max-w-sm mx-auto">
-                      <Users className="w-10 h-10 text-slate-300" />
-                      <p className="font-bold text-slate-800 text-sm">No users found</p>
-                      <p className="text-xs text-slate-500">
-                        {searchQuery
-                          ? `No users matched "${searchQuery}". Try clearing your search.`
-                          : 'No user records currently registered in Firestore.'}
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredAndSortedUsers.map((item) => {
-                  const isConnected = item.instagram?.status === 'active' && Boolean(item.instagram?.username);
-                  const isOwner = item.role === 'admin';
-
-                  return (
-                    <tr
-                      key={item.uid}
-                      onClick={() => setSelectedUser(item)}
-                      className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
-                    >
-                      {/* 1. Email / Gmail ID */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
-                          <UserAvatar
-                            src={item.photoURL}
-                            name={item.displayName || item.email}
-                            size="md"
-                            className="shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-bold text-slate-900 truncate">{item.displayName || 'User'}</p>
-                              {isOwner && (
-                                <span className="px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300/60 rounded">
-                                  Owner
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-600 font-mono truncate">{item.email}</p>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* 2. Signup Date */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="space-y-0.5">
-                          <p className="font-semibold text-slate-900">{formatDate(item.first_login_at)}</p>
-                          <p className="text-xs text-slate-400">{formatRelativeTime(item.first_login_at)}</p>
-                        </div>
-                      </td>
-
-                      {/* 3. Last Login Date & Time */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="space-y-0.5">
-                          <p className="font-semibold text-slate-900">{formatDateTime(item.last_login_at)}</p>
-                          <p className="text-xs text-slate-400">{formatRelativeTime(item.last_login_at)}</p>
-                        </div>
-                      </td>
-
-                      {/* 4. Connected Instagram Account */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {isConnected ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 p-0.5 shrink-0">
-                              <UserAvatar
-                                src={item.instagram?.profile_pic_url}
-                                name={item.instagram?.username || 'IG'}
-                                size="sm"
-                                className="w-full h-full rounded-full"
-                              />
-                            </div>
-                            <div>
-                              <p className="font-bold text-slate-900">@{item.instagram?.username}</p>
-                              {item.instagram?.followers_count !== undefined && (
-                                <p className="text-[11px] text-slate-400">
-                                  {item.instagram.followers_count.toLocaleString()} followers
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                            Not Connected
-                          </span>
-                        )}
-                      </td>
-
-                      {/* 5. Instagram Connection Date */}
-                      <td className="py-3.5 px-4 whitespace-nowrap text-xs text-slate-600">
-                        {isConnected && item.instagram?.connected_at ? (
-                          <div className="space-y-0.5">
-                            <p className="font-semibold text-slate-900">{formatDate(item.instagram.connected_at)}</p>
-                            <p className="text-[11px] text-slate-400">{formatRelativeTime(item.instagram.connected_at)}</p>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-
-                      {/* 6. Total DMs Sent */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-black text-slate-900 text-sm">
-                            {(item.stats?.total_dms_sent || 0).toLocaleString()}
-                          </span>
-                          {item.stats?.total_dms_sent && item.stats.total_dms_sent > 0 ? (
-                            <span className="text-[11px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded">
-                              DMs
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-
-                      {/* 7. Total Automations Created */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-black text-slate-900 text-sm">
-                            {(item.stats?.total_automations || 0).toLocaleString()}
-                          </span>
-                          {item.stats?.total_automations && item.stats.total_automations > 0 ? (
-                            <span className="text-[11px] text-violet-600 font-bold bg-violet-50 px-1.5 py-0.5 rounded">
-                              rules
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-
-                      {/* 8. Account Status (Active = green, Not Connected / Inactive = gray) */}
-                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        {isConnected ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300/60 shadow-2xs">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                            Inactive
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Table Footer Summary */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
+    <div className="min-h-full bg-[#F7FAFF] p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-[1500px]">
+        <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            Showing <strong className="text-slate-900 font-semibold">{filteredAndSortedUsers.length}</strong> of{' '}
-            <strong className="text-slate-900 font-semibold">{data?.users?.length || 0}</strong> registered accounts
+            <div className="mb-2 flex items-center gap-2 text-sm font-black text-indigo-600"><ShieldCheck className="h-4 w-4" /> OWNER CONTROL CENTER</div>
+            <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Admin Panel</h1>
+            <p className="mt-2 text-sm font-semibold text-slate-600">Users, pricing, limits और platform usage एक ही जगह manage करें।</p>
           </div>
-
-          <div className="flex items-center gap-4">
-            <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              {totalConnectedInstagram} Active Instagram Accounts
-            </span>
-            <span className="inline-flex items-center gap-1 text-blue-700 font-semibold">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-              {totalDmsSentCombined.toLocaleString()} Automated DMs Sent
-            </span>
-          </div>
+          <button onClick={() => void load()} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60">
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh data
+          </button>
         </div>
-      </div>
 
-      {/* Security & Configuration Documentation Card */}
-      <div className="bg-slate-900 text-white rounded-3xl p-6 md:p-8 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-wider">
-              <KeyRound className="w-4 h-4" />
-              <span>Admin Authentication & Route Protection</span>
-            </div>
-            <h3 className="text-lg font-black tracking-tight text-white">
-              Dual-Layer Security Architecture
-            </h3>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              This Admin Dashboard is strictly protected through two independent security layers:
-            </p>
-            <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
-              <li>
-                <strong>Credential Gate:</strong> Protected by User ID <code className="text-emerald-400 font-mono">Nazhalijing</code> and dedicated admin password.
-              </li>
-              <li>
-                <strong>Backend Whitelist:</strong> <code className="text-indigo-300 font-mono">/api/admin/dashboard-overview</code> is hardcoded on the backend to allow only authorized owner emails (<code className="text-indigo-300 font-mono">devsinghparmar9589@gmail.com</code>).
-              </li>
-            </ul>
-          </div>
-
-          <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 text-xs space-y-2 shrink-0 md:w-80">
-            <p className="font-bold text-slate-200">Configured Admin Identifiers:</p>
-            <div className="space-y-1 font-mono text-[11px] text-emerald-400 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-              <p>• User ID: Nazhalijing</p>
-              <p>• Owner Email: devsinghparmar9589@gmail.com</p>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              To add additional admin emails, configure <code className="text-slate-300 font-mono">ADMIN_EMAILS</code> in your environment variables.
-            </p>
-          </div>
+        <div className="mb-6 flex gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+          {([
+            ['overview', 'Overview', Activity],
+            ['users', 'Users', Users],
+            ['plans', 'Plans & Pricing', SlidersHorizontal],
+            ['activity', 'Audit Activity', Sparkles],
+          ] as const).map(([id, label, Icon]) => (
+            <button key={id} onClick={() => setSection(id)} className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black transition ${section === id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <Icon className="h-4 w-4" /> {label}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* USER DETAIL MODAL */}
-      {selectedUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
-            {/* Modal Header */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <UserAvatar
-                  src={selectedUser.photoURL}
-                  name={selectedUser.displayName || selectedUser.email}
-                  size="lg"
-                />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-black text-slate-900">{selectedUser.displayName || 'User'}</h3>
-                    {selectedUser.role === 'admin' && (
-                      <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300/60 rounded-full">
-                        Admin Owner
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 font-mono">{selectedUser.email}</p>
+        {error && <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{error}</div>}
+        {notice && <div className="mb-5 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700"><Check className="h-4 w-4" />{notice}</div>}
+
+        {loading && !data ? (
+          <div className="flex min-h-[420px] items-center justify-center rounded-3xl border border-slate-200 bg-white">
+            <div className="text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin text-indigo-600" /><p className="mt-3 text-sm font-bold text-slate-600">Loading control center…</p></div>
+          </div>
+        ) : null}
+
+        {!loading || data ? (
+          <>
+            {section === 'overview' && (
+              <div className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {statCards.map(([label, value, Icon]) => (
+                    <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-start justify-between"><div><p className="text-xs font-black uppercase tracking-wider text-slate-500">{label}</p><p className="mt-2 text-3xl font-black text-slate-950">{nf.format(Number(value || 0))}</p></div><div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600"><Icon className="h-5 w-5" /></div></div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-
-              <button
-                onClick={() => setSelectedUser(null)}
-                className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 cursor-pointer shadow-2xs"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-5 text-xs text-slate-700 max-h-[70vh] overflow-y-auto">
-              {/* Instagram Channel Section */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
-                    <Instagram className="w-4 h-4 text-pink-600" />
-                    Connected Instagram Channel
-                  </span>
-                  {selectedUser.instagram?.status === 'active' && selectedUser.instagram?.username ? (
-                    <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-full text-[10px] border border-emerald-300/60">
-                      Active
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-0.5 bg-slate-200 text-slate-600 font-bold rounded-full text-[10px]">
-                      Not Connected
-                    </span>
-                  )}
-                </div>
-
-                {selectedUser.instagram?.username ? (
-                  <div className="flex items-center gap-3 pt-1">
-                    <UserAvatar
-                      src={selectedUser.instagram.profile_pic_url}
-                      name={selectedUser.instagram.username}
-                      size="md"
-                    />
-                    <div>
-                      <p className="font-black text-slate-900 text-sm">@{selectedUser.instagram.username}</p>
-                      <p className="text-slate-500 text-xs">
-                        Connected: {formatDateTime(selectedUser.instagram.connected_at)} ({formatRelativeTime(selectedUser.instagram.connected_at)})
-                      </p>
-                      {selectedUser.instagram.followers_count !== undefined && (
-                        <p className="text-slate-500 text-xs">
-                          Followers: {selectedUser.instagram.followers_count.toLocaleString()}
-                        </p>
-                      )}
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-lg font-black text-slate-950">Active users</h3>
+                    <div className="mt-5 space-y-4">
+                      {[['Last 24 hours', stats.active24h], ['Last 7 days', stats.active7d], ['Last 30 days', stats.active30d]].map(([label, value]) => (
+                        <div key={String(label)} className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3"><span className="text-sm font-bold text-slate-600">{label}</span><span className="text-lg font-black text-slate-950">{nf.format(Number(value))}</span></div>
+                      ))}
                     </div>
                   </div>
-                ) : (
-                  <p className="text-slate-500 text-xs italic">
-                    This user has not yet connected an Instagram business or creator account.
-                  </p>
-                )}
-              </div>
-
-              {/* Usage Stats Breakdown */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl text-center">
-                  <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Total DMs Sent</p>
-                  <p className="text-xl font-black text-blue-700 mt-0.5">
-                    {(selectedUser.stats?.total_dms_sent || 0).toLocaleString()}
-                  </p>
-                </div>
-
-                <div className="p-3 bg-violet-50/60 border border-violet-100 rounded-xl text-center">
-                  <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Automations</p>
-                  <p className="text-xl font-black text-violet-700 mt-0.5">
-                    {(selectedUser.stats?.total_automations || 0).toLocaleString()}
-                  </p>
-                </div>
-
-                <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl text-center">
-                  <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Contacts</p>
-                  <p className="text-xl font-black text-indigo-700 mt-0.5">
-                    {(selectedUser.stats?.total_contacts || 0).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Account Timeline & Metadata */}
-              <div className="space-y-2 border-t border-slate-100 pt-4">
-                <p className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
-                  Account Activity & Timestamps
-                </p>
-
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <p className="text-slate-400 text-[10px] uppercase font-bold">Signup / First Login</p>
-                    <p className="font-bold text-slate-800 mt-0.5">{formatDateTime(selectedUser.first_login_at)}</p>
-                    <p className="text-slate-500 text-[11px]">{formatRelativeTime(selectedUser.first_login_at)}</p>
-                  </div>
-
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <p className="text-slate-400 text-[10px] uppercase font-bold">Last Login Date & Time</p>
-                    <p className="font-bold text-slate-800 mt-0.5">{formatDateTime(selectedUser.last_login_at)}</p>
-                    <p className="text-slate-500 text-[11px]">{formatRelativeTime(selectedUser.last_login_at)}</p>
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-lg font-black text-slate-950">Current plans</h3>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      {plans.map((p) => <button key={p.id} onClick={() => { setEditingPlan({...p}); setSection('plans'); }} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left hover:border-indigo-300"><p className="font-black text-slate-950">{p.name}</p><p className="mt-1 text-xl font-black text-indigo-600">₹{nf.format(p.price_inr)}<span className="text-xs text-slate-500"> / {p.billing_days}d</span></p></button>)}
+                    </div>
                   </div>
                 </div>
+              </div>
+            )}
 
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-slate-400 text-[10px] uppercase font-bold">Firestore User UID</p>
-                  <p className="font-mono text-slate-700 text-xs break-all mt-0.5">{selectedUser.uid}</p>
+            {section === 'users' && (
+              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div><h3 className="text-xl font-black text-slate-950">Users</h3><p className="text-sm font-semibold text-slate-500">{filteredUsers.length} accounts</p></div>
+                  <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search Gmail, name, Instagram…" className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm font-semibold outline-none focus:border-indigo-400" /></div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-left">
+                    <thead className="bg-slate-50 text-xs font-black uppercase tracking-wide text-slate-500"><tr><th className="p-4">User</th><th className="p-4">Instagram</th><th className="p-4">Automations</th><th className="p-4">Messages</th><th className="p-4">AI Replies</th><th className="p-4">Last Active</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredUsers.map((u) => <tr key={u.uid} className="hover:bg-slate-50/70"><td className="p-4"><div className="flex items-center gap-3"><UserAvatar src={u.photoURL} name={u.displayName} size="md" /><div><p className="font-black text-slate-900">{u.displayName}</p><p className="text-xs font-semibold text-slate-500">{u.email || u.uid}</p></div></div></td><td className="p-4 text-sm font-bold text-slate-700">{u.instagramUsernames?.length ? u.instagramUsernames.map(x => '@'+x).join(', ') : 'Not connected'} <span className="text-xs text-slate-400">({u.instagramAccounts || 0})</span></td><td className="p-4 font-black text-slate-900">{nf.format(u.automations || 0)}</td><td className="p-4 font-black text-slate-900">{nf.format(u.messages || 0)}</td><td className="p-4 font-black text-slate-900">{nf.format(u.aiReplies || 0)}</td><td className="p-4 text-sm font-bold text-slate-600">{u.last_active_at ? new Date(u.last_active_at).toLocaleString() : '—'}</td></tr>)}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Modal Footer */}
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={() => setSelectedUser(null)}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
-              >
-                Close
-              </button>
+            {section === 'plans' && (
+              <div className="grid gap-5 xl:grid-cols-2">
+                {plans.map((p) => (
+                  <div key={p.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-start justify-between"><div><p className="text-xs font-black uppercase tracking-wider text-indigo-600">{p.id}</p><h3 className="mt-1 text-2xl font-black text-slate-950">{p.name}</h3><p className="mt-2 text-3xl font-black text-slate-950">₹{nf.format(p.price_inr)} <span className="text-sm text-slate-500">/ {p.billing_days} days</span></p></div><span className={`rounded-full px-3 py-1 text-xs font-black ${p.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{p.is_active ? 'ACTIVE' : 'OFF'}</span></div>
+                    <div className="mt-5 grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl bg-slate-50 p-3"><p className="font-semibold text-slate-500">Messages</p><p className="mt-1 font-black text-slate-900">{nf.format(p.total_messages)}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="font-semibold text-slate-500">AI Replies</p><p className="mt-1 font-black text-slate-900">{nf.format(p.ai_replies)}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="font-semibold text-slate-500">Instagram</p><p className="mt-1 font-black text-slate-900">{p.instagram_accounts}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="font-semibold text-slate-500">Automations</p><p className="mt-1 font-black text-slate-900">{p.automations_limit === null ? 'Unlimited' : p.automations_limit}</p></div></div>
+                    <button onClick={() => setEditingPlan({...p})} className="mt-5 flex w-full items-center justify-between rounded-xl bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-700 hover:bg-indigo-100">Edit price & limits <ChevronRight className="h-4 w-4" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {section === 'activity' && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-black text-slate-950">Admin audit activity</h3><p className="mt-1 text-sm font-semibold text-slate-500">Pricing और limit changes का record.</p>
+                <div className="mt-5 space-y-3">{(data?.auditLogs || []).length ? data!.auditLogs.map((a) => <div key={a.id} className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4"><div><p className="font-black text-slate-900">{a.action} · {a.entity_id || 'system'}</p><p className="text-xs font-semibold text-slate-500">{a.admin_email}</p></div><p className="shrink-0 text-xs font-bold text-slate-500">{new Date(a.created_at).toLocaleString()}</p></div>) : <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">No admin changes recorded yet.</div>}</div>
+              </div>
+            )}
+          </>
+        ) : null}
+      </div>
+
+      {editingPlan && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white p-5"><div><p className="text-xs font-black uppercase tracking-wider text-indigo-600">Edit plan</p><h3 className="text-2xl font-black text-slate-950">{editingPlan.name}</h3></div><button onClick={() => setEditingPlan(null)} className="rounded-xl bg-slate-100 p-2 text-slate-600"><X className="h-5 w-5" /></button></div>
+            <div className="grid gap-4 p-5 sm:grid-cols-2">
+              {[
+                ['Price (₹)', 'price_inr'], ['Total Automated Messages', 'total_messages'],
+                ['Maximum AI Replies', 'ai_replies'], ['Instagram Accounts', 'instagram_accounts'],
+                ['Billing Days', 'billing_days']
+              ].map(([label, key]) => <label key={key} className="space-y-1.5"><span className="text-xs font-black uppercase tracking-wide text-slate-600">{label}</span><input type="number" min="0" value={(editingPlan as any)[key]} onChange={(e) => setEditingPlan({...editingPlan, [key]: Math.max(0, Number(e.target.value))})} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-base font-black text-slate-900 outline-none focus:border-indigo-400" /></label>)}
+              <label className="space-y-1.5"><span className="text-xs font-black uppercase tracking-wide text-slate-600">Automations</span><select value={editingPlan.automations_limit === null ? 'unlimited' : 'limited'} onChange={(e) => setEditingPlan({...editingPlan, automations_limit: e.target.value === 'unlimited' ? null : 5})} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-base font-black text-slate-900"><option value="unlimited">Unlimited</option><option value="limited">Limited</option></select></label>
+              {editingPlan.automations_limit !== null && <label className="space-y-1.5"><span className="text-xs font-black uppercase tracking-wide text-slate-600">Automation Limit</span><input type="number" min="0" value={editingPlan.automations_limit} onChange={(e) => setEditingPlan({...editingPlan, automations_limit: Math.max(0, Number(e.target.value))})} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-base font-black" /></label>}
+              <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3 sm:col-span-2"><div><p className="font-black text-slate-900">Plan available</p><p className="text-xs font-semibold text-slate-500">OFF करने पर नई purchase के लिए hide किया जा सकता है।</p></div><input type="checkbox" checked={editingPlan.is_active} onChange={(e) => setEditingPlan({...editingPlan, is_active: e.target.checked})} className="h-5 w-5 accent-indigo-600" /></label>
             </div>
+            <div className="flex gap-3 border-t border-slate-200 p-5"><button onClick={() => setEditingPlan(null)} className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-700">Cancel</button><button onClick={() => void savePlan()} disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white disabled:opacity-60">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save changes</button></div>
           </div>
         </div>
       )}
