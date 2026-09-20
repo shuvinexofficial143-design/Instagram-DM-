@@ -234,9 +234,9 @@ export const InboxPage: React.FC = () => {
                   className="rounded-xl border border-indigo-100 bg-indigo-50/80 p-2 text-indigo-600 hover:bg-indigo-100 cursor-pointer"
                 >
                   {isAllThreadsSelected ? (
-                    <CheckSquare className="h-5 w-5 text-indigo-600 drop-shadow-sm" />
+                    <CheckSquare className="h-[18px] w-[18px] text-indigo-600 drop-shadow-sm" />
                   ) : (
-                    <Square className="h-5 w-5 text-indigo-500 stroke-[2.5]" />
+                    <Square className="h-[18px] w-[18px] text-indigo-500 stroke-[2.5]" />
                   )}
                 </button>
               )}
@@ -272,9 +272,9 @@ export const InboxPage: React.FC = () => {
                         className="shrink-0 rounded-lg border border-indigo-100 bg-white p-1.5 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
                       >
                         {isSelected ? (
-                          <CheckSquare className="h-5 w-5 text-indigo-600 drop-shadow-sm" />
+                          <CheckSquare className="h-[18px] w-[18px] text-indigo-600 drop-shadow-sm" />
                         ) : (
-                          <Square className="h-5 w-5 text-indigo-500 stroke-[2.5]" />
+                          <Square className="h-[18px] w-[18px] text-indigo-500 stroke-[2.5]" />
                         )}
                       </button>
 
