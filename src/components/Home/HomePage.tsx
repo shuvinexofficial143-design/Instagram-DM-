@@ -55,7 +55,7 @@ export const HomePage: React.FC = () => {
   const connectedCount = isConnected ? 1 : 0;
 
   return (
-    <div className="min-h-screen space-y-6 bg-gradient-to-b from-[#F7FAFF] via-[#FBFCFF] to-[#F8F6FF] px-4 py-6 md:px-6">
+    <div className="min-h-screen space-y-6 bg-[#F7FAFF] px-4 py-6 md:px-6">
       {/* 1. Welcome back, Nazha! Top Banner Card */}
       <div className="flex w-full items-center gap-4 rounded-2xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm transition-all md:gap-6 md:p-6">
         {/* Pink/Magenta Circular Avatar with white first initial */}
