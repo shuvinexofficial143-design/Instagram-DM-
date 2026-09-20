@@ -79,7 +79,7 @@ interface AppContextType {
   reauthorizeChannel: () => void;
   disconnectChannel: () => Promise<void>;
   connectChannel: (account: Partial<InstagramAccount> | string) => Promise<void>;
-  renewPlan: () => void;
+  renewPlan: (plan?: 'free' | 'starter' | 'pro' | 'business') => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -1358,12 +1358,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     throw new Error('Direct Instagram connection is disabled. Use the official Meta OAuth flow.');
   };
 
-  const renewPlan = () => {
-    setUser((prev) => ({
-      ...prev,
-      plan: 'free',
-      trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    }));
+  const renewPlan = (nextPlan: 'free' | 'starter' | 'pro' | 'business' = 'pro') => {
+    const limits = {
+      free: { messages: 1500, ai: 1000 },
+      starter: { messages: 7500, ai: 5000 },
+      pro: { messages: 25000, ai: 15000 },
+      business: { messages: 75000, ai: 40000 },
+    };
+    setUser((prev) => {
+      const currentPlan = String(prev.plan || 'free') as keyof typeof limits;
+      const current = limits[currentPlan] || limits.free;
+      const isFirstFreeUpgrade = currentPlan === 'free' && nextPlan !== 'free';
+      return {
+        ...prev,
+        plan: nextPlan,
+        message_usage: 0,
+        ai_reply_usage: 0,
+        carry_forward_messages: isFirstFreeUpgrade ? Math.max(0, current.messages - Number(prev.message_usage || 0)) : Number(prev.carry_forward_messages || 0),
+        carry_forward_ai_replies: isFirstFreeUpgrade ? Math.max(0, current.ai - Number(prev.ai_reply_usage || 0)) : Number(prev.carry_forward_ai_replies || 0),
+        carry_forward_expires_at: isFirstFreeUpgrade ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : prev.carry_forward_expires_at,
+        trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+    });
     setIsRenewModalOpen(false);
   };
 
