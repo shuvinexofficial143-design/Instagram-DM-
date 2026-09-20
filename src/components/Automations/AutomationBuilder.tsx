@@ -190,9 +190,13 @@ Answer only about the business.`
     setMediaError('');
 
     try {
+      const token = await (await import('../../lib/supabase')).auth.currentUser?.getIdToken();
       const response = await fetch(
         `/api/instagram/media?kind=${encodeURIComponent(kind)}`,
-        { credentials: 'same-origin' }
+        {
+          credentials: 'same-origin',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
       );
       const payload = await response.json().catch(() => null);
 
