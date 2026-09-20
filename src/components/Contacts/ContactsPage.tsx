@@ -215,9 +215,7 @@ export const ContactsPage: React.FC = () => {
                     )}
                   </button>
                 </th>
-                <th className="p-4">Instagram User</th>
-                <th className="p-4">Interactions Breakdown</th>
-                <th className="p-4">Tags</th>
+                <th className="p-3 sm:p-4">Instagram User</th>
                 <th className="p-4">First Captured</th>
                 <th className="p-4">Last Active</th>
                 <th className="p-4 text-right">Actions</th>
@@ -226,7 +224,7 @@ export const ContactsPage: React.FC = () => {
             <tbody className="divide-y divide-slate-200">
               {filteredContacts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-600 font-bold">
+                  <td colSpan={5} className="p-8 text-center text-slate-600 font-bold">
                     No captured contacts found. Incoming Instagram interactions will automatically appear here.
                   </td>
                 </tr>
@@ -236,7 +234,7 @@ export const ContactsPage: React.FC = () => {
                   return (
                     <tr
                       key={contact.id}
-                      className={`hover:bg-slate-50 transition-colors ${
+                      className={`hover:bg-indigo-50/35 transition-colors ${
                         isSelected ? 'bg-indigo-50/50' : ''
                       }`}
                     >
@@ -264,40 +262,8 @@ export const ContactsPage: React.FC = () => {
                           />
                           <div>
                             <div className="font-black text-slate-950">@{contact.ig_username}</div>
-                            <div className="text-[10px] text-slate-500 font-bold">ID: {contact.ig_user_id}</div>
+                            <div className="text-[10px] font-semibold text-slate-500">Instagram contact</div>
                           </div>
-                        </div>
-                      </td>
-
-                      {/* Breakdown */}
-                      <td className="p-4">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div className="flex items-center gap-1 bg-purple-100 text-purple-900 border border-purple-200 px-2 py-0.5 rounded-md text-[11px] font-black">
-                            <MessageSquare className="w-3 h-3 stroke-[2.2]" />
-                            <span>{contact.interactions?.comments || 0} comments</span>
-                          </div>
-                          <div className="flex items-center gap-1 bg-blue-100 text-blue-900 border border-blue-200 px-2 py-0.5 rounded-md text-[11px] font-black">
-                            <MessageCircle className="w-3 h-3 stroke-[2.2]" />
-                            <span>{contact.interactions?.dms || 0} DMs</span>
-                          </div>
-                          <div className="flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md text-[11px] font-black">
-                            <Instagram className="w-3 h-3 stroke-[2.2]" />
-                            <span>{contact.interactions?.stories || 0} stories</span>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Tags */}
-                      <td className="p-4">
-                        <div className="flex flex-wrap gap-1">
-                          {contact.tags?.map((t, idx) => (
-                            <span
-                              key={idx}
-                              className="bg-slate-200 text-slate-900 border border-slate-300 font-bold px-2 py-0.5 rounded text-[10px]"
-                            >
-                              {t}
-                            </span>
-                          ))}
                         </div>
                       </td>
 
@@ -316,17 +282,17 @@ export const ContactsPage: React.FC = () => {
 
                       {/* Actions */}
                       <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => setActiveContact(contact)}
-                            className="bg-indigo-50 hover:bg-indigo-100 text-[#3B5BFF] font-bold text-[11px] px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
+                            className="whitespace-nowrap rounded-lg border border-indigo-100 bg-indigo-50/70 px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 transition-colors hover:bg-indigo-100 cursor-pointer"
                           >
                             View History
                           </button>
                           <button
                             onClick={() => handleRemoveSingle(contact)}
                             title="Remove contact from database permanently"
-                            className="bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px] px-2.5 py-1.5 rounded-lg border border-red-200 transition-colors flex items-center gap-1 cursor-pointer"
+                            className="flex items-center gap-1 whitespace-nowrap rounded-lg border border-rose-100 bg-rose-50/70 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 transition-colors hover:bg-rose-100 cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>Remove</span>
