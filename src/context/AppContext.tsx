@@ -38,8 +38,8 @@ interface AppContextType {
   inboxMessages: InboxMessage[];
   pausedAiUsers: string[];
   isAdmin: boolean;
-  activeTab: 'home' | 'automations' | 'contacts' | 'inbox' | 'settings' | 'about' | 'admin';
-  setActiveTab: (tab: 'home' | 'automations' | 'contacts' | 'inbox' | 'settings' | 'about' | 'admin') => void;
+  activeTab: 'home' | 'automations' | 'contacts' | 'inbox' | 'billing' | 'settings' | 'about' | 'admin';
+  setActiveTab: (tab: 'home' | 'automations' | 'contacts' | 'inbox' | 'billing' | 'settings' | 'about' | 'admin') => void;
   
   // Modals & Builder States
   isBuilderOpen: boolean;
@@ -235,7 +235,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [pausedAiUsers, setPausedAiUsers] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
-  const [activeTab, setActiveTab] = useState<'home' | 'automations' | 'contacts' | 'inbox' | 'settings' | 'about' | 'admin'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'automations' | 'contacts' | 'inbox' | 'billing' | 'settings' | 'about' | 'admin'>('home');
   const [isBuilderOpen, setIsBuilderOpen] = useState<boolean>(false);
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState<boolean>(false);
