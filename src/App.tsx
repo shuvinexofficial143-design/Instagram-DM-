@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+// Deployment refresh: 2026-09-20T08:59Z
 import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
