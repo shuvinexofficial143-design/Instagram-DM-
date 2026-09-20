@@ -46,7 +46,7 @@ export const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto min-h-screen max-w-5xl space-y-8 bg-[#F9F6FE] p-8">
+    <div className="mx-auto min-h-screen max-w-5xl space-y-8 bg-[#F7FAFF] p-8">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
