@@ -15,6 +15,7 @@ import { InboxPage } from './components/Inbox/InboxPage';
 import { SettingsPage } from './components/Settings/SettingsPage';
 import { AboutUsPage } from './components/About/AboutUsPage';
 import { AdminPage } from './components/Admin/AdminPage';
+import { LoginPage } from './components/Auth/LoginPage';
 
 const MainContent: React.FC = () => {
   const { activeTab } = useApp();
@@ -43,7 +44,7 @@ const MainContent: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const { authLoading } = useApp();
+  const { authLoading, firebaseUser } = useApp();
   const [showSplash, setShowSplash] = useState<boolean>(true);
 
   if (authLoading) {
@@ -54,6 +55,14 @@ const AppShell: React.FC = () => {
     );
   }
 
+
+  if (!firebaseUser) {
+    return (
+      <ErrorBoundary>
+        <LoginPage />
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>
