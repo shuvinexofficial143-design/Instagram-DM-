@@ -183,7 +183,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     name: 'Account',
     email: '',
     avatar_url: '',
-    plan: 'pro',
+    plan: 'free',
     trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     created_at: new Date().toISOString(),
   });
@@ -263,7 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             name: result.user.displayName || result.user.email?.split('@')[0] || 'Creator Admin',
             email: result.user.email || 'admin@autoreply.io',
             avatar_url: result.user.photoURL || '',
-            plan: 'pro',
+            plan: 'free',
             trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
             created_at: result.user.metadata.creationTime || new Date().toISOString(),
           };
@@ -296,7 +296,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           name: currUser.displayName || currUser.email?.split('@')[0] || 'Creator Admin',
           email: currUser.email || 'admin@autoreply.io',
           avatar_url: currUser.photoURL || '',
-          plan: 'pro',
+          plan: 'free',
           trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           created_at: currUser.metadata.creationTime || new Date().toISOString(),
         };
@@ -314,7 +314,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           name: 'Account',
           email: '',
           avatar_url: '',
-          plan: 'pro',
+          plan: 'free',
           trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           created_at: new Date().toISOString(),
         });
@@ -1361,7 +1361,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const renewPlan = () => {
     setUser((prev) => ({
       ...prev,
-      plan: 'pro',
+      plan: 'free',
       trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     }));
     setIsRenewModalOpen(false);
