@@ -190,7 +190,7 @@ export const AutomationsPage: React.FC = () => {
   };
 
   return (
-    <div className="p-8 space-y-8 bg-[#F7FAFF] min-h-screen">
+    <div className="p-5 sm:p-8 space-y-7 bg-[#F7FAFF] min-h-screen [&_p]:text-[14px] [&_p]:leading-6 [&_button]:text-[14px] [&_input]:text-[15px] [&_select]:text-[14px] [&_.text-xs]:text-[14px] [&_.text-\\[10px\\]]:text-[12px] [&_.text-\\[11px\\]]:text-[13px]">
       {/* 1. Unified Active Automations & Metrics Banner */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
         {/* Active Automations Header (Top of Banner) */}
