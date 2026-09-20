@@ -78,7 +78,7 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* 2. "LIVE - MAGIC IN PROGRESS" Main Banner Card */}
-      <div className="group relative flex min-h-[300px] flex-col justify-between gap-6 overflow-hidden rounded-3xl border border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 p-7 shadow-[0_18px_55px_rgba(78,93,169,0.10)] transition-all duration-300 hover:shadow-[0_22px_65px_rgba(78,93,169,0.13)] md:min-h-[330px] md:p-10">
+      <div className="group relative flex min-h-[250px] flex-col justify-between gap-4 overflow-hidden rounded-3xl border border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 p-7 shadow-[0_18px_55px_rgba(78,93,169,0.10)] transition-all duration-300 hover:shadow-[0_22px_65px_rgba(78,93,169,0.13)] md:min-h-[285px] md:p-8">
         {/* Soft Background Pattern Image Layer with Opacity */}
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(129,140,248,0.16),transparent_30%),radial-gradient(circle_at_10%_85%,rgba(56,189,248,0.12),transparent_34%)]"></div>
 
@@ -99,23 +99,23 @@ export const HomePage: React.FC = () => {
 
         {/* Center Main Headline & Details */}
         <div className="relative z-10 space-y-3 max-w-3xl">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-[1.15]">
+          <h1 className="text-3xl sm:text-4xl md:text-[42px] lg:text-[46px] font-black text-slate-900 tracking-tight leading-[1.15]">
             You're chilling.<br />
             <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent">
               AutoReply is working the magic.
             </span>
           </h1>
-          <p className="text-xs sm:text-sm md:text-base font-semibold text-slate-700 max-w-2xl leading-relaxed">
+          <p className="text-sm sm:text-base md:text-[17px] font-semibold text-slate-700 max-w-2xl leading-relaxed">
             Sit back while our AI automation engine handles your Instagram DMs, replies to post comments, and converts followers into customers 24/7 in real-time.
           </p>
           {/* Automation setup guidance */}
-          <div className="pt-3 max-w-2xl">
-            <div className="rounded-2xl border border-indigo-200/70 bg-indigo-50/55 p-4 sm:p-5">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-500">Simple Setup</p>
-              <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-lg font-black text-transparent sm:text-xl">
+          <div className="pt-1 max-w-2xl">
+            <div className="rounded-2xl border border-indigo-200/70 bg-indigo-50/55 p-3.5 sm:p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-500">Simple Setup</p>
+              <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xl font-black text-transparent sm:text-2xl">
                 How to set up automation
               </h2>
-              <p className="mt-1.5 text-xs font-semibold leading-5 text-slate-600 sm:text-sm">
+              <p className="mt-1.5 text-sm font-semibold leading-5 text-slate-600 sm:text-[15px]">
                 Review your Instagram connection and automation settings, then create your workflow in a few simple steps.
               </p>
             </div>
@@ -126,7 +126,7 @@ export const HomePage: React.FC = () => {
         <div className="relative z-10">
           <button
             onClick={() => setActiveTab('settings')}
-            className="inline-flex cursor-pointer items-center gap-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-6 py-3.5 text-xs font-black text-white shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.98] md:text-sm"
+            className="inline-flex cursor-pointer items-center gap-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.98] md:text-sm"
           >
             <Settings className="h-4 w-4" />
             <span>How to set up automation</span>
