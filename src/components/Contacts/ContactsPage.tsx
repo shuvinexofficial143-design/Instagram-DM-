@@ -134,7 +134,7 @@ export const ContactsPage: React.FC = () => {
         <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-violet-200/35 blur-3xl" />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-500/20"><Users className="h-5 w-5" /></div>
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-500/20"><Users className="h-6 w-6" /></div>
             <div>
               <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-indigo-500"><Sparkles className="h-3.5 w-3.5" />Audience workspace</div>
               <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Contacts</h1>
@@ -280,9 +280,9 @@ export const ContactsPage: React.FC = () => {
                     className="text-slate-600 hover:text-slate-900 cursor-pointer"
                   >
                     {isAllSelected ? (
-                      <CheckSquare className="h-5 w-5 text-indigo-600 drop-shadow-sm" />
+                      <CheckSquare className="h-6 w-6 text-indigo-600 drop-shadow-sm" />
                     ) : (
-                      <Square className="h-5 w-5 text-indigo-500 stroke-[2.5]" />
+                      <Square className="h-6 w-6 text-indigo-500 stroke-[2.5]" />
                     )}
                   </button>
                 </th>
@@ -316,9 +316,9 @@ export const ContactsPage: React.FC = () => {
                           className="text-slate-500 hover:text-slate-800 cursor-pointer"
                         >
                           {isSelected ? (
-                            <CheckSquare className="h-5 w-5 text-indigo-600 drop-shadow-sm" />
+                            <CheckSquare className="h-6 w-6 text-indigo-600 drop-shadow-sm" />
                           ) : (
-                            <Square className="h-5 w-5 text-indigo-500 stroke-[2.5]" />
+                            <Square className="h-6 w-6 text-indigo-500 stroke-[2.5]" />
                           )}
                         </button>
                       </td>
