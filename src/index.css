@@ -344,3 +344,21 @@
     font-size: 0.95rem !important;
   }
 }
+
+
+/* Automation dashboard readability: clearer labels without a bulky look */
+.automations-readable .text-xs {
+  font-size: 0.875rem !important;
+  line-height: 1.3rem !important;
+}
+.automations-readable .text-\[11px\],
+.automations-readable .text-\[10px\] {
+  font-size: 0.8125rem !important;
+  line-height: 1.2rem !important;
+}
+.automations-readable .font-semibold {
+  font-weight: 600 !important;
+}
+.automations-readable .font-bold {
+  font-weight: 650 !important;
+}
