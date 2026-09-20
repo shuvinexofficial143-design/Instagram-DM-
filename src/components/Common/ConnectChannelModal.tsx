@@ -68,10 +68,16 @@ export const ConnectChannelModal: React.FC = () => {
     try {
       // This same-origin fetch is automatically decorated with the active Supabase
       // access token by App.tsx. The server then signs the OAuth state for this UID.
+      const token = await (await import('../../lib/supabase')).auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Your login session is missing. Please sign in with Google again.');
+
       const response = await fetch('/api/auth/instagram', {
         method: 'GET',
         credentials: 'same-origin',
-        headers: { Accept: 'application/json' },
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
       });
       const payload = await response.json().catch(() => null);
 
