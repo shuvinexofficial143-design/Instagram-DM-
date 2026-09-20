@@ -70,8 +70,7 @@ const AppShell: React.FC = () => {
     <ErrorBoundary>
       {showSplash && <IntroSplash onComplete={() => setShowSplash(false)} />}
       <div className="flex min-h-[100dvh] w-full overflow-x-clip bg-[#F7FAFF] font-sans text-slate-900">
-        <div className="hidden w-[250px] shrink-0 md:block" aria-hidden="true" />
-        <div className="hidden md:block"><Sidebar /></div>
+        <div className="hidden shrink-0 md:block"><Sidebar /></div>
         <div className="flex min-w-0 flex-1 flex-col">
           <Header />
           <MainContent />
