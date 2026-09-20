@@ -1151,6 +1151,16 @@ Deno.serve(async (req: Request) => {
 
     const startTyping = (runtime: any, source: "edge_memory" | "supabase_runtime_context" | "full_context") => {
       if (typingStarted) return;
+
+      // Never show Instagram's typing indicator unless an ACTIVE DM AI
+      // Conversation automation has actually been resolved for this workspace.
+      // A connected account/runtime context alone is not enough.
+      const runtimeAutomation = runtime?.automation || null;
+      const isActiveDmAiAutomation =
+        runtimeAutomation?.trigger_type === "dm_ai_conversation" &&
+        runtimeAutomation?.status === "active";
+      if (!isActiveDmAiAutomation) return;
+
       const account = runtime?.account || null;
       const typingIgUserId = String(
         account?.ig_user_id || item.entryId || item.recipientId || ""
