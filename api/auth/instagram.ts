@@ -45,7 +45,24 @@ function getCookie(req: any, name: string): string {
 }
 
 function isWorkspaceId(value: string): boolean {
-  return /^guest_[a-f0-9-]{16,}$/i.test(value);
+  return /^guest_[a-f0-9-]{16,}$/i.test(value) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function getAuthenticatedUserId(req: any): Promise<string> {
+  const authHeader = String(req?.headers?.authorization || '').trim();
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return '';
+
+  const response = await fetch('https://dwgxmmftybxwpurgsxkx.supabase.co/auth/v1/user', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: 'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08',
+    },
+  });
+  if (!response.ok) return '';
+  const user: any = await response.json().catch(() => null);
+  return isWorkspaceId(String(user?.id || '')) ? String(user.id) : '';
 }
 
 function getOrCreateWorkspaceId(req: any, res: any): string {
@@ -73,7 +90,7 @@ function createState(workspaceId: string, secret: string): string {
   return JSON.stringify({ workspaceId, ts, sig });
 }
 
-export default function handler(req: any, res: any) {
+export default async function handler(req: any, res: any) {
   try {
     if (req.method !== 'GET') {
       res.setHeader('Allow', 'GET');
@@ -112,7 +129,10 @@ export default function handler(req: any, res: any) {
       });
     }
 
-    const workspaceId = getOrCreateWorkspaceId(req, res);
+    // Signed-in users are bound to their Supabase UID, so each Google account
+    // gets its own Instagram account/tokens. Guest cookie remains only as legacy fallback.
+    const authenticatedUid = await getAuthenticatedUserId(req);
+    const workspaceId = authenticatedUid || getOrCreateWorkspaceId(req, res);
     const redirectUri = getRedirectUri(req);
     const state = createState(workspaceId, stateSecret);
 
