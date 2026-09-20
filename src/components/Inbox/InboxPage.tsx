@@ -171,7 +171,7 @@ export const InboxPage: React.FC = () => {
   };
 
   return (
-    <div className="p-8 bg-[#F9F6FE] min-h-screen">
+    <div className="p-8 bg-[#F7FAFF] min-h-screen">
       {/* Top Banner / Header Actions */}
       <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
