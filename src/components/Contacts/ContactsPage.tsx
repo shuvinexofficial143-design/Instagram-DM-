@@ -16,6 +16,7 @@ import {
   Trash2,
   CheckSquare,
   Square,
+  Sparkles,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Contact } from '../../types';
@@ -120,9 +121,26 @@ export const ContactsPage: React.FC = () => {
   };
 
   return (
-    <div className="p-8 space-y-6 bg-[#F7FAFF] min-h-screen">
+    <div className="min-h-screen space-y-5 bg-[#F7FAFF] p-4 sm:p-6 lg:p-8">
+      <section className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white/90 via-blue-50/75 to-violet-50/80 p-5 shadow-[0_14px_45px_rgba(72,95,145,0.08)] sm:p-7">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-violet-200/35 blur-3xl" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-500/20"><Users className="h-5 w-5" /></div>
+            <div>
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-indigo-500"><Sparkles className="h-3.5 w-3.5" />Audience workspace</div>
+              <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Contacts</h1>
+              <p className="mt-1 text-sm font-medium leading-6 text-slate-600">Search, review and manage people captured from real Instagram interactions.</p>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-indigo-100 bg-white/80 px-4 py-3 text-center shadow-sm">
+            <div className="text-2xl font-black text-slate-950">{filteredContacts.length}</div>
+            <div className="text-[11px] font-black uppercase tracking-wider text-slate-500">Visible contacts</div>
+          </div>
+        </div>
+      </section>
       {/* Filter & Action Toolbar */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="flex flex-col items-stretch justify-between gap-4 rounded-3xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm md:flex-row md:items-center">
         <div className="relative flex-1 w-full">
           <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[2.2]" />
           <input
@@ -179,10 +197,10 @@ export const ContactsPage: React.FC = () => {
       </div>
 
       {/* Contacts Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="overflow-hidden rounded-3xl border border-white/90 bg-white/85 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100/90 border-b border-slate-200 text-slate-900 font-black uppercase tracking-wider text-[11px]">
+            <thead className="border-b border-indigo-100 bg-gradient-to-r from-blue-50/90 to-violet-50/80 text-[11px] font-black uppercase tracking-wider text-slate-800">
               <tr>
                 <th className="p-4 w-10 text-center">
                   <button
@@ -327,7 +345,7 @@ export const ContactsPage: React.FC = () => {
       {/* Contact History Detail Drawer */}
       {activeContact && (
         <div className="fixed inset-0 bg-slate-900/75 z-50 flex justify-end">
-          <div className="bg-white w-full max-w-md h-full p-6 shadow-2xl flex flex-col justify-between overflow-y-auto">
+          <div className="flex h-full w-full max-w-md flex-col justify-between overflow-y-auto border-l border-indigo-100 bg-[#F7FAFF] p-5 shadow-2xl sm:p-6">
             <div>
               <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
                 <h3 className="font-bold text-slate-900 text-base">Contact Profile</h3>
@@ -351,7 +369,7 @@ export const ContactsPage: React.FC = () => {
                 <p className="text-xs text-slate-500">Instagram User • Captured Contact</p>
               </div>
 
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 mb-6">
+              <div className="mb-6 space-y-3 rounded-2xl border border-indigo-100 bg-gradient-to-br from-blue-50/70 to-violet-50/60 p-4">
                 <div className="text-xs font-bold text-slate-800">Engagement Breakdown:</div>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="bg-white p-2 rounded-lg border border-slate-200">
