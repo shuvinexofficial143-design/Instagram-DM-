@@ -288,8 +288,6 @@ export const InboxPage: React.FC = () => {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-xs text-slate-900 truncate">@{username}</span>
-                        </div>\n\n                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                          {lastMsg ? cleanMessagePreview(lastMsg.message_text) : 'Instagram message'}
                         </div>
                       </div>
                     </div>
