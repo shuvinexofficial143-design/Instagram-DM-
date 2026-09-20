@@ -35,6 +35,7 @@ export const ContactsPage: React.FC = () => {
   const [bulkMessage, setBulkMessage] = useState('');
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkConsentConfirmed, setBulkConsentConfirmed] = useState(false);
 
   // Checkbox Selection State for Bulk Operations
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
@@ -151,12 +152,18 @@ export const ContactsPage: React.FC = () => {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-md shadow-indigo-500/20"><Send className="h-4 w-4" /></div>
-            <div><div className="text-xs font-black uppercase tracking-[0.16em] text-indigo-500">Bulk Messages</div><h2 className="mt-1 text-xl font-black text-slate-950">Send to your contacts</h2><p className="mt-1 max-w-2xl text-xs font-medium leading-5 text-slate-600">Choose selected contacts or all visible contacts. Messages are sent only through the existing Instagram messaging flow.</p></div>
+            <div><div className="text-xs font-black uppercase tracking-[0.16em] text-indigo-500">Bulk Messages</div><h2 className="mt-1 text-xl font-black text-slate-950">Send to your contacts</h2><p className="mt-1 max-w-2xl text-xs font-medium leading-5 text-slate-600">Send only to people who have already interacted with your account and are eligible for messaging. Bulk sending stops automatically if Instagram returns a rate-limit or permission error.</p></div>
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setBulkAudience('selected')} className={`rounded-xl border px-3 py-2 text-xs font-black transition-all ${bulkAudience === 'selected' ? 'border-indigo-200 bg-indigo-600 text-white' : 'border-indigo-100 bg-white/80 text-slate-700'}`}>Selected ({selectedContactIds.length})</button>
             <button type="button" onClick={() => setBulkAudience('all')} className={`rounded-xl border px-3 py-2 text-xs font-black transition-all ${bulkAudience === 'all' ? 'border-indigo-200 bg-indigo-600 text-white' : 'border-indigo-100 bg-white/80 text-slate-700'}`}>All Visible ({filteredContacts.length})</button>
           </div>
+        </div>
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5">
+          <label className="flex cursor-pointer items-start gap-3 text-sm font-semibold text-amber-950">
+            <input type="checkbox" checked={bulkConsentConfirmed} onChange={(e) => setBulkConsentConfirmed(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-indigo-600" />
+            <span>I confirm these recipients previously interacted with this Instagram account and this message is relevant to that interaction. Do not use this tool for unsolicited promotional DMs.</span>
+          </label>
         </div>
         <div className="mt-5 grid gap-4 lg:grid-cols-[180px_1fr_auto] lg:items-end">
           <div>
@@ -170,15 +177,17 @@ export const ContactsPage: React.FC = () => {
             <label className="mb-2 block text-[11px] font-black uppercase tracking-wider text-slate-500">{bulkMode === 'ai' ? 'AI instruction / base message' : 'Message'}</label>
             <textarea value={bulkMessage} onChange={(e) => setBulkMessage(e.target.value)} rows={2} placeholder={bulkMode === 'ai' ? 'Write the intent for a personalized message…' : 'Write the message to send…'} className="w-full resize-none rounded-xl border border-indigo-100 bg-white/90 px-3.5 py-2.5 text-sm font-medium text-slate-900 outline-none focus:ring-2 focus:ring-indigo-200" />
           </div>
-          <button type="button" disabled={bulkSending || !bulkMessage.trim() || (bulkAudience === 'selected' && selectedContactIds.length === 0)} onClick={async () => {
+          <button type="button" disabled={bulkSending || !bulkConsentConfirmed || !bulkMessage.trim() || (bulkAudience === 'selected' && selectedContactIds.length === 0)} onClick={async () => {
             const targets = bulkAudience === 'all' ? filteredContacts : filteredContacts.filter((contact) => selectedContactIds.includes(contact.id));
             if (!targets.length) return;
-            if (!window.confirm(`Send ${bulkMode === 'ai' ? 'AI-personalized ' : ''}message to ${targets.length} contact(s)?`)) return;
+            if (!bulkConsentConfirmed) return;
+            if (!window.confirm(`Send ${bulkMode === 'ai' ? 'AI-personalized ' : ''}message to ${targets.length} eligible contact(s)? Sending will stop if Instagram reports a rate-limit or permission error.`)) return;
             setBulkSending(true);
             setBulkStatus('');
             let sent = 0;
             let failed = 0;
             let lastError = '';
+            let stoppedEarly = false;
             try {
               for (const contact of targets) {
                 const username = contact.ig_username || contact.ig_user_id;
@@ -202,16 +211,25 @@ export const ContactsPage: React.FC = () => {
                     if (!aiRes.ok || !aiData?.reply) throw new Error(aiData?.error || 'AI generation failed');
                     finalMessage = String(aiData.reply).trim();
                   }
-                  await Promise.resolve(sendManualReply(username, finalMessage));
+                  const sendResult: any = await Promise.resolve(sendManualReply(username, finalMessage));
+                  if (sendResult === false || sendResult?.ok === false) throw new Error(sendResult?.error || 'Instagram send failed');
                   sent += 1;
+                  // Keep bulk traffic sequential instead of creating a burst.
+                  await new Promise((resolve) => setTimeout(resolve, 1200));
                 } catch (error) {
                   console.warn('[BULK_MESSAGE_ITEM_FAILED]', username, error);
                   lastError = error instanceof Error ? error.message : String(error || 'Unknown error');
                   failed += 1;
+                  const lowerError = lastError.toLowerCase();
+                  if (lowerError.includes('rate') || lowerError.includes('limit') || lowerError.includes('permission') || lowerError.includes('temporar') || lowerError.includes('429')) {
+                    stoppedEarly = true;
+                    break;
+                  }
                 }
               }
-              setBulkStatus(`Completed: ${sent} queued for sending${failed ? `, ${failed} failed${lastError ? ` — ${lastError}` : ''}` : ''}.`);
+              setBulkStatus(`${stoppedEarly ? 'Stopped for account safety' : 'Completed'}: ${sent} sent${failed ? `, ${failed} failed${lastError ? ` — ${lastError}` : ''}` : ''}.`);
               if (sent > 0) setBulkMessage('');
+              setBulkConsentConfirmed(false);
             } finally { setBulkSending(false); }
           }} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 text-xs font-black text-white shadow-md disabled:cursor-not-allowed disabled:opacity-40"><WandSparkles className="h-4 w-4" />{bulkSending ? 'Sending…' : 'Send Message'}</button>
         </div>
