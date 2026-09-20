@@ -387,31 +387,43 @@ export default async function handler(req: any, res: any) {
     void subscribeInstagramApp(igUserId, accessToken);
 
     const safeUsername = escapeHtml(username);
+    const safeProfilePic = escapeHtml(profilePicUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(username)}`);
+    const safeFollowers = Number(followersCount || 0).toLocaleString('en-US');
     return res.status(200).send(`<!doctype html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Instagram connected</title>
 </head>
-<body style="font-family:system-ui,-apple-system,sans-serif;background:#f8fafc;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
-  <div style="max-width:440px;background:white;border:1px solid #e2e8f0;border-radius:20px;padding:28px;box-shadow:0 12px 40px rgba(15,23,42,.08);text-align:center">
-    <div style="font-size:42px">✅</div>
-    <h2 style="margin:8px 0;color:#0f172a">@${safeUsername} connected</h2>
-    <p style="color:#64748b;line-height:1.6;font-size:14px">Meta verified and saved the Instagram account successfully.</p>
-    <p style="color:#94a3b8;font-size:12px">You can close this window.</p>
-  </div>
+<body style="font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F7FAFF;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box">
+  <main style="width:100%;max-width:430px;background:#FCFDFF;border:1px solid #dbeafe;border-radius:28px;box-shadow:0 24px 70px rgba(30,64,175,.14);overflow:hidden">
+    <div style="height:6px;background:linear-gradient(90deg,#2563eb,#4f46e5,#7c3aed)"></div>
+    <div style="padding:32px 28px 28px;text-align:center">
+      <div style="width:78px;height:78px;margin:0 auto 16px;position:relative">
+        <img src="${safeProfilePic}" alt="@${safeUsername}" style="width:78px;height:78px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 5px 20px rgba(15,23,42,.15)" />
+        <div style="position:absolute;right:-2px;bottom:1px;width:25px;height:25px;border-radius:50%;background:#16a34a;border:3px solid #FCFDFF;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800">✓</div>
+      </div>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:11px;font-weight:750;letter-spacing:.04em;margin-bottom:12px">META VERIFIED</div>
+      <h1 style="margin:0;color:#0f172a;font-size:23px;line-height:1.25;font-weight:750;letter-spacing:-.02em">@${safeUsername}</h1>
+      <p style="margin:6px 0 0;color:#64748b;font-size:14px;font-weight:600">${safeFollowers} followers</p>
+      <div style="height:1px;background:#e2e8f0;margin:24px 0"></div>
+      <h2 style="margin:0;color:#172554;font-size:17px;font-weight:750">Instagram connected successfully</h2>
+      <p style="margin:8px auto 0;max-width:330px;color:#64748b;line-height:1.55;font-size:13px">Your account is securely connected to AutoReply and ready for automation.</p>
+      <div style="margin-top:22px;padding:12px 14px;border:1px solid #dbeafe;border-radius:14px;background:#F7FAFF;color:#475569;font-size:12px;font-weight:600">Returning to your dashboard…</div>
+    </div>
+  </main>
   <script>
     (function () {
       try {
         if (window.opener && !window.opener.closed) {
           window.opener.postMessage({ type: 'ig_connected' }, window.location.origin);
-          setTimeout(function () { window.close(); }, 800);
+          setTimeout(function () { window.close(); }, 1200);
           return;
         }
       } catch (e) {}
       setTimeout(function () {
         window.location.replace('/?tab=settings&status=ig_connected');
-      }, 500);
+      }, 1200);
     })();
   </script>
 </body>
