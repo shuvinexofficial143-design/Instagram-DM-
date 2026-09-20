@@ -246,20 +246,27 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Bottom User Card & Plan Notice */}
-      <div className="shrink-0 border-t border-slate-200/80 bg-white p-3 overflow-visible">
-        {/* Profile Card — keep the signed-in Google identity visibly above Current Plan */}
+      <div className="shrink-0 border-t border-slate-200/80 bg-white p-3 overflow-hidden">
         {!isCollapsed && (
-          <div className="relative group mb-2">
-            <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-2 shadow-sm">
+          <>
+            <div className="mb-2 flex items-center justify-between px-1">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Current Plan</span>
+              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-black uppercase text-indigo-700">
+                {String(user?.plan || 'free')}
+              </span>
+            </div>
+            <div className="flex w-full min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-2 shadow-sm">
               <button
                 onClick={() => setActiveTab('settings')}
                 className="flex min-w-0 flex-1 items-center gap-2.5 text-left cursor-pointer"
                 title="Google Account Settings"
               >
-                <UserAvatar src={accountPhoto} name={accountName} size="md" />
-                <div className="min-w-0">
+                <div className="shrink-0">
+                  <UserAvatar src={accountPhoto} name={accountName} size="md" />
+                </div>
+                <div className="min-w-0 flex-1 overflow-hidden">
                   <p className="truncate text-sm font-black text-slate-950">{accountName}</p>
-                  <p className="mt-0.5 truncate text-xs font-bold text-slate-600">
+                  <p className="mt-0.5 truncate text-[11px] font-bold text-slate-600" title={accountEmail}>
                     {accountEmail || 'Signed in with Google'}
                   </p>
                 </div>
@@ -269,72 +276,21 @@ export const Sidebar: React.FC = () => {
                   if (window.confirm('Sign out of AutoReply.io?')) logout();
                 }}
                 title="Sign Out"
-                className="shrink-0 p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="h-4 w-4" />
               </button>
             </div>
-          </div>
+          </>
         )}
-        {!isCollapsed && (
-          <div className="flex items-center justify-between px-1">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Current Plan</span>
-            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-black uppercase text-indigo-700">{String(user?.plan || 'free')}</span>
-          </div>
-        )}
-        {/* Compact profile icon remains available when sidebar is collapsed */}
         {isCollapsed && (
-        /* Profile Card */}
-        <div className="relative group">
-          <div
-            className={`flex items-center ${
-              isCollapsed ? 'justify-center p-1.5' : 'justify-between p-2'
-            } rounded-xl bg-slate-50 border border-slate-100`}
+          <button
+            onClick={() => setActiveTab('settings')}
+            className="flex w-full justify-center rounded-xl border border-slate-200 bg-slate-50 p-1.5"
+            title={accountEmail || accountName}
           >
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5 min-w-0 text-left'} cursor-pointer group-hover:opacity-90`}
-              title="Account Settings"
-            >
-              <UserAvatar
-                src={accountPhoto}
-                name={accountName}
-                size="md"
-              />
-              {!isCollapsed && (
-                <div className="min-w-0">
-                  <p className="text-sm font-black text-slate-950 truncate group-hover:text-indigo-600 transition-colors">
-                    {accountName}
-                  </p>
-                  <p className="mt-0.5 text-xs font-bold text-slate-600 truncate">
-                    {accountEmail ? accountEmail.split('@')[0] : `${user.plan} plan`}
-                  </p>
-                </div>
-              )}
-            </button>
-            {!isCollapsed && (
-              <button
-                onClick={() => {
-                  if (window.confirm('Sign out of AutoReply.io?')) {
-                    logout();
-                  }
-                }}
-                title="Sign Out"
-                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Tooltip when collapsed */}
-          {isCollapsed && (
-            <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-50 flex flex-col gap-0.5">
-              <span>{accountName}</span>
-              <span className="text-[10px] text-slate-300 font-normal">{accountEmail ? accountEmail.split('@')[0] : `${user.plan} Plan`}</span>
-            </div>
-          )}
-        </div>
+            <UserAvatar src={accountPhoto} name={accountName} size="md" />
+          </button>
         )}
       </div>
     </aside>
