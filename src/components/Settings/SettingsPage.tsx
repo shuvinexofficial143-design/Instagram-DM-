@@ -6,6 +6,8 @@ import {
   LogOut,
   Mail,
   ShieldCheck,
+  Settings2,
+  Sparkles,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -46,8 +48,21 @@ export const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto min-h-screen max-w-5xl space-y-8 bg-[#F7FAFF] p-8">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="mx-auto min-h-screen max-w-6xl space-y-6 bg-[#F7FAFF] p-4 sm:p-6 lg:p-8">
+      <section className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white/90 via-blue-50/75 to-violet-50/80 p-5 shadow-[0_14px_45px_rgba(72,95,145,0.08)] sm:p-7">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-violet-200/35 blur-3xl" />
+        <div className="relative flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-500/20">
+            <Settings2 className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-indigo-500"><Sparkles className="h-3.5 w-3.5" />Workspace settings</div>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Settings</h1>
+            <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-600">Manage your secure session and the Instagram profile that powers your automations.</p>
+          </div>
+        </div>
+      </section>
+      <div className="rounded-3xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm sm:p-6">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
             <h3 className="text-base font-black text-slate-950">Account & Security</h3>
@@ -61,7 +76,7 @@ export const SettingsPage: React.FC = () => {
           </span>
         </div>
 
-        <div className="mt-5 flex flex-col items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center">
+        <div className="mt-5 flex flex-col items-start justify-between gap-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-blue-50/65 to-violet-50/45 p-4 sm:flex-row sm:items-center">
           <div className="flex items-center gap-3.5">
             <UserAvatar
               src={user.avatar_url}
@@ -93,7 +108,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-3xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm sm:p-6">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
             <h3 className="text-base font-black text-slate-950">Instagram Account</h3>
@@ -110,7 +125,7 @@ export const SettingsPage: React.FC = () => {
         </div>
 
         {instagramAccount ? (
-          <div className="mt-5 flex flex-col items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center">
+          <div className="mt-5 flex flex-col items-start justify-between gap-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-blue-50/65 to-violet-50/45 p-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-3">
               <UserAvatar
                 src={instagramAccount.profile_pic_url}
@@ -148,7 +163,7 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="mt-5 space-y-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+          <div className="mt-5 space-y-4 rounded-2xl border border-dashed border-indigo-200 bg-gradient-to-br from-blue-50/70 to-violet-50/60 p-6 text-center sm:p-8">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 text-white shadow-md">
               <Instagram className="h-6 w-6" />
             </div>
