@@ -160,21 +160,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#F8FAFC] flex flex-col justify-center items-center px-4 py-12 select-none">
-      <div className="flex items-center justify-center gap-3 mb-8">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+    <div className="min-h-screen w-full bg-[#F7FAFF] flex flex-col justify-center items-center px-4 py-10 sm:py-12 select-none">
+      <div className="flex items-center justify-center gap-3 mb-7">
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-600 via-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
           <Zap className="w-5 h-5 fill-white stroke-[2.2]" />
         </div>
-        <span className="text-2xl font-bold text-slate-900 tracking-tight">autoreply.io</span>
+        <span className="text-[26px] font-bold text-[#172554] tracking-tight">autoreply.io</span>
       </div>
 
-      <div className="w-full max-w-[440px] bg-white rounded-3xl shadow-xl shadow-slate-200/60 border border-slate-200/90 p-8 sm:p-10">
-        <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl mb-6">
+      <div className="w-full max-w-[520px] bg-[#FCFDFF] rounded-[28px] shadow-[0_24px_60px_rgba(30,64,175,0.12)] border border-blue-100/90 p-7 sm:p-10 md:p-11">
+        <div className="grid grid-cols-2 gap-1 p-1.5 bg-[#EEF4FF] rounded-2xl mb-7">
           <button
             type="button"
             onClick={() => switchMode('signin')}
-            className={`py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              authMode === 'signin' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+            className={`py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+              authMode === 'signin' ? 'bg-[#FCFDFF] text-[#172554] shadow-sm border border-blue-100/70' : 'text-slate-600 hover:text-[#172554]'
             }`}
           >
             Sign In
@@ -182,18 +182,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           <button
             type="button"
             onClick={() => switchMode('signup')}
-            className={`py-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              authMode === 'signup' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+            className={`py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+              authMode === 'signup' ? 'bg-[#FCFDFF] text-[#172554] shadow-sm border border-blue-100/70' : 'text-slate-600 hover:text-[#172554]'
             }`}
           >
             Create account
           </button>
         </div>
 
-        <h1 className="text-2xl font-bold text-slate-900 text-center tracking-tight">
+        <h1 className="text-[28px] sm:text-[30px] font-bold text-[#172554] text-center tracking-tight">
           {authMode === 'signup' ? 'Create your account' : 'Welcome back'}
         </h1>
-        <p className="text-xs text-slate-500 text-center mt-2 mb-6 leading-relaxed">
+        <p className="text-sm text-slate-600 text-center mt-2 mb-7 leading-relaxed">
           {authMode === 'signup'
             ? 'Create your account with email and password'
             : 'Sign in with your email and password'}
@@ -217,9 +217,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           type="button"
           onClick={handleGoogleSignIn}
           disabled={isLoading}
-          className="w-full mb-5 py-3 px-4 bg-white hover:bg-slate-50 text-slate-800 font-bold text-sm rounded-xl border border-slate-300 transition-all shadow-sm flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60"
+          className="w-full mb-6 py-3.5 px-4 bg-[#F8FAFF] hover:bg-[#EEF4FF] text-[#172554] font-bold text-[15px] rounded-2xl border border-blue-200 transition-all shadow-sm flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60"
         >
-          <span className="w-5 h-5 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[11px] font-black text-blue-600">
+          <span className="w-6 h-6 rounded-full bg-white border border-blue-100 flex items-center justify-center text-[11px] font-black text-blue-600">
             G
           </span>
           <span>Continue with Google</span>
@@ -241,7 +241,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@company.com"
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all font-medium"
+              className="w-full px-4 py-3.5 bg-[#F8FAFF] border border-blue-100 rounded-2xl text-[15px] text-[#172554] placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all font-medium"
             />
           </div>
 
@@ -267,7 +267,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 pr-10 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all font-medium"
+                className="w-full px-4 py-3.5 pr-10 bg-[#F8FAFF] border border-blue-100 rounded-2xl text-[15px] text-[#172554] placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all font-medium"
               />
               <button
                 type="button"
@@ -291,7 +291,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all font-medium"
+                className="w-full px-4 py-3.5 bg-[#F8FAFF] border border-blue-100 rounded-2xl text-[15px] text-[#172554] placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all font-medium"
               />
             </div>
           )}
@@ -299,7 +299,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full mt-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            className="w-full mt-2 py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-[15px] rounded-2xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
           >
             {isLoading ? (
               <>
@@ -312,7 +312,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-slate-500 leading-relaxed">
+        <p className="mt-7 text-center text-[13px] text-slate-600 leading-relaxed">
           By continuing you agree to our{' '}
           <button
             type="button"
