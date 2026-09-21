@@ -74,6 +74,9 @@ export const AdminPage: React.FC = () => {
   // Selected User Detail Modal
   const [selectedUser, setSelectedUser] = useState<AdminUserOverviewItem | null>(null);
   const [adminSection, setAdminSection] = useState<'dashboard' | 'users' | 'instagram' | 'automations' | 'plans' | 'payments' | 'ai' | 'health' | 'activity' | 'settings'>('dashboard');
+  const [platformData, setPlatformData] = useState<any>(null);
+  const [planDrafts, setPlanDrafts] = useState<Record<string, any>>({});
+  const [savingPlan, setSavingPlan] = useState<string>('');
 
   const handleAdminLogout = async () => {
     await supabase.auth.signOut();
@@ -132,6 +135,38 @@ export const AdminPage: React.FC = () => {
       fetchDashboardOverview();
     }
   }, [isAdminAuthenticated, currentEmail]);
+
+  const fetchPlatformData = async () => {
+    if (!isAdminAuthenticated) return;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token || '';
+    if (!token) return;
+    const res = await fetch('https://dwgxmmftybxwpurgsxkx.supabase.co/functions/v1/instagram-account-store', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ action: 'admin_overview' }),
+    });
+    const result = await res.json();
+    if (!res.ok || !result?.ok) throw new Error(result?.error || 'Could not load platform data');
+    setPlatformData(result);
+    setPlanDrafts(Object.fromEntries((result.plans || []).map((p: any) => [p.id, { ...p }])));
+  };
+
+  useEffect(() => { if (isAdminAuthenticated) void fetchPlatformData().catch((err) => setError(err?.message || 'Admin data failed')); }, [isAdminAuthenticated, currentEmail]);
+
+  const savePlan = async (plan: any) => {
+    setSavingPlan(plan.id);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || '';
+      const res = await fetch('https://dwgxmmftybxwpurgsxkx.supabase.co/functions/v1/instagram-account-store', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'admin_update_plan', plan }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result?.ok) throw new Error(result?.error || 'Plan update failed');
+      await fetchPlatformData();
+    } finally { setSavingPlan(''); }
+  };
 
   // Format Dates nicely
   const formatDate = (dateStr?: string | null) => {
@@ -252,16 +287,16 @@ export const AdminPage: React.FC = () => {
   }, [data?.users, searchQuery, statusFilter, sortBy, sortOrder]);
 
   // Overall Stats calculation
-  const totalRegisteredUsers = data?.overviewStats?.totalRegisteredUsers ?? data?.totalUsers ?? (data?.users?.length || 0);
+  const totalRegisteredUsers = platformData?.profiles?.length ?? data?.overviewStats?.totalRegisteredUsers ?? data?.totalUsers ?? (data?.users?.length || 0);
   const totalConnectedInstagram =
-    data?.overviewStats?.totalConnectedInstagram ??
+    platformData?.instagramAccounts?.length ?? data?.overviewStats?.totalConnectedInstagram ??
     (data?.users || []).filter((u) => u.instagram?.status === 'active' && u.instagram?.username).length;
   const totalDmsSentCombined =
     data?.overviewStats?.totalDmsSent ??
     data?.totalAutomatedDms ??
     (data?.users || []).reduce((acc, u) => acc + (u.stats?.total_dms_sent || 0), 0);
   const totalActiveAutomationsCombined =
-    data?.overviewStats?.totalActiveAutomations ??
+    platformData?.activeAutomations?.length ?? data?.overviewStats?.totalActiveAutomations ??
     data?.totalAutomations ??
     (data?.users || []).reduce((acc, u) => acc + (u.stats?.total_automations || 0), 0);
 
@@ -504,7 +539,9 @@ export const AdminPage: React.FC = () => {
             {adminSection === 'automations' && <><Metric label="Active Automations" value={totalActiveAutomationsCombined} /><Metric label="DMs Sent" value={totalDmsSentCombined} /><Metric label="Users" value={totalRegisteredUsers} /><Metric label="Status" value="Live" /></>}
             {adminSection === 'ai' && <><Metric label="Automated DMs" value={totalDmsSentCombined} /><Metric label="Active Workflows" value={totalActiveAutomationsCombined} /><Metric label="Connected IG" value={totalConnectedInstagram} /><Metric label="Monitoring" value="On" /></>}
             {adminSection === 'health' && <><Metric label="DM Automation" value="Live" /><Metric label="Admin API" value={error ? 'Check' : 'Online'} /><Metric label="Instagram" value={totalConnectedInstagram ? 'Connected' : 'No account'} /><Metric label="Last Sync" value={lastRefreshedAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} /></>}
-            {(adminSection === 'plans' || adminSection === 'payments' || adminSection === 'activity' || adminSection === 'settings') && <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">This module is now part of the Admin V2 navigation. Its secure write/actions API will be connected in the next backend phase; no customer or DM automation path is modified.</div>}
+            {adminSection === 'plans' && <div className="sm:col-span-2 lg:col-span-4 grid gap-4 lg:grid-cols-2">{(platformData?.plans || []).map((plan:any) => { const p=planDrafts[plan.id] || plan; const field=(key:string,label:string)=><label className="text-xs font-bold text-slate-600">{label}<input type="number" value={p[key] ?? ''} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,[key]:e.target.value}}))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"/></label>; return <div key={plan.id} className="rounded-2xl border border-slate-200 p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-lg font-black text-slate-900">{p.name}</p><p className="text-xs text-slate-400">{plan.id}</p></div><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={Boolean(p.is_active)} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,is_active:e.target.checked}}))}/> Active</label></div><div className="grid grid-cols-2 gap-3">{field('price_inr','Price ₹')}{field('billing_days','Billing days')}{field('total_messages','Messages')}{field('ai_replies','AI replies')}{field('instagram_accounts','Instagram accounts')}{field('automations_limit','Automations (blank = unlimited)')}</div><button onClick={()=>savePlan(p)} disabled={savingPlan===plan.id} className="mt-4 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">{savingPlan===plan.id?'Saving...':'Save Plan'}</button></div>})}</div>}
+            {adminSection === 'activity' && <div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.auditLogs || []).length ? platformData.auditLogs.map((log:any)=><div key={log.id} className="flex justify-between rounded-xl border border-slate-200 p-3 text-xs"><span><strong>{log.action}</strong> · {log.entity_type} {log.entity_id || ''}</span><span className="text-slate-400">{formatDateTime(log.created_at)}</span></div>) : <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">No admin changes recorded yet.</div>}</div>}
+            {(adminSection === 'payments' || adminSection === 'settings') && <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">{adminSection === 'payments' ? 'No payment records table is connected yet, so no fake transactions are shown.' : 'No global settings records exist yet. Controls will appear here only when backed by stored settings.'}</div>}
           </div>
         </div>
       )}
