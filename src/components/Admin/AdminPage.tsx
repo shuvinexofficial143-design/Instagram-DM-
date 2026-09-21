@@ -34,26 +34,15 @@ import {
 import { useApp } from '../../context/AppContext';
 import { AdminUserOverviewItem, AdminOverviewResponse } from '../../types';
 import { UserAvatar } from '../Common/UserAvatar';
+import { supabase } from '../../lib/supabase';
 
 export const AdminPage: React.FC = () => {
   const { firebaseUser, user, setActiveTab } = useApp();
 
   const currentEmail = (firebaseUser?.email || user?.email || '').trim().toLowerCase();
 
-  // Admin Login Portal State
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    try {
-      return sessionStorage.getItem('admin_session_auth') === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  const [adminUserIdInput, setAdminUserIdInput] = useState<string>('Nazhalijing');
-  const [adminPasswordInput, setAdminPasswordInput] = useState<string>('');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [loginLoading, setLoginLoading] = useState<boolean>(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
+  // Admin access uses the existing Supabase Google session. No second password gate.
+  const isAdminAuthenticated = Boolean(firebaseUser && currentEmail);
 
   // Dashboard Data States
   const [loading, setLoading] = useState<boolean>(true);
@@ -71,49 +60,9 @@ export const AdminPage: React.FC = () => {
   // Selected User Detail Modal
   const [selectedUser, setSelectedUser] = useState<AdminUserOverviewItem | null>(null);
 
-  // Handle Admin Credentials Login
-  const handleAdminLogin = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setLoginLoading(true);
-    setLoginError(null);
-
-    try {
-      const res = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: adminUserIdInput.trim(),
-          password: adminPasswordInput.trim(),
-        }),
-      });
-
-      const result = await res.json();
-      if (!res.ok || !result.success) {
-        throw new Error(result.error || 'Invalid User ID or Password.');
-      }
-
-      // Store in session storage
-      try {
-        sessionStorage.setItem('admin_session_auth', 'true');
-        sessionStorage.setItem('admin_session_token', result.token || 'admin_session_valid_nazhalijing_9589');
-      } catch {}
-
-      setIsAdminAuthenticated(true);
-      setAdminPasswordInput('');
-    } catch (err: any) {
-      setLoginError(err?.message || 'Login failed. Please check your credentials.');
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const handleAdminLogout = () => {
-    try {
-      sessionStorage.removeItem('admin_session_auth');
-      sessionStorage.removeItem('admin_session_token');
-    } catch {}
-    setIsAdminAuthenticated(false);
-    setAdminPasswordInput('');
+  const handleAdminLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.assign('/');
   };
 
   // Fetch dashboard overview data from backend admin API
@@ -126,13 +75,13 @@ export const AdminPage: React.FC = () => {
 
     try {
       const emailParam = encodeURIComponent(currentEmail);
-      const token = sessionStorage.getItem('admin_session_token') || 'admin_session_valid_nazhalijing_9589';
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token || '';
 
       const res = await fetch(`/api/admin/dashboard-overview?email=${emailParam}`, {
         headers: {
           'x-user-email': currentEmail,
-          'x-admin-token': token,
-          Authorization: `Bearer ${token}`,
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
       });
 
@@ -344,101 +293,22 @@ export const AdminPage: React.FC = () => {
   };
 
   // ----------------------------------------------------
-  // 1. ADMIN CREDENTIALS LOGIN GATE
+  // 1. GOOGLE SESSION GATE
   // ----------------------------------------------------
   if (!isAdminAuthenticated) {
     return (
-      <div className="min-h-[85vh] flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 shadow-xl p-8 space-y-6">
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center mx-auto text-indigo-600 shadow-xs">
-              <Lock className="w-8 h-8" />
-            </div>
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Admin Dashboard Login</h2>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Restricted owner area. Please enter your administrator user ID and password to access the panel.
-            </p>
+      <div className="min-h-[100dvh] flex items-center justify-center bg-[#F7FAFF] p-6">
+        <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 shadow-xl p-8 text-center space-y-5">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center mx-auto text-indigo-600">
+            <Lock className="w-8 h-8" />
           </div>
-
-          {loginError && (
-            <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-semibold flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
-              <span>{loginError}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            {/* User ID Field */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-slate-400" />
-                <span>Admin User ID</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={adminUserIdInput}
-                onChange={(e) => setAdminUserIdInput(e.target.value)}
-                placeholder="Enter User ID (e.g. Nazhalijing)"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
-              />
-            </div>
-
-            {/* Password Field */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <KeyRound className="w-3.5 h-3.5 text-slate-400" />
-                <span>Admin Password</span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={adminPasswordInput}
-                  onChange={(e) => setAdminPasswordInput(e.target.value)}
-                  placeholder="Enter Password"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 font-medium pr-10 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loginLoading || !adminUserIdInput || !adminPasswordInput}
-              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              {loginLoading ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Verifying Credentials...</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Access Admin Dashboard</span>
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Return button */}
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>Primary Owner: devsinghparmar9589@gmail.com</span>
-            <button
-              onClick={() => setActiveTab('home')}
-              className="font-bold text-slate-700 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to App</span>
-            </button>
+          <div>
+            <h2 className="text-2xl font-black text-slate-900">Admin Control Center</h2>
+            <p className="mt-2 text-sm text-slate-500">Sign in to the main AutoReply app with the authorized Google account, then open /admin.</p>
           </div>
+          <button onClick={() => window.location.assign('/')} className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all">
+            Continue to Google Login
+          </button>
         </div>
       </div>
     );
@@ -489,7 +359,7 @@ export const AdminPage: React.FC = () => {
               Sign Out of Admin
             </button>
             <button
-              onClick={() => setActiveTab('home')}
+              onClick={() => window.location.assign('/')}
               className="flex-1 py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
@@ -522,7 +392,7 @@ export const AdminPage: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-slate-500">
-                  Aggregated platform overview, user directory, and automation usage metrics from Firestore.
+                  Platform overview, users, Instagram accounts, automations, usage and system operations.
                 </p>
               </div>
             </div>
@@ -565,11 +435,7 @@ export const AdminPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>
-              Admin User ID: <strong className="text-slate-900 font-semibold font-mono">Nazhalijing</strong>
-            </span>
-            <span className="text-slate-300">•</span>
-            <span>
-              Email: <strong className="text-slate-900 font-semibold">{currentEmail || 'devsinghparmar9589@gmail.com'}</strong>
+              Admin: <strong className="text-slate-900 font-semibold">Google verified</strong>\n            </span>\n            <span className="text-slate-300">•</span>\n            <span>\n              Email: <strong className="text-slate-900 font-semibold">{currentEmail || 'devsinghparmar9589@gmail.com'}</strong>
             </span>
           </div>
 
@@ -1003,39 +869,13 @@ export const AdminPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Security & Configuration Documentation Card */}
       <div className="bg-slate-900 text-white rounded-3xl p-6 md:p-8 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-wider">
-              <KeyRound className="w-4 h-4" />
-              <span>Admin Authentication & Route Protection</span>
-            </div>
-            <h3 className="text-lg font-black tracking-tight text-white">
-              Dual-Layer Security Architecture
-            </h3>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              This Admin Dashboard is strictly protected through two independent security layers:
-            </p>
-            <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
-              <li>
-                <strong>Credential Gate:</strong> Protected by User ID <code className="text-emerald-400 font-mono">Nazhalijing</code> and dedicated admin password.
-              </li>
-              <li>
-                <strong>Backend Whitelist:</strong> <code className="text-indigo-300 font-mono">/api/admin/dashboard-overview</code> is hardcoded on the backend to allow only authorized owner emails (<code className="text-indigo-300 font-mono">devsinghparmar9589@gmail.com</code>).
-              </li>
-            </ul>
-          </div>
-
-          <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 text-xs space-y-2 shrink-0 md:w-80">
-            <p className="font-bold text-slate-200">Configured Admin Identifiers:</p>
-            <div className="space-y-1 font-mono text-[11px] text-emerald-400 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-              <p>• User ID: Nazhalijing</p>
-              <p>• Owner Email: devsinghparmar9589@gmail.com</p>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              To add additional admin emails, configure <code className="text-slate-300 font-mono">ADMIN_EMAILS</code> in your environment variables.
-            </p>
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 text-emerald-400 mt-0.5" />
+          <div>
+            <div className="text-xs font-black uppercase tracking-[0.18em] text-indigo-300">Security</div>
+            <h3 className="mt-1 text-lg font-black">Google-authenticated Admin Access</h3>
+            <p className="mt-2 text-xs leading-5 text-slate-300">The panel uses the existing Supabase Google session plus the server-side administrator allowlist. Instagram access tokens and other secrets are never displayed in the admin UI.</p>
           </div>
         </div>
       </div>
