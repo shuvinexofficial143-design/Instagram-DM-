@@ -376,7 +376,7 @@ Deno.serve(async (req: Request) => {
   // caller's real Supabase session. Never return Instagram access tokens.
   if (action === "admin_overview") {
     const authHeader = String(req.headers.get("authorization") || "");
-    const jwt = authHeader.replace(/^Bearer\\s+/i, "").trim();
+    const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
     if (!jwt) return reply(401, { ok: false, error: "Authentication required" });
 
     const admin = getAdminClient();
@@ -427,7 +427,7 @@ Deno.serve(async (req: Request) => {
 
   if (action === "admin_update_plan") {
     const authHeader = String(req.headers.get("authorization") || "");
-    const jwt = authHeader.replace(/^Bearer\\s+/i, "").trim();
+    const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
     if (!jwt) return reply(401, { ok: false, error: "Authentication required" });
     const admin = getAdminClient();
     const { data: authData, error: authError } = await admin.auth.getUser(jwt);
