@@ -83,61 +83,12 @@ export const AdminPage: React.FC = () => {
     window.location.assign('/');
   };
 
-  // Fetch dashboard overview data from backend admin API
-  const fetchDashboardOverview = async () => {
+  // Admin V2 reads its source of truth directly from the authenticated Supabase admin endpoint.
+  const fetchPlatformData = async () => {
     if (!isAdminAuthenticated) return;
-
     setLoading(true);
     setError(null);
     setIsAccessDenied(false);
-
-    try {
-      const emailParam = encodeURIComponent(currentEmail);
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token || '';
-
-      const res = await fetch(`/api/admin/dashboard-overview?email=${emailParam}`, {
-        headers: {
-          'x-user-email': currentEmail,
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-      });
-
-      if (res.status === 403) {
-        setIsAccessDenied(true);
-        const errData = await res.json().catch(() => ({}));
-        setError(errData.error || 'Access Denied: You do not have administrator permissions.');
-        setLoading(false);
-        return;
-      }
-
-      if (!res.ok) {
-        throw new Error(`Server returned HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const result: AdminOverviewResponse = await res.json();
-      if (!result.success) {
-        throw new Error(result.error || 'Could not fetch admin overview.');
-      }
-
-      setData(result);
-      setLastRefreshedAt(new Date());
-    } catch (err: any) {
-      console.error('[ADMIN_FETCH_ERR]', err);
-      setError(err?.message || 'Failed to load dashboard overview.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isAdminAuthenticated) {
-      fetchDashboardOverview();
-    }
-  }, [isAdminAuthenticated, currentEmail]);
-
-  const fetchPlatformData = async () => {
-    if (!isAdminAuthenticated) return;
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token || '';
     if (!token) return;
@@ -146,6 +97,10 @@ export const AdminPage: React.FC = () => {
       body: JSON.stringify({ action: 'admin_overview' }),
     });
     const result = await res.json();
+    if (res.status === 401 || res.status === 403) {
+      setIsAccessDenied(true);
+      throw new Error(result?.error || 'Administrator access required');
+    }
     if (!res.ok || !result?.ok) throw new Error(result?.error || 'Could not load platform data');
     setPlatformData(result);
     setPlanDrafts(Object.fromEntries((result.plans || []).map((p: any) => [p.id, { ...p }])));
@@ -173,9 +128,13 @@ export const AdminPage: React.FC = () => {
     const totalMessages = (result.usageMonthly || []).reduce((sum: number, row: any) => sum + Number(row.total_messages || 0), 0);
     setData({ success: true, isAdmin: true, requesterEmail: currentEmail, users: realUsers, totalUsers: realUsers.length, totalAutomatedDms: totalMessages, totalAutomations: (result.activeAutomations || []).length, configuredAdmins: [], overviewStats: { totalRegisteredUsers: realUsers.length, totalConnectedInstagram: (result.instagramAccounts || []).length, totalDmsSent: totalMessages, totalActiveAutomations: (result.activeAutomations || []).length } });
     setLastRefreshedAt(new Date());
+    setLoading(false);
   };
 
-  useEffect(() => { if (isAdminAuthenticated) void fetchPlatformData().catch((err) => setError(err?.message || 'Admin data failed')); }, [isAdminAuthenticated, currentEmail]);
+  useEffect(() => {
+    if (!isAdminAuthenticated) { setLoading(false); return; }
+    void fetchPlatformData().catch((err) => { setError(err?.message || 'Admin data failed'); setLoading(false); });
+  }, [isAdminAuthenticated, currentEmail]);
 
   const savePlan = async (plan: any) => {
     setSavingPlan(plan.id);
@@ -339,7 +298,7 @@ export const AdminPage: React.FC = () => {
       'Total DMs Sent',
       'Total Automations Created',
       'Account Status',
-      'Firestore UID',
+      'Supabase User ID',
     ];
 
     const rows = filteredAndSortedUsers.map((u) => [
@@ -474,7 +433,7 @@ export const AdminPage: React.FC = () => {
 
           <div className="flex items-center gap-2.5 shrink-0">
             <button
-              onClick={() => { void fetchDashboardOverview(); void fetchPlatformData(); }}
+              onClick={() => void fetchPlatformData()}
               disabled={loading}
               className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-300 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
               title="Refresh Dashboard Overview"
@@ -812,7 +771,7 @@ export const AdminPage: React.FC = () => {
                   <td colSpan={8} className="py-12 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
-                      <p className="font-semibold text-sm">Aggregating users and activity stats from Firestore...</p>
+                      <p className="font-semibold text-sm">Aggregating users and activity stats from Supabase...</p>
                     </div>
                   </td>
                 </tr>
@@ -1128,7 +1087,7 @@ export const AdminPage: React.FC = () => {
                 </div>
 
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-slate-400 text-[10px] uppercase font-bold">Firestore User UID</p>
+                  <p className="text-slate-400 text-[10px] uppercase font-bold">Supabase User UID</p>
                   <p className="font-mono text-slate-700 text-xs break-all mt-0.5">{selectedUser.uid}</p>
                 </div>
               </div>
