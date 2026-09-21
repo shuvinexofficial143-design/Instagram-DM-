@@ -217,7 +217,7 @@ async function loadTypingRuntimeContext(
       : null,
   };
 
-  const expiresAt = Date.now() + 30_000;
+  const expiresAt = Date.now() + 5 * 60_000;
   const igId = String(data.ig_user_id || data?.account?.ig_user_id || "");
 
   if (igId) {
@@ -1144,7 +1144,7 @@ Deno.serve(async (req: Request) => {
 
     const contextStart = performance.now();
     let context: any = null;
-    let contextSource = "supabase_runtime_context_v4";
+    let contextSource = "supabase_runtime_context_v5";
     let typingOnDispatchedMs: number | null = null;
     let typingContextSource: "edge_memory" | "supabase_runtime_context" | "full_context" | null = null;
     let typingStarted = false;
