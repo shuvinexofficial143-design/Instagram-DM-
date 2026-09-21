@@ -149,6 +149,30 @@ export const AdminPage: React.FC = () => {
     if (!res.ok || !result?.ok) throw new Error(result?.error || 'Could not load platform data');
     setPlatformData(result);
     setPlanDrafts(Object.fromEntries((result.plans || []).map((p: any) => [p.id, { ...p }])));
+
+    const accountsByUser = new Map((result.instagramAccounts || []).map((row: any) => [row.user_id, row]));
+    const automationsByUser = new Map<string, number>();
+    for (const row of result.activeAutomations || []) automationsByUser.set(row.user_id, (automationsByUser.get(row.user_id) || 0) + 1);
+    const usageByUser = new Map<string, any>();
+    for (const row of result.usageMonthly || []) {
+      const prev = usageByUser.get(row.user_id) || { total_messages: 0, ai_replies: 0 };
+      prev.total_messages += Number(row.total_messages || 0); prev.ai_replies += Number(row.ai_replies || 0); usageByUser.set(row.user_id, prev);
+    }
+    const realUsers: AdminUserOverviewItem[] = (result.profiles || []).map((profile: any) => {
+      const accountRow: any = accountsByUser.get(profile.user_id);
+      const account = accountRow?.account || {};
+      const usage = usageByUser.get(profile.user_id) || { total_messages: 0, ai_replies: 0 };
+      return {
+        uid: profile.user_id, email: profile.email || '', displayName: profile.display_name || profile.email || 'User', photoURL: profile.avatar_url || '',
+        first_login_at: profile.created_at, last_login_at: profile.last_login_at || profile.created_at, last_active_at: profile.last_active_at || profile.updated_at,
+        role: profile.role === 'admin' ? 'admin' : 'user',
+        instagram: { username: account.username || null, connected_at: accountRow?.created_at || null, status: accountRow ? 'active' : 'not_connected', followers_count: Number(account.followers_count || 0), profile_pic_url: account.profile_picture_url || account.profile_pic_url || null },
+        stats: { total_dms_sent: Number(usage.total_messages || 0), total_automations: automationsByUser.get(profile.user_id) || 0, total_contacts: 0, last_activity_time: profile.last_active_at || profile.updated_at || profile.created_at },
+      };
+    });
+    const totalMessages = (result.usageMonthly || []).reduce((sum: number, row: any) => sum + Number(row.total_messages || 0), 0);
+    setData({ success: true, isAdmin: true, requesterEmail: currentEmail, users: realUsers, totalUsers: realUsers.length, totalAutomatedDms: totalMessages, totalAutomations: (result.activeAutomations || []).length, configuredAdmins: [], overviewStats: { totalRegisteredUsers: realUsers.length, totalConnectedInstagram: (result.instagramAccounts || []).length, totalDmsSent: totalMessages, totalActiveAutomations: (result.activeAutomations || []).length } });
+    setLastRefreshedAt(new Date());
   };
 
   useEffect(() => { if (isAdminAuthenticated) void fetchPlatformData().catch((err) => setError(err?.message || 'Admin data failed')); }, [isAdminAuthenticated, currentEmail]);
@@ -450,7 +474,7 @@ export const AdminPage: React.FC = () => {
 
           <div className="flex items-center gap-2.5 shrink-0">
             <button
-              onClick={fetchDashboardOverview}
+              onClick={() => { void fetchDashboardOverview(); void fetchPlatformData(); }}
               disabled={loading}
               className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-300 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
               title="Refresh Dashboard Overview"
@@ -558,7 +582,7 @@ export const AdminPage: React.FC = () => {
             <p className="text-3xl font-black text-slate-900 tracking-tight">
               {loading ? '—' : totalRegisteredUsers.toLocaleString()}
             </p>
-            <p className="text-[11px] text-slate-500 font-medium">All Google & Email signups</p>
+            <p className="text-[11px] text-slate-500 font-medium">Real Supabase profiles</p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs">
             <Users className="w-6 h-6" />
@@ -801,7 +825,7 @@ export const AdminPage: React.FC = () => {
                       <p className="text-xs text-slate-500">
                         {searchQuery
                           ? `No users matched "${searchQuery}". Try clearing your search.`
-                          : 'No user records currently registered in Firestore.'}
+                          : 'No user profiles currently registered in Supabase.'}
                       </p>
                     </div>
                   </td>
