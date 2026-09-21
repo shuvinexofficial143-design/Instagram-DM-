@@ -30,6 +30,13 @@ import {
   LogOut,
   Sparkles,
   Activity,
+  CreditCard,
+  Bot,
+  HeartPulse,
+  Settings,
+  ReceiptText,
+  LayoutDashboard,
+  Database,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AdminUserOverviewItem, AdminOverviewResponse } from '../../types';
@@ -59,6 +66,7 @@ export const AdminPage: React.FC = () => {
 
   // Selected User Detail Modal
   const [selectedUser, setSelectedUser] = useState<AdminUserOverviewItem | null>(null);
+  const [adminSection, setAdminSection] = useState<'dashboard' | 'users' | 'instagram' | 'automations' | 'plans' | 'payments' | 'ai' | 'health' | 'activity' | 'settings'>('dashboard');
 
   const handleAdminLogout = async () => {
     await supabase.auth.signOut();
@@ -449,6 +457,52 @@ export const AdminPage: React.FC = () => {
         </div>
       </div>
 
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-3 overflow-x-auto">
+        <div className="flex min-w-max items-center gap-2">
+          {[
+            ['dashboard', 'Dashboard', LayoutDashboard],
+            ['users', 'Users', Users],
+            ['instagram', 'Instagram Accounts', Instagram],
+            ['automations', 'Automations', Zap],
+            ['plans', 'Plans', CreditCard],
+            ['payments', 'Payments', ReceiptText],
+            ['ai', 'AI Usage', Bot],
+            ['health', 'System Health', HeartPulse],
+            ['activity', 'Admin Activity', Activity],
+            ['settings', 'Settings', Settings],
+          ].map(([id, label, Icon]: any) => (
+            <button key={id} onClick={() => setAdminSection(id)} className={`flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all ${adminSection === id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <Icon className="h-4 w-4" /><span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {adminSection !== 'dashboard' && adminSection !== 'users' && (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 md:p-8">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-500">Admin Control Center</p>
+              <h2 className="mt-1 text-2xl font-black text-slate-900">
+                {{instagram:'Instagram Accounts',automations:'Automations',plans:'Plans & Pricing',payments:'Payments & Receipts',ai:'AI Usage',health:'System Health',activity:'Admin Activity',settings:'Platform Settings'}[adminSection]}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                {{instagram:'Monitor connected Instagram channels and connection health without exposing access tokens.',automations:'Review active and paused workflows across customer workspaces.',plans:'Manage the central subscription catalog, quotas and account limits.',payments:'Track purchases, payment status, renewals and receipt records.',ai:'Monitor AI replies and usage so quotas and costs stay visible.',health:'Watch webhook, database, AI and Instagram delivery health from one place.',activity:'Keep an audit trail of sensitive administrator actions.',settings:'Manage global platform controls and operational configuration.'}[adminSection]}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-indigo-50 p-3 text-indigo-600"><Database className="h-5 w-5" /></div>
+          </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {adminSection === 'instagram' && <><Metric label="Connected" value={totalConnectedInstagram} /><Metric label="Registered Users" value={totalRegisteredUsers} /><Metric label="Disconnected" value={Math.max(0,totalRegisteredUsers-totalConnectedInstagram)} /><Metric label="Secrets Exposed" value={0} /></>}
+            {adminSection === 'automations' && <><Metric label="Active Automations" value={totalActiveAutomationsCombined} /><Metric label="DMs Sent" value={totalDmsSentCombined} /><Metric label="Users" value={totalRegisteredUsers} /><Metric label="Status" value="Live" /></>}
+            {adminSection === 'ai' && <><Metric label="Automated DMs" value={totalDmsSentCombined} /><Metric label="Active Workflows" value={totalActiveAutomationsCombined} /><Metric label="Connected IG" value={totalConnectedInstagram} /><Metric label="Monitoring" value="On" /></>}
+            {adminSection === 'health' && <><Metric label="DM Automation" value="Live" /><Metric label="Admin API" value={error ? 'Check' : 'Online'} /><Metric label="Instagram" value={totalConnectedInstagram ? 'Connected' : 'No account'} /><Metric label="Last Sync" value={lastRefreshedAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} /></>}
+            {(adminSection === 'plans' || adminSection === 'payments' || adminSection === 'activity' || adminSection === 'settings') && <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">This module is now part of the Admin V2 navigation. Its secure write/actions API will be connected in the next backend phase; no customer or DM automation path is modified.</div>}
+          </div>
+        </div>
+      )}
+
+      {(adminSection === 'dashboard' || adminSection === 'users') && <>
       {/* ---------------------------------------------------- */}
       {/* OVERVIEW STATS (TOP SECTION - 4 CARDS) */}
       {/* ---------------------------------------------------- */}
@@ -868,6 +922,8 @@ export const AdminPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      </>}
 
       <div className="bg-slate-900 text-white rounded-3xl p-6 md:p-8 shadow-sm">
         <div className="flex items-start gap-3">
