@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const SUPABASE_URL = 'https://dwgxmmftybxwpurgsxkx.supabase.co';
+const RELAY_VERSION = '2026-09-21-fast-webhook-v1';
 
 export const config = {
   api: {
@@ -100,6 +101,7 @@ export default async function handler(req: any, res: any) {
         appSecretConfigured: Boolean(appSecret),
         openaiConfigured: Boolean(openaiKey),
         liveProcessor: 'instagram-live-webhook',
+        relayVersion: RELAY_VERSION,
       });
     }
 
@@ -153,8 +155,12 @@ export default async function handler(req: any, res: any) {
     }
 
     console.log('[META_WEBHOOK] Verified event received', {
+      relayVersion: RELAY_VERSION,
       object: event?.object || null,
       entries: Array.isArray(event?.entry) ? event.entry.length : 0,
+      firstEntryId: String(event?.entry?.[0]?.id || ''),
+      messagingCount: Array.isArray(event?.entry?.[0]?.messaging) ? event.entry[0].messaging.length : 0,
+      changesCount: Array.isArray(event?.entry?.[0]?.changes) ? event.entry[0].changes.length : 0,
     });
 
     if (!openaiKey) {
