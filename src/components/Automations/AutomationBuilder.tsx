@@ -300,7 +300,7 @@ Answer only about the business.`
 
   // Compact responsive typography: readable on mobile without oversized labels/buttons.
   const builderReadabilityClass =
-    "[&_label]:text-[14px] sm:[&_label]:text-[15px] [&_label]:font-semibold [&_p]:text-[13px] sm:[&_p]:text-[14px] [&_p]:leading-6 [&_button]:text-[13px] sm:[&_button]:text-[14px] [&_input]:text-[14px] sm:[&_input]:text-[15px] [&_textarea]:text-[14px] sm:[&_textarea]:text-[15px] [&_select]:text-[14px] sm:[&_select]:text-[15px] [&_.text-xs]:text-[13px] sm:[&_.text-xs]:text-[14px] [&_.text-sm]:text-[14px] sm:[&_.text-sm]:text-[15px] [&_.text-\\[10px\\]]:text-[12px] sm:[&_.text-\\[10px\\]]:text-[13px] [&_.text-\\[11px\\]]:text-[13px] sm:[&_.text-\\[11px\\]]:text-[14px]";
+    "[&_label]:text-[24px] [&_label]:font-semibold [&_p]:text-[24px] [&_p]:leading-8 [&_button]:text-[24px] [&_input]:text-[24px] [&_textarea]:text-[24px] [&_select]:text-[24px] [&_.text-xs]:text-[24px] [&_.text-sm]:text-[24px] [&_.text-\\[10px\\]]:text-[24px] [&_.text-\\[11px\\]]:text-[24px] [&_.text-\\[12px\\]]:text-[24px] [&_h2]:text-[32px]";
 
   // Add keyword handler
   const handleAddKeyword = () => {
