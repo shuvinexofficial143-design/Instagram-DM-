@@ -47,8 +47,10 @@ const MainContent: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const { authLoading, firebaseUser } = useApp();
+  const { authLoading, firebaseUser, isAdmin } = useApp();
   const [showSplash, setShowSplash] = useState<boolean>(true);
+  const isAdminRoute =
+    typeof window !== 'undefined' && window.location.pathname === '/admin';
 
   if (authLoading) {
     return (
@@ -63,6 +65,26 @@ const AppShell: React.FC = () => {
     return (
       <ErrorBoundary>
         <LoginPage />
+      </ErrorBoundary>
+    );
+  }
+
+  if (isAdminRoute) {
+    if (!isAdmin) {
+      return (
+        <ErrorBoundary>
+          <div className="min-h-[100dvh] bg-[#F7FAFF]">
+            <AdminPage />
+          </div>
+        </ErrorBoundary>
+      );
+    }
+
+    return (
+      <ErrorBoundary>
+        <div className="min-h-[100dvh] bg-[#F7FAFF]">
+          <AdminPage />
+        </div>
       </ErrorBoundary>
     );
   }
