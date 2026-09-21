@@ -383,8 +383,9 @@ export default async function handler(req: any, res: any) {
       );
     }
 
-    // Do not hold up the OAuth success page on webhook subscription.
-    void subscribeInstagramApp(igUserId, accessToken);
+    // Webhook delivery is required for DM automation. Finish the subscription
+    // before completing OAuth so a serverless invocation cannot terminate it early.
+    await subscribeInstagramApp(igUserId, accessToken);
 
     const safeUsername = escapeHtml(username);
     const safeProfilePic = escapeHtml(profilePicUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(username)}`);
