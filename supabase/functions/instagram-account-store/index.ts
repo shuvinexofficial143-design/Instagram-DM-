@@ -389,15 +389,19 @@ Deno.serve(async (req: Request) => {
       return reply(403, { ok: false, error: "Administrator access required" });
     }
 
-    const [profilesRes, accountsRes, automationsRes, usageRes, plansRes, auditRes] = await Promise.all([
+    const [profilesRes, accountsRes, automationsRes, usageRes, plansRes, auditRes, dmHistoryRes, claimsRes, documentsRes, runtimeRes] = await Promise.all([
       admin.from("autoreply_profiles").select("user_id,email,display_name,avatar_url,role,last_login_at,last_active_at,created_at,updated_at").order("created_at", { ascending: false }),
       admin.from("autoreply_instagram_tokens").select("user_id,account,created_at,updated_at"),
       admin.from("autoreply_active_automations").select("user_id,automation_id,data,updated_at"),
       admin.from("autoreply_usage_monthly").select("user_id,month_key,total_messages,ai_replies,updated_at"),
       admin.from("autoreply_plans").select("id,name,price_inr,total_messages,ai_replies,instagram_accounts,automations_limit,billing_days,is_active,sort_order,updated_at").order("sort_order"),
       admin.from("autoreply_admin_audit_logs").select("id,admin_email,action,entity_type,entity_id,created_at").order("created_at", { ascending: false }).limit(100),
+      admin.from("autoreply_dm_history").select("user_id,sender_id,messages,updated_at").order("updated_at", { ascending: false }).limit(250),
+      admin.from("autoreply_message_claims").select("user_id,message_id,direction,status,created_at,expires_at").order("created_at", { ascending: false }).limit(500),
+      admin.from("autoreply_documents").select("user_id,collection,id,created_at,updated_at").order("updated_at", { ascending: false }).limit(500),
+      admin.from("autoreply_runtime_context").select("ig_user_id,user_id,automation_id,automation,updated_at").order("updated_at", { ascending: false }).limit(100),
     ]);
-    const firstError = profilesRes.error || accountsRes.error || automationsRes.error || usageRes.error || plansRes.error || auditRes.error;
+    const firstError = profilesRes.error || accountsRes.error || automationsRes.error || usageRes.error || plansRes.error || auditRes.error || dmHistoryRes.error || claimsRes.error || documentsRes.error || runtimeRes.error;
     if (firstError) throw firstError;
 
     const accounts = (accountsRes.data || []).map((row: any) => ({
@@ -414,6 +418,10 @@ Deno.serve(async (req: Request) => {
       usageMonthly: usageRes.data || [],
       plans: plansRes.data || [],
       auditLogs: auditRes.data || [],
+      dmHistory: dmHistoryRes.data || [],
+      messageClaims: claimsRes.data || [],
+      documents: documentsRes.data || [],
+      runtimeContexts: (runtimeRes.data || []).map((row: any) => ({ ...row, automation: row.automation ? { id: row.automation.id, name: row.automation.name, status: row.automation.status, trigger_type: row.automation.trigger_type } : null })),
     });
   }
 
