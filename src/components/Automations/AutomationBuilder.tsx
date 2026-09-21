@@ -298,9 +298,9 @@ Answer only about the business.`
 
   if (!isBuilderOpen) return null;
 
-  // Readability layer: larger, clearer typography without changing builder behavior.
+  // Compact responsive typography: readable on mobile without oversized labels/buttons.
   const builderReadabilityClass =
-    "[&_label]:text-[15px] [&_label]:font-semibold [&_p]:text-[14px] [&_p]:leading-6 [&_button]:text-[14px] [&_input]:text-[15px] [&_textarea]:text-[15px] [&_select]:text-[15px] [&_.text-xs]:text-[13px] [&_.text-\\[10px\\]]:text-[12px] [&_.text-\\[11px\\]]:text-[13px] [&_.text-\\[12px\\]]:text-[14px] [&_.text-sm]:text-[15px]";
+    "[&_label]:text-[12px] sm:[&_label]:text-[13px] [&_label]:font-semibold [&_p]:text-[11px] sm:[&_p]:text-[12px] [&_p]:leading-5 [&_button]:text-[11px] sm:[&_button]:text-[12px] [&_input]:text-[12px] sm:[&_input]:text-[13px] [&_textarea]:text-[12px] sm:[&_textarea]:text-[13px] [&_select]:text-[12px] sm:[&_select]:text-[13px] [&_.text-xs]:text-[11px] sm:[&_.text-xs]:text-[12px] [&_.text-sm]:text-[12px] sm:[&_.text-sm]:text-[13px]";
 
   // Add keyword handler
   const handleAddKeyword = () => {
@@ -560,8 +560,8 @@ Answer only about the business.`
       : 'Direct Message (DM)';
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/75 p-2 sm:p-4 md:p-6 ${builderReadabilityClass}`}>
-      <div className="flex h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-white/90 bg-gradient-to-b from-[#F7FAFF] via-[#FBFCFF] to-[#F8F6FF] shadow-2xl">
+    <div className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 p-0 sm:p-4 md:p-6 sm:items-center ${builderReadabilityClass}`}>
+      <div className="flex min-h-[100dvh] w-full max-w-6xl flex-col overflow-hidden bg-gradient-to-b from-[#F7FAFF] via-[#FBFCFF] to-[#F8F6FF] shadow-2xl sm:h-[94vh] sm:min-h-0 sm:rounded-[28px] sm:border sm:border-white/90">
         
         {/* ================= HEADER / STEP 0: AUTOMATION HEADER & TEMPLATES ================= */}
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-indigo-100/80 bg-white/85 px-6 py-4 backdrop-blur-sm">
@@ -1587,7 +1587,7 @@ Please rephrase your question or our support team will assist you.`}
                 </div>
 
                 {/* MAIN MESSAGE BOX CARD */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+                <div className="bg-white p-6 rounded-[18px] border border-slate-200/80/90 shadow-sm shadow-slate-200/40 space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                     <div>
                       <h4 className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xs font-black uppercase tracking-wider text-transparent">
@@ -1663,7 +1663,7 @@ Please rephrase your question or our support team will assist you.`}
                 )}
 
                 {/* Interactive Link Buttons (CTA) */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+                <div className="bg-white p-5 rounded-[18px] border border-slate-200/80/90 shadow-sm shadow-slate-200/40 space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                     <div>
                       <h4 className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xs font-black uppercase tracking-wider text-transparent">
@@ -1721,11 +1721,11 @@ Please rephrase your question or our support team will assist you.`}
                 </div>
 
                 {/* ACTION CONTROLS / BOTTOM BAR */}
-                <div className="sticky bottom-0 z-10 rounded-2xl border border-slate-200 bg-[#F7FAFF]/95 p-3 shadow-sm backdrop-blur pt-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="sticky bottom-0 z-10 rounded-[18px] border border-slate-200/80 bg-[#F7FAFF]/95 p-3 shadow-sm backdrop-blur pt-3 flex flex-wrap items-center justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => setCurrentStep(1)}
-                    className="px-5 py-3 rounded-2xl border border-slate-200 hover:bg-slate-100 text-slate-700 font-extrabold text-xs flex items-center gap-2 transition-colors cursor-pointer"
+                    className="px-5 py-3 rounded-[18px] border border-slate-200/80 hover:bg-slate-100 text-slate-700 font-extrabold text-xs flex items-center gap-2 transition-colors cursor-pointer"
                   >
                     <ArrowLeft className="w-4 h-4" />
                     <span>Back to Step 1</span>
