@@ -11,6 +11,10 @@
     {
       "source": "/webhook/",
       "destination": "/api/webhook"
+    },
+    {
+      "source": "/admin",
+      "destination": "/index.html"
     }
   ],
   "regions": [
