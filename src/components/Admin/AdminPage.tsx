@@ -43,6 +43,13 @@ import { AdminUserOverviewItem, AdminOverviewResponse } from '../../types';
 import { UserAvatar } from '../Common/UserAvatar';
 import { supabase } from '../../lib/supabase';
 
+const Metric: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
+  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+    <p className="mt-1 text-xl font-black text-slate-900">{typeof value === 'number' ? value.toLocaleString() : value}</p>
+  </div>
+);
+
 export const AdminPage: React.FC = () => {
   const { firebaseUser, user, setActiveTab } = useApp();
 
