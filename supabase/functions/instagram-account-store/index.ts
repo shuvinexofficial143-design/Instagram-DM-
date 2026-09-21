@@ -365,6 +365,83 @@ Deno.serve(async (req: Request) => {
   const action = String(payload?.action || "");
   const workspaceId = payload?.workspaceId;
 
+  // Admin V2: return only aggregate/platform-safe data after verifying the
+  // caller's real Supabase session. Never return Instagram access tokens.
+  if (action === "admin_overview") {
+    const authHeader = String(req.headers.get("authorization") || "");
+    const jwt = authHeader.replace(/^Bearer\\s+/i, "").trim();
+    if (!jwt) return reply(401, { ok: false, error: "Authentication required" });
+
+    const admin = getAdminClient();
+    const { data: authData, error: authError } = await admin.auth.getUser(jwt);
+    const email = String(authData?.user?.email || "").trim().toLowerCase();
+    const configuredAdmins = String(Deno.env.get("ADMIN_EMAILS") || "")
+      .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+    const allowed = new Set(["devsinghparmar9589@gmail.com", ...configuredAdmins]);
+    if (authError || !authData?.user || !allowed.has(email)) {
+      return reply(403, { ok: false, error: "Administrator access required" });
+    }
+
+    const [profilesRes, accountsRes, automationsRes, usageRes, plansRes, auditRes] = await Promise.all([
+      admin.from("autoreply_profiles").select("user_id,email,display_name,avatar_url,role,last_login_at,last_active_at,created_at,updated_at").order("created_at", { ascending: false }),
+      admin.from("autoreply_instagram_tokens").select("user_id,account,created_at,updated_at"),
+      admin.from("autoreply_active_automations").select("user_id,automation_id,data,updated_at"),
+      admin.from("autoreply_usage_monthly").select("user_id,month_key,total_messages,ai_replies,updated_at"),
+      admin.from("autoreply_plans").select("id,name,price_inr,total_messages,ai_replies,instagram_accounts,automations_limit,billing_days,is_active,sort_order,updated_at").order("sort_order"),
+      admin.from("autoreply_admin_audit_logs").select("id,admin_email,action,entity_type,entity_id,created_at").order("created_at", { ascending: false }).limit(100),
+    ]);
+    const firstError = profilesRes.error || accountsRes.error || automationsRes.error || usageRes.error || plansRes.error || auditRes.error;
+    if (firstError) throw firstError;
+
+    const accounts = (accountsRes.data || []).map((row: any) => ({
+      user_id: row.user_id,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      account: safeAccount(row.account),
+    }));
+    return reply(200, {
+      ok: true,
+      profiles: profilesRes.data || [],
+      instagramAccounts: accounts,
+      activeAutomations: automationsRes.data || [],
+      usageMonthly: usageRes.data || [],
+      plans: plansRes.data || [],
+      auditLogs: auditRes.data || [],
+    });
+  }
+
+  if (action === "admin_update_plan") {
+    const authHeader = String(req.headers.get("authorization") || "");
+    const jwt = authHeader.replace(/^Bearer\\s+/i, "").trim();
+    if (!jwt) return reply(401, { ok: false, error: "Authentication required" });
+    const admin = getAdminClient();
+    const { data: authData, error: authError } = await admin.auth.getUser(jwt);
+    const email = String(authData?.user?.email || "").trim().toLowerCase();
+    const configuredAdmins = String(Deno.env.get("ADMIN_EMAILS") || "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
+    const allowed = new Set(["devsinghparmar9589@gmail.com", ...configuredAdmins]);
+    if (authError || !authData?.user || !allowed.has(email)) return reply(403, { ok: false, error: "Administrator access required" });
+
+    const plan = payload?.plan || {};
+    const id = String(plan.id || "").trim();
+    if (!id) return reply(400, { ok: false, error: "Plan ID required" });
+    const { data: before } = await admin.from("autoreply_plans").select("*").eq("id", id).maybeSingle();
+    const update = {
+      name: String(plan.name || before?.name || id),
+      price_inr: Math.max(0, Number(plan.price_inr) || 0),
+      total_messages: Math.max(0, Number(plan.total_messages) || 0),
+      ai_replies: Math.max(0, Number(plan.ai_replies) || 0),
+      instagram_accounts: Math.max(0, Number(plan.instagram_accounts) || 0),
+      automations_limit: plan.automations_limit === null || plan.automations_limit === "" ? null : Math.max(0, Number(plan.automations_limit) || 0),
+      billing_days: Math.max(1, Number(plan.billing_days) || 30),
+      is_active: Boolean(plan.is_active),
+      updated_at: new Date().toISOString(),
+    };
+    const { data: saved, error: saveError } = await admin.from("autoreply_plans").update(update).eq("id", id).select().single();
+    if (saveError) throw saveError;
+    await admin.from("autoreply_admin_audit_logs").insert({ admin_user_id: authData.user.id, admin_email: email, action: "update_plan", entity_type: "plan", entity_id: id, before_data: before, after_data: saved });
+    return reply(200, { ok: true, plan: saved });
+  }
+
   if (!isWorkspaceId(workspaceId)) {
     return reply(400, { ok: false, error: "Invalid workspace" });
   }
