@@ -34,7 +34,6 @@ const MainContent: React.FC = () => {
         {activeTab === 'billing' && <BillingUsagePage />}
         {activeTab === 'settings' && <SettingsPage />}
         {activeTab === 'about' && <AboutUsPage />}
-        {activeTab === 'admin' && <AdminPage />}
       </ErrorBoundary>
 
       <ErrorBoundary>
@@ -70,16 +69,6 @@ const AppShell: React.FC = () => {
   }
 
   if (isAdminRoute) {
-    if (!isAdmin) {
-      return (
-        <ErrorBoundary>
-          <div className="min-h-[100dvh] bg-[#F7FAFF]">
-            <AdminPage />
-          </div>
-        </ErrorBoundary>
-      );
-    }
-
     return (
       <ErrorBoundary>
         <div className="min-h-[100dvh] bg-[#F7FAFF]">
