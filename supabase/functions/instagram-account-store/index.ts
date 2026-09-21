@@ -71,6 +71,39 @@ async function readInstagramProfile(accessToken: string) {
   return profile;
 }
 
+async function ensureWebhookSubscription(accessToken: string, igUserId: string) {
+  const fields = "messages,messaging_postbacks,message_deliveries,message_reads,comments,mentions";
+  const targets = [
+    `https://graph.instagram.com/v25.0/${encodeURIComponent(igUserId)}/subscribed_apps`,
+    "https://graph.instagram.com/v25.0/me/subscribed_apps",
+  ];
+
+  let lastError = "";
+  for (const endpoint of targets) {
+    const params = new URLSearchParams({
+      subscribed_fields: fields,
+      access_token: accessToken,
+    });
+    try {
+      const response = await fetch(`${endpoint}?${params.toString()}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const body: any = await response.json().catch(() => null);
+      if (response.ok && (body?.success === true || body?.data)) {
+        console.log("[IG_WEBHOOK_SUBSCRIPTION_OK]", { igUserId });
+        return true;
+      }
+      lastError = String(body?.error?.message || `HTTP ${response.status}`);
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  console.warn("[IG_WEBHOOK_SUBSCRIPTION_WARN]", { igUserId, error: lastError });
+  return false;
+}
+
 function normalizeMediaItem(item: any, forcedKind?: "STORY") {
   const mediaProductType = String(item?.media_product_type || "").toUpperCase();
   const permalink = String(item?.permalink || "");
@@ -594,6 +627,14 @@ Deno.serve(async (req: Request) => {
 
       const requestedKind = String(payload?.kind || "comment");
       const kind: "comment" | "story" = requestedKind === "story" ? "story" : "comment";
+
+      // Self-heal Meta webhook delivery whenever the authenticated dashboard
+      // loads Instagram media. This does not sit in the incoming-DM reply path.
+      const igUserId = String(account?.ig_user_id || "").trim();
+      if (igUserId) {
+        await ensureWebhookSubscription(accessToken, igUserId);
+      }
+
       const items = await fetchInstagramMedia(accessToken, kind);
 
       return reply(200, {
