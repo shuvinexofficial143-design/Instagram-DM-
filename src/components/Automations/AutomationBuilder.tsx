@@ -298,9 +298,9 @@ Answer only about the business.`
 
   if (!isBuilderOpen) return null;
 
-  // Compact responsive typography: readable on mobile without oversized labels/buttons.
+  // Force the builder typography scale so utility classes cannot keep text tiny.
   const builderReadabilityClass =
-    "[&_label]:text-[24px] [&_label]:font-semibold [&_p]:text-[24px] [&_p]:leading-8 [&_button]:text-[24px] [&_input]:text-[24px] [&_textarea]:text-[24px] [&_select]:text-[24px] [&_.text-xs]:text-[24px] [&_.text-sm]:text-[24px] [&_.text-\\[10px\\]]:text-[24px] [&_.text-\\[11px\\]]:text-[24px] [&_.text-\\[12px\\]]:text-[24px] [&_h2]:text-[32px]";
+    "[&_label]:!text-[24px] [&_label]:font-semibold [&_p]:!text-[24px] [&_p]:!leading-8 [&_button]:!text-[24px] [&_input]:!text-[24px] [&_textarea]:!text-[24px] [&_select]:!text-[24px] [&_span]:!text-[24px] [&_div.text-xs]:!text-[24px] [&_div.text-sm]:!text-[24px] [&_.text-xs]:!text-[24px] [&_.text-sm]:!text-[24px] [&_.text-\\[10px\\]]:!text-[24px] [&_.text-\\[11px\\]]:!text-[24px] [&_.text-\\[12px\\]]:!text-[24px] [&_.text-base]:!text-[24px] [&_.text-lg]:!text-[28px] [&_h2]:!text-[32px]";
 
   // Add keyword handler
   const handleAddKeyword = () => {
