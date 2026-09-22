@@ -298,9 +298,9 @@ Answer only about the business.`
 
   if (!isBuilderOpen) return null;
 
-  // Force the builder typography scale so utility classes cannot keep text tiny.
+  // Balanced professional type scale. Keep hierarchy readable without forcing every nested span to 24px.
   const builderReadabilityClass =
-    "[&_label]:!text-[24px] [&_label]:font-semibold [&_p]:!text-[24px] [&_p]:!leading-8 [&_button]:!text-[24px] [&_input]:!text-[24px] [&_textarea]:!text-[24px] [&_select]:!text-[24px] [&_span]:!text-[24px] [&_div.text-xs]:!text-[24px] [&_div.text-sm]:!text-[24px] [&_.text-xs]:!text-[24px] [&_.text-sm]:!text-[24px] [&_.text-\\[10px\\]]:!text-[24px] [&_.text-\\[11px\\]]:!text-[24px] [&_.text-\\[12px\\]]:!text-[24px] [&_.text-base]:!text-[24px] [&_.text-lg]:!text-[28px] [&_h2]:!text-[32px]";
+    "[&_h2]:!text-[28px] [&_h3]:!text-[18px] [&_label]:!text-[15px] [&_label]:font-semibold [&_p]:!text-[14px] [&_p]:!leading-5 [&_button]:!text-[14px] [&_input]:!text-[15px] [&_textarea]:!text-[15px] [&_select]:!text-[15px] [&_.text-xs]:!text-[13px] [&_.text-sm]:!text-[14px] [&_.text-base]:!text-[15px] [&_.text-lg]:!text-[18px] [&_.text-\\[10px\\]]:!text-[12px] [&_.text-\\[11px\\]]:!text-[13px] [&_.text-\\[12px\\]]:!text-[13px]";
 
   // Add keyword handler
   const handleAddKeyword = () => {
@@ -561,7 +561,7 @@ Answer only about the business.`
 
   return (
     <div className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 p-0 sm:p-4 md:p-6 sm:items-center ${builderReadabilityClass}`}>
-      <div className="flex min-h-[100dvh] w-full max-w-6xl flex-col overflow-hidden bg-gradient-to-b from-[#F7FAFF] via-[#FBFCFF] to-[#F8F6FF] shadow-2xl sm:h-[94vh] sm:min-h-0 sm:rounded-[28px] sm:border sm:border-white/90">
+      <div className="flex min-h-[100dvh] w-full max-w-6xl flex-col overflow-hidden bg-gradient-to-b from-[#F7FAFF] via-[#FBFCFF] to-[#F8F6FF] shadow-2xl sm:h-[94vh] sm:min-h-0 sm:rounded-[24px] sm:border sm:border-white/90">
         
         {/* ================= HEADER / STEP 0: AUTOMATION HEADER & TEMPLATES ================= */}
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-indigo-100/80 bg-white/85 px-6 py-4 backdrop-blur-sm">
