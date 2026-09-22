@@ -362,3 +362,9 @@
 .automations-readable .font-bold {
   font-weight: 650 !important;
 }
+
+
+/* Global typography lift — approximately +2px across the product while preserving hierarchy. */
+html {
+  font-size: 18px;
+}
