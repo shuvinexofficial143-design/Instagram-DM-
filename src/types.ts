@@ -23,6 +23,9 @@ export interface InstagramAccount {
   username: string;
   profile_pic_url: string;
   followers_count: number;
+  following_count?: number;
+  media_count?: number;
+  account_type?: string;
   access_token?: string;
   token_expires_at: string;
   connected_at: string;
