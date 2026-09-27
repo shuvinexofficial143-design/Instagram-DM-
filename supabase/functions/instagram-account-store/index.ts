@@ -813,7 +813,36 @@ Deno.serve(async (req: Request) => {
         return reply(500, { ok: false, error: "Instagram account load failed" });
       }
 
-      const account = data?.account || null;
+      let account: any = data?.account || null;
+      const accessToken = String(account?.access_token || "").trim();
+
+      // Refresh public professional-profile metrics on normal account load so
+      // existing connections receive new fields without forcing reconnect.
+      if (account?.username && accessToken) {
+        try {
+          const me = await readInstagramProfile(accessToken);
+          account = {
+            ...account,
+            username: String(me?.username || account.username).trim(),
+            profile_pic_url: String(me?.profile_picture_url || account.profile_pic_url || "").trim(),
+            followers_count: Number(me?.followers_count ?? account.followers_count ?? 0),
+            following_count: Number(me?.follows_count ?? account.following_count ?? 0),
+            media_count: Number(me?.media_count ?? account.media_count ?? 0),
+            account_type: String(me?.account_type || account.account_type || "").trim(),
+          };
+
+          await Promise.all([
+            admin.from("autoreply_instagram_tokens").update({ account }).eq("user_id", workspaceId),
+            admin.from("autoreply_documents").upsert(
+              { user_id: workspaceId, collection: "instagram_account", id: "primary", data: safeAccount(account) },
+              { onConflict: "user_id,collection,id" }
+            ),
+          ]);
+        } catch (refreshError) {
+          console.warn("[IG_STORE_PROFILE_REFRESH_WARN]", refreshError);
+        }
+      }
+
       return reply(200, {
         ok: true,
         account: account?.username ? safeAccount(account) : null,
