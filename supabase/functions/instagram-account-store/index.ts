@@ -47,7 +47,7 @@ function safeAccount(account: any) {
 
 async function readInstagramProfile(accessToken: string) {
   const params = new URLSearchParams({
-    fields: "id,username,name,profile_picture_url,followers_count",
+    fields: "id,username,name,profile_picture_url,followers_count,follows_count,media_count,account_type",
     access_token: accessToken,
   });
 
@@ -753,6 +753,9 @@ Deno.serve(async (req: Request) => {
           String(me?.profile_picture_url || "").trim() ||
           `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(String(me.username))}`,
         followers_count: Number(me?.followers_count || 0),
+        following_count: Number(me?.follows_count || 0),
+        media_count: Number(me?.media_count || 0),
+        account_type: String(me?.account_type || "").trim(),
         access_token: accessToken,
         token_expires_at: new Date(
           now.getTime() + 60 * 24 * 60 * 60 * 1000
