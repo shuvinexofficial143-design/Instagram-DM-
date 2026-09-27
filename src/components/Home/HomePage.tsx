@@ -156,9 +156,10 @@ export const HomePage: React.FC = () => {
           ) : (
             <button
               onClick={() => setIsConnectModalOpen(true)}
-              className="btn-primary-elevated flex cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2.5 text-xs font-black text-white shadow-md shadow-indigo-500/15 transition-transform hover:-translate-y-0.5"
+              className="flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black text-white shadow-md transition duration-200 hover:-translate-y-px hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D62976] focus-visible:ring-offset-2 active:translate-y-0"
+              style={{ backgroundImage: 'linear-gradient(100deg, #FEDA75 0%, #FA7E1E 20%, #D62976 48%, #962FBF 72%, #4F5BD5 100%)' }}
             >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <Instagram className="w-4 h-4 stroke-[2.3]" />
               <span>Connect Instagram</span>
             </button>
           )}
