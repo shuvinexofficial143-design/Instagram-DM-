@@ -190,7 +190,8 @@ export const SettingsPage: React.FC = () => {
             </div>
             <button
               onClick={() => setIsConnectModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 px-5 py-2.5 text-xs font-black text-white shadow-md"
+              className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black text-white shadow-md transition duration-200 hover:-translate-y-px hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D62976] focus-visible:ring-offset-2"
+              style={{ backgroundImage: 'linear-gradient(100deg, #FEDA75 0%, #FA7E1E 20%, #D62976 48%, #962FBF 72%, #4F5BD5 100%)' }}
             >
               <Instagram className="h-4 w-4" />
               Connect Instagram
