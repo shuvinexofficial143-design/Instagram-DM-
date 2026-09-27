@@ -55,9 +55,12 @@ export const HomePage: React.FC = () => {
   const connectedCount = isConnected ? 1 : 0;
 
   return (
-    <div className="min-h-screen space-y-6 bg-[#F7FAFF] px-4 py-6 md:px-6">
+    <div className="relative min-h-screen space-y-6 overflow-x-clip bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 px-4 py-6 md:px-6">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(129,140,248,0.16),transparent_30%),radial-gradient(circle_at_10%_85%,rgba(56,189,248,0.12),transparent_34%)]" aria-hidden="true" />
+      <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-violet-300/20 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none absolute -left-16 bottom-24 h-72 w-72 rounded-full bg-cyan-200/20 blur-3xl" aria-hidden="true" />
       {/* Compact dashboard greeting — real profile + connection state only */}
-      <section className="flex w-full items-start justify-between gap-4 px-0.5 py-1 md:items-center md:px-1 md:py-2">
+      <section className="relative z-10 flex w-full items-start justify-between gap-4 px-0.5 py-1 md:items-center md:px-1 md:py-2">
         <div className="min-w-0">
           <h2 className="truncate text-[20px] font-bold leading-tight tracking-tight text-slate-950 md:text-[24px]">
             Good evening, {user.name || 'Creator'} 👋
@@ -74,147 +77,8 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* 2. "LIVE - MAGIC IN PROGRESS" Main Banner Card */}
-      <div className="group relative flex min-h-[250px] flex-col justify-between gap-4 overflow-hidden rounded-3xl border border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 p-7 shadow-[0_18px_55px_rgba(78,93,169,0.10)] transition-all duration-300 hover:shadow-[0_22px_65px_rgba(78,93,169,0.13)] md:min-h-[285px] md:p-8">
-        {/* Soft Background Pattern Image Layer with Opacity */}
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(129,140,248,0.16),transparent_30%),radial-gradient(circle_at_10%_85%,rgba(56,189,248,0.12),transparent_34%)]"></div>
-
-        {/* Ambient Pastel Glow Orbs */}
-        <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-violet-300/20 blur-3xl"></div>
-        <div className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-cyan-200/20 blur-3xl"></div>
-
-        {/* Top Live Status Badge */}
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="inline-flex items-center gap-2.5 rounded-full border border-emerald-200/80 bg-white/85 px-4 py-1.5 text-xs font-black text-emerald-700 shadow-sm backdrop-blur-md">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-            <span className="tracking-wider uppercase">LIVE — MAGIC IN PROGRESS</span>
-          </div>
-        </div>
-
-        {/* Center Main Headline & Details */}
-        <div className="relative z-10 space-y-3 max-w-3xl">
-          <h1 className="text-3xl sm:text-4xl md:text-[42px] lg:text-[46px] font-black text-slate-900 tracking-tight leading-[1.15]">
-            You're chilling.<br />
-            <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent">
-              AutoReply is working the magic.
-            </span>
-          </h1>
-          <p className="text-sm sm:text-base md:text-[17px] font-semibold text-slate-700 max-w-2xl leading-relaxed">
-            Sit back while our AI automation engine handles your Instagram DMs, replies to post comments, and converts followers into customers 24/7 in real-time.
-          </p>
-          {/* Automation setup guidance */}
-          <div className="pt-1 max-w-2xl">
-            <div className="rounded-2xl border border-indigo-200/70 bg-indigo-50/55 p-3.5 sm:p-4">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-500">Simple Setup</p>
-              <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xl font-black text-transparent sm:text-2xl">
-                How to set up automation
-              </h2>
-              <p className="mt-1.5 text-sm font-semibold leading-5 text-slate-600 sm:text-[15px]">
-                Review your Instagram connection and automation settings, then create your workflow in a few simple steps.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Setup CTA */}
-        <div className="relative z-10">
-          <button
-            onClick={() => setActiveTab('settings')}
-            className="inline-flex cursor-pointer items-center gap-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.98] md:text-sm"
-          >
-            <Settings className="h-4 w-4" />
-            <span>How to set up automation</span>
-            <ArrowRight className="h-4 w-4 stroke-[2.5]" />
-          </button>
-        </div>
-      </div>
-
-      {/* 3. Stats Row (People touched / DM open rate / Comment replies / DMs sent) */}
-      <div className="space-y-5">
-        <div className="flex flex-col justify-between gap-4 rounded-2xl border border-white/90 bg-white/85 p-6 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm sm:flex-row sm:items-center">
-          <div className="space-y-1">
-            <div className="text-xs font-black text-slate-600 uppercase tracking-wider">
-              PEOPLE YOU'VE TOUCHED
-            </div>
-            <div className="text-4xl md:text-5xl font-black text-slate-950 tracking-tight">
-              {totalUniqueUsers}
-            </div>
-            <div className="text-xs md:text-sm font-semibold text-slate-600">
-              Across DMs, comments and stories
-            </div>
-          </div>
-
-          <div className="self-start sm:self-center shrink-0">
-            <div className="flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50/80 px-4 py-1.5 text-xs font-black text-indigo-700 shadow-sm">
-              <span className="h-2.5 w-2.5 rounded-full bg-indigo-500"></span>
-              <span>{activeCount} / {totalCount} automations live</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 3 Metrics Grid Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Metric 1: DM OPEN RATE */}
-          <div className="flex items-start gap-4 rounded-2xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_34px_rgba(72,95,145,0.07)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_42px_rgba(72,95,145,0.10)]">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-100 via-indigo-100 to-violet-100 text-indigo-600 shadow-sm ring-1 ring-white">
-              <LinkIcon className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div className="space-y-1 min-w-0 flex-1">
-              <div className="text-[11px] font-black text-slate-600 uppercase tracking-wider leading-none">
-                DM OPEN RATE
-              </div>
-              <div className="text-2xl md:text-3xl font-black text-slate-950 tracking-tight leading-tight">
-                {openRatePct}%
-              </div>
-              <p className="text-xs font-semibold text-slate-600 truncate">
-                {openedDmsCount} of {totalDms} DMs
-              </p>
-            </div>
-          </div>
-
-          {/* Metric 2: COMMENT REPLIES */}
-          <div className="flex items-start gap-4 rounded-2xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_34px_rgba(72,95,145,0.07)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-[0_16px_42px_rgba(72,95,145,0.10)]">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-100 via-blue-100 to-indigo-100 text-blue-600 shadow-sm ring-1 ring-white">
-              <MessageCircle className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div className="space-y-1 min-w-0 flex-1">
-              <div className="text-[11px] font-black text-slate-600 uppercase tracking-wider leading-none">
-                COMMENT REPLIES
-              </div>
-              <div className="text-2xl md:text-3xl font-black text-slate-950 tracking-tight leading-tight">
-                {commentReplies}
-              </div>
-              <p className="text-xs font-semibold text-slate-600 truncate">
-                sent automatically
-              </p>
-            </div>
-          </div>
-
-          {/* Metric 3: DMS SENT */}
-          <div className="flex items-start gap-4 rounded-2xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_34px_rgba(72,95,145,0.07)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_16px_42px_rgba(72,95,145,0.10)]">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-100 via-indigo-100 to-blue-100 text-violet-600 shadow-sm ring-1 ring-white">
-              <Send className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div className="space-y-1 min-w-0 flex-1">
-              <div className="text-[11px] font-black text-slate-600 uppercase tracking-wider leading-none">
-                DMS SENT
-              </div>
-              <div className="text-2xl md:text-3xl font-black text-slate-950 tracking-tight leading-tight">
-                {totalDmsSent}
-              </div>
-              <p className="text-xs font-semibold text-slate-600 truncate">
-                total to date
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* 4. CONNECTED ACCOUNTS BANNER (~8:1 Ratio Horizontal Strip) */}
-      <div className="flex min-h-[76px] w-full flex-col justify-between gap-4 rounded-2xl border border-white/90 bg-white/85 px-5 py-4 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm transition-all hover:border-indigo-200 hover:shadow-[0_16px_42px_rgba(72,95,145,0.10)] md:flex-row md:items-center">
+      <div className="relative z-10 flex min-h-[76px] w-full flex-col justify-between gap-4 rounded-2xl border border-white/90 bg-white/85 px-5 py-4 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm transition-all hover:border-indigo-200 hover:shadow-[0_16px_42px_rgba(72,95,145,0.10)] md:flex-row md:items-center">
         {/* Left Section */}
         <div className="space-y-1 min-w-0">
           <div className="text-[11px] font-black text-slate-600 tracking-tight">
@@ -301,7 +165,7 @@ export const HomePage: React.FC = () => {
       </div>
 
       {/* 5. Top Performing Automations */}
-      <div id="top-performers-section" className="space-y-5 rounded-2xl border border-white/90 bg-white/85 p-6 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm">
+      <div id="top-performers-section" className="relative z-10 space-y-5 rounded-2xl border border-white/90 bg-white/85 p-6 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
             <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
