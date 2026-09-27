@@ -17,6 +17,10 @@ export const HomePage: React.FC = () => {
 
   const isConnected = Boolean(instagramAccount?.username);
   const accountExpired = instagramAccount?.status === 'expired' || instagramAccount?.status === 'action_required';
+  const accountMeta = instagramAccount as (typeof instagramAccount & { following_count?: number; media_count?: number; account_type?: string }) | null;
+  const accountType = accountMeta?.account_type;
+  const followingCount = accountMeta?.following_count;
+  const postsCount = accountMeta?.media_count;
   const activeAutomations = (automations || []).filter(a => a?.status === 'active');
   const totalDmsSent = (automations || []).reduce((n, a) => n + (a?.stats?.dms_sent || 0), 0);
   const commentsReplied = (automations || []).filter(a => a?.trigger_type === 'comment').reduce((n, a) => n + (a?.stats?.runs || 0), 0);
@@ -65,9 +69,9 @@ export const HomePage: React.FC = () => {
           </div>
         </header>
 
-        <section className="rounded-[20px] border border-slate-200/80 bg-white p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">
+        <section className="rounded-[18px] border border-slate-200/80 bg-white p-4 shadow-[0_6px_22px_rgba(30,41,59,.045)] sm:p-5">
           {isConnected ? (
-            <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1.35fr)_auto] lg:grid-cols-[minmax(0,1.3fr)_auto_auto]">
+            <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1.45fr)_auto] lg:grid-cols-[minmax(260px,1.45fr)_minmax(220px,.9fr)_auto]">
               <div className="min-w-0">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-[#FA7E1E] via-[#D62976] to-[#962FBF] text-white"><Instagram className="h-4 w-4" /></div>
@@ -76,23 +80,35 @@ export const HomePage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-3">
                   <UserAvatar src={instagramAccount?.profile_pic_url} username={instagramAccount?.username} showInstagramBadge size="lg" />
-                  <div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">@{instagramAccount?.username}</p><p className="mt-0.5 text-[11px] font-medium text-slate-500">{accountExpired?'Instagram connection needs attention':'Instagram profile connected'}</p></div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-900">@{instagramAccount?.username}</p>
+                    <p className="mt-0.5 text-[11px] font-medium text-slate-500">{accountType ? `${accountType.charAt(0).toUpperCase() + accountType.slice(1).toLowerCase()} Account` : 'Instagram account'}</p>
+                    <p className="mt-0.5 text-[10px] font-medium text-slate-400">{accountExpired ? 'Connection needs attention' : instagramAccount?.connected_at ? `Connected ${relativeTime(instagramAccount.connected_at)}` : 'Connected'}</p>
+                  </div>
                 </div>
               </div>
-              <div className="border-slate-100 sm:border-l sm:pl-5">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Followers</p>
-                <p className="mt-1 text-lg font-bold text-slate-900">{instagramAccount?.followers_count?.toLocaleString() ?? '—'}</p>
+
+              <div className="grid grid-cols-3 gap-4 border-slate-100 sm:col-span-2 sm:border-t sm:pt-3 lg:col-span-1 lg:border-l lg:border-t-0 lg:px-5 lg:pt-0">
+                <Metric label="Followers" value={instagramAccount?.followers_count} />
+                <Metric label="Following" value={followingCount} />
+                <Metric label="Posts" value={postsCount} />
               </div>
-              <div className="col-span-full flex flex-nowrap gap-2 sm:col-span-1 sm:justify-end lg:col-span-1">
+
+              <div className="flex flex-nowrap gap-2 sm:col-span-2 sm:justify-end lg:col-span-1">
                 <button onClick={() => setActiveTab('settings')} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50"><Settings className="h-3.5 w-3.5" />Manage Account</button>
-                <button onClick={() => { if (window.confirm('Disconnect this Instagram account?')) disconnectChannel(); }} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50/70 px-3 text-[11px] font-bold text-rose-700 transition hover:bg-rose-100"><Trash2 className="h-3.5 w-3.5" />Disconnect</button>
+                <button onClick={() => { if (window.confirm('Disconnect this Instagram account?')) disconnectChannel(); }} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50/60 px-3 text-[11px] font-bold text-rose-700 transition hover:bg-rose-100"><Trash2 className="h-3.5 w-3.5" />Disconnect</button>
               </div>
             </div>
           ) : (
-            <div className="flex min-h-[92px] flex-col justify-center gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-h-[96px] flex-col justify-center gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-[#FA7E1E] via-[#D62976] to-[#962FBF] text-white"><Instagram className="h-5 w-5" /></div>
-                <div><div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-bold text-slate-950">Instagram Account</h2><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">Not Connected</span></div><p className="mt-1 text-xs font-semibold text-slate-700">No Instagram account connected</p><p className="mt-1 max-w-xl text-[11px] leading-4 text-slate-500">Connect Instagram to enable automatic DM and comment replies.</p><div className="mt-2 hidden flex-wrap gap-x-3 gap-y-1 text-[10px] font-medium text-slate-500 sm:flex"><span>✓ Auto reply to DMs</span><span>✓ Reply to comments</span><span>✓ Capture leads</span><span>✓ 24/7 automation</span></div></div>
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-[#FA7E1E] via-[#D62976] to-[#962FBF] text-white shadow-sm"><Instagram className="h-5 w-5" /></div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-bold text-slate-950">Instagram Account</h2><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">Not Connected</span></div>
+                  <p className="mt-1 text-xs font-semibold text-slate-700">No Instagram account connected</p>
+                  <p className="mt-1 max-w-xl text-[11px] leading-4 text-slate-500 sm:text-xs">Connect your Instagram account to enable automatic DM & comment replies and start growing your audience.</p>
+                  <div className="mt-2 hidden flex-wrap gap-x-3 gap-y-1 text-[10px] font-medium text-slate-500 sm:flex"><span>✓ Auto reply to DMs</span><span>✓ Reply to comments</span><span>✓ Capture leads</span><span>✓ 24/7 automation</span></div>
+                </div>
               </div>
               <button onClick={() => setIsConnectModalOpen(true)} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 self-start rounded-xl px-4 text-xs font-bold text-white shadow-md transition hover:-translate-y-px hover:brightness-105 sm:self-auto" style={{backgroundImage:'linear-gradient(100deg,#FA7E1E 0%,#D62976 48%,#962FBF 100%)'}}><Instagram className="h-4 w-4" />Connect Instagram <ArrowRight className="h-3.5 w-3.5" /></button>
             </div>
@@ -110,7 +126,7 @@ export const HomePage: React.FC = () => {
           ))}
         </section>
 
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(240px,.75fr)]">
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(230px,.75fr)]">
           <section className="rounded-[20px] border border-slate-200/80 bg-white p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">
           <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div><h2 className="flex items-center gap-2 text-base font-bold text-slate-950"><Zap className="h-4.5 w-4.5 text-violet-600" />Top Performing Automations</h2><p className="mt-1 text-xs font-medium text-slate-500">Performance from your existing automation data.</p></div>
@@ -167,4 +183,8 @@ const StatusRow: React.FC<{icon:React.ComponentType<{className?:string}>;ok:bool
     <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${ok===true?'bg-emerald-50 text-emerald-600':ok===false?'bg-amber-50 text-amber-600':'bg-slate-100 text-slate-500'}`}>{ok===false?<AlertTriangle className="h-4 w-4" />:ok===true?<CheckCircle2 className="h-4 w-4" />:<Icon className="h-4 w-4" />}</div>
     <div><p className="text-xs font-bold text-slate-800">{label}</p><p className="mt-0.5 text-[11px] leading-4 text-slate-500">{detail}</p></div>
   </div>
+);
+
+const Metric: React.FC<{label:string;value:number|undefined}> = ({label,value}) => (
+  <div className="min-w-0 text-center lg:text-left"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-base font-bold text-slate-900">{typeof value === 'number' ? value.toLocaleString() : '—'}</p></div>
 );
