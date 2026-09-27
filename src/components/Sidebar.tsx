@@ -11,7 +11,6 @@ import {
   ChevronLeft,
   ShieldCheck,
   Plus,
-  Info,
   CreditCard,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -66,7 +65,6 @@ export const Sidebar: React.FC = () => {
     },
     { id: 'billing', label: 'Billing & Usage', icon: CreditCard, tag: String(user?.plan || 'free') },
     { id: 'settings', label: 'Settings', icon: Settings },
-    { id: 'about', label: 'About Us', icon: Info },
   ];
 
   const navItems: NavItem[] = isAdmin
