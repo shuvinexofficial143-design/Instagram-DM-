@@ -1,366 +1,177 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Zap,
-  ToggleLeft,
-  ToggleRight,
-  ChevronRight,
-  ArrowRight,
-  MessageCircle,
-  Send,
-  Link as LinkIcon,
-  Plus,
-  Instagram,
-  Settings,
-  Sparkles,
-  Inbox,
-  UserCheck,
+  Zap, ChevronRight, ArrowRight, MessageCircle, Send, Plus, Instagram,
+  Users, Activity, CheckCircle2, AlertTriangle, Bot, Webhook, Trash2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
 
+type Period = 'today' | '7d' | '30d';
+
 export const HomePage: React.FC = () => {
   const {
-    user,
-    instagramAccount,
-    automations,
-    inboxMessages,
-    toggleAutomationStatus,
-    setActiveTab,
-    setIsConnectModalOpen,
-    setIsBuilderOpen,
+    user, instagramAccount, automations, inboxMessages, contacts,
+    setActiveTab, setIsConnectModalOpen, setIsBuilderOpen, disconnectChannel,
   } = useApp();
+  const [period, setPeriod] = useState<Period>('today');
 
-  const totalDmsSent = (automations || []).reduce((acc, a) => acc + (a?.stats?.dms_sent || 0), 0);
-  const realOutMsgs = (inboxMessages || []).filter((m) => m && m.direction === 'out').length;
-  const totalDms = Math.max(totalDmsSent, realOutMsgs);
+  const isConnected = Boolean(instagramAccount?.username);
+  const accountExpired = instagramAccount?.status === 'expired' || instagramAccount?.status === 'action_required';
+  const activeAutomations = (automations || []).filter(a => a?.status === 'active');
+  const totalDmsSent = (automations || []).reduce((n, a) => n + (a?.stats?.dms_sent || 0), 0);
+  const commentsReplied = (automations || []).filter(a => a?.trigger_type === 'comment').reduce((n, a) => n + (a?.stats?.runs || 0), 0);
+  const newLeads = (contacts || []).length;
 
-  const totalUniqueUsers = (automations || []).reduce((acc, a) => acc + (a?.stats?.unique_users || 0), 0);
-  const commentReplies = (automations || [])
-    .filter((a) => a && a.trigger_type === 'comment')
-    .reduce((acc, a) => acc + (a?.stats?.runs || 0), 0);
-  const activeCount = (automations || []).filter((a) => a && a.status === 'active').length;
-  const totalCount = (automations || []).length;
+  const topAutomations = useMemo(
+    () => [...(automations || [])].sort((a,b) => (b?.stats?.runs || 0) - (a?.stats?.runs || 0)).slice(0,3),
+    [automations]
+  );
 
-  // Real Dynamic DM Open Rate Calculation
-  const openRatePct = totalDms > 0
-    ? ((automations || []).length > 0
-        ? Math.round((automations || []).reduce((acc, a) => acc + (a?.stats?.open_rate || 96), 0) / automations.length)
-        : 98)
-    : 0;
-  const openedDmsCount = totalDms > 0 ? Math.round((totalDms * openRatePct) / 100) : 0;
+  const recentActivity = useMemo(
+    () => [...(inboxMessages || [])].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0,5),
+    [inboxMessages]
+  );
 
-  const topAutomations = [...(automations || [])].sort((a, b) => (b?.stats?.runs || 0) - (a?.stats?.runs || 0)).slice(0, 4);
+  const relativeTime = (iso?: string) => {
+    if (!iso) return '';
+    const ms = Date.now() - new Date(iso).getTime();
+    const min = Math.max(0, Math.floor(ms / 60000));
+    if (min < 1) return 'Just now';
+    if (min < 60) return `${min} min ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    return `${Math.floor(hr / 24)}d ago`;
+  };
 
-  const isConnected = Boolean(instagramAccount && instagramAccount.username);
-  const connectedCount = isConnected ? 1 : 0;
+  const kpis = [
+    { label:'Active Automations', value:activeAutomations.length, icon:Zap, tone:'text-violet-600 bg-violet-50' },
+    { label:'DMs Sent', value:totalDmsSent, icon:Send, tone:'text-blue-600 bg-blue-50' },
+    { label:'Comments Replied', value:commentsReplied, icon:MessageCircle, tone:'text-pink-600 bg-pink-50' },
+    { label:'New Leads', value:newLeads, icon:Users, tone:'text-orange-600 bg-orange-50' },
+  ];
 
   return (
-    <div className="relative min-h-screen space-y-6 overflow-x-clip bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 px-4 py-6 md:px-6">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(129,140,248,0.16),transparent_30%),radial-gradient(circle_at_10%_85%,rgba(56,189,248,0.12),transparent_34%)]" aria-hidden="true" />
-      <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-violet-300/20 blur-3xl" aria-hidden="true" />
-      <div className="pointer-events-none absolute -left-16 bottom-24 h-72 w-72 rounded-full bg-cyan-200/20 blur-3xl" aria-hidden="true" />
-      {/* Compact dashboard greeting — real profile + connection state only */}
-      <section className="relative z-10 flex w-full items-start justify-between gap-4 px-0.5 py-1 md:items-center md:px-1 md:py-2">
-        <div className="min-w-0">
-          <h2 className="truncate text-[20px] font-bold leading-tight tracking-tight text-slate-950 md:text-[24px]">
-            Good evening, {user.name || 'Creator'} 👋
-          </h2>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] font-medium text-slate-500 md:text-[14px]">
-            <span className="md:hidden">{connectedCount} {connectedCount === 1 ? 'account' : 'accounts'} connected</span>
-            <span className="hidden md:inline">{connectedCount} Instagram {connectedCount === 1 ? 'account' : 'accounts'} connected</span>
-            <span aria-hidden="true">•</span>
-            <span className={`inline-flex items-center gap-1.5 ${isConnected ? 'text-slate-500' : 'text-slate-500'}`}>
-              <span className={`h-2 w-2 shrink-0 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-slate-400'}`} aria-hidden="true" />
-              {isConnected ? 'Everything running normally' : 'Connect Instagram to get started'}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. CONNECTED ACCOUNTS BANNER (~8:1 Ratio Horizontal Strip) */}
-      <div className="relative z-10 flex min-h-[76px] w-full flex-col justify-between gap-4 rounded-2xl border border-white/90 bg-white/85 px-5 py-4 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm transition-all hover:border-indigo-200 hover:shadow-[0_16px_42px_rgba(72,95,145,0.10)] md:flex-row md:items-center">
-        {/* Left Section */}
-        <div className="space-y-1 min-w-0">
-          <div className="text-[11px] font-black text-slate-600 tracking-tight">
-            Connected accounts ({connectedCount} connected)
-          </div>
-
-          {isConnected && instagramAccount?.username ? (
-            <div className="flex items-center gap-3 flex-wrap">
-              {/* Profile Pic with Instagram Badge */}
-              <UserAvatar
-                src={instagramAccount.profile_pic_url}
-                username={instagramAccount.username}
-                showInstagramBadge={true}
-                size="sm"
-              />
-
-              {/* Handle Name */}
-              <span className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-1.5">
-                @{instagramAccount.username}
-              </span>
-
-              {/* Green Syncing/Active Status Dot */}
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-[11px] font-black text-emerald-800 border border-emerald-300/80">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span>Active</span>
-              </span>
-
-              {/* Follower Count */}
-              {instagramAccount.followers_count > 0 && (
-                <span className="text-xs font-bold text-slate-600 hidden sm:inline">
-                  • {instagramAccount.followers_count.toLocaleString()} followers
-                </span>
-              )}
-
-              {/* Divider & "+ Connect New Channel" Text Link */}
-              <div className="hidden sm:block h-3.5 w-px bg-slate-300 mx-0.5"></div>
-              <button
-                onClick={() => setIsConnectModalOpen(true)}
-                className="inline-flex items-center gap-1 text-xs font-black text-[#3B5BFF] hover:text-indigo-800 hover:underline transition-colors py-0.5 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Connect New Channel</span>
-              </button>
-            </div>
-          ) : (
-            /* Clean Empty State when 0 accounts connected */
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center border border-slate-300 shrink-0">
-                <Instagram className="w-4 h-4 text-slate-700" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-slate-800">No Instagram account linked</span>
-                <p className="text-[11px] text-slate-600 font-semibold hidden sm:block">
-                  Connect your Instagram account to enable automatic DM & comment replies.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Section: View All Profiles / Connect Button */}
-        <div className="shrink-0 self-start md:self-center">
-          {isConnected && instagramAccount?.username ? (
-            <button
-              onClick={() => setActiveTab('settings')}
-              className="flex cursor-pointer items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-black text-white shadow-md transition duration-200 hover:-translate-y-px hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D62976] focus-visible:ring-offset-2 active:translate-y-0"
-              style={{ backgroundImage: 'linear-gradient(100deg, #FEDA75 0%, #FA7E1E 20%, #D62976 48%, #962FBF 72%, #4F5BD5 100%)' }}
-            >
-              <span>View all profiles</span>
-              <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
-            </button>
-          ) : (
-            <button
-              onClick={() => setIsConnectModalOpen(true)}
-              className="flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black text-white shadow-md transition duration-200 hover:-translate-y-px hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D62976] focus-visible:ring-offset-2 active:translate-y-0"
-              style={{ backgroundImage: 'linear-gradient(100deg, #FEDA75 0%, #FA7E1E 20%, #D62976 48%, #962FBF 72%, #4F5BD5 100%)' }}
-            >
-              <Instagram className="w-4 h-4 stroke-[2.3]" />
-              <span>Connect Instagram</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* 5. Top Performing Automations */}
-      <div id="top-performers-section" className="relative z-10 space-y-5 rounded-2xl border border-white/90 bg-white/85 p-6 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_85%_5%,rgba(221,214,254,.45),transparent_28%),linear-gradient(180deg,#fbfdff_0%,#f7f8ff_100%)] px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1400px] space-y-5">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
-              <Zap className="w-4 h-4 text-[#3B5BFF] fill-[#3B5BFF]/20 stroke-[2.2]" />
-              <span>Top Performing Automations</span>
-            </h3>
-            <p className="text-xs font-semibold text-slate-600 mt-0.5">
-              Workflows driving the highest lead conversions and responses
-            </p>
+            <h1 className="text-[22px] font-bold tracking-tight text-slate-950 sm:text-[26px]">Good evening, {user.name || 'Creator'} 👋</h1>
+            <p className="mt-1 text-sm font-medium text-slate-500">Here’s what’s happening with your Instagram automation today.</p>
           </div>
-          <button
-            onClick={() => setActiveTab('automations')}
-            className="text-xs font-black text-[#3B5BFF] hover:text-indigo-800 hover:underline flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <span>View All ({automations.length})</span>
-            <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-          </button>
-        </div>
+          <div className="inline-flex self-start rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+            {([['today','Today'],['7d','7 Days'],['30d','30 Days']] as const).map(([id,label]) => (
+              <button key={id} onClick={() => setPeriod(id)} className={`min-h-10 rounded-lg px-3 text-xs font-semibold transition ${period === id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>{label}</button>
+            ))}
+          </div>
+        </header>
 
-        <div className="space-y-3">
-          {topAutomations.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/35 p-8 text-center">
-              <Zap className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-              <p className="text-sm font-black text-slate-800">No Automations Created Yet</p>
-              <p className="text-xs font-semibold text-slate-600 mb-4 max-w-sm mx-auto">
-                Create your first Instagram DM or Comment automation workflow to start auto-converting leads.
-              </p>
-              <button
-                onClick={() => setIsBuilderOpen(true)}
-                className="btn-primary-elevated cursor-pointer rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-2.5 text-xs font-black text-white shadow-md shadow-indigo-500/15"
-              >
-                + Create Automation
-              </button>
-            </div>
-          ) : (
-            topAutomations.map((auto) => {
-              const isActive = auto.status === 'active';
-              return (
-                <div
-                  key={auto.id}
-                  className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/70 bg-white/75 p-4 shadow-sm transition-all hover:border-indigo-200 hover:bg-indigo-50/30 hover:shadow-md sm:flex-row sm:items-center"
-                >
-                  <div className="min-w-0 space-y-1 flex-1">
-                    <div className="flex items-center gap-2.5">
-                      <h4 className="text-sm font-black text-slate-950 truncate">{auto.name}</h4>
-                      <span
-                        className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                          auto.trigger_type === 'comment'
-                            ? 'bg-purple-100/80 text-purple-900 border-purple-300'
-                            : auto.trigger_type === 'dm'
-                            ? 'bg-blue-100/80 text-blue-900 border-blue-300'
-                            : 'bg-amber-100/80 text-amber-900 border-amber-300'
-                        }`}
-                      >
-                        {auto.trigger_type}
-                      </span>
-                    </div>
+        <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_10px_35px_rgba(30,41,59,.06)] sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-[#FA7E1E] via-[#D62976] to-[#962FBF] text-white"><Instagram className="h-5 w-5" /></div>
+                <h2 className="text-base font-bold text-slate-950">Instagram Account</h2>
+                {isConnected && <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${accountExpired ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}><span className={`h-2 w-2 rounded-full ${accountExpired ? 'bg-amber-500' : 'bg-emerald-500'}`} />{accountExpired ? 'Action required' : 'Connected'}</span>}
+              </div>
 
-                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                      <span>Keywords: {Array.isArray(auto.trigger_config?.keywords) ? auto.trigger_config.keywords.join(', ') : 'None'}</span>
-                      <span>•</span>
-                      <span>Last updated: {new Date(auto.updated_at || Date.now()).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-200">
-                    <div className="text-left sm:text-right">
-                      <div className="text-xs font-black text-slate-950">
-                        {(auto.stats?.runs ?? 0).toLocaleString()} interactions
-                      </div>
-                      <div className="text-[11px] text-emerald-700 font-black">
-                        {auto.stats?.open_rate ?? 98}% open rate
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => toggleAutomationStatus(auto.id)}
-                      className="text-[#3B5BFF] hover:opacity-80 transition-opacity p-1 cursor-pointer"
-                      title={isActive ? 'Deactivate' : 'Activate'}
-                    >
-                      {isActive ? (
-                        <ToggleRight className="w-8 h-8 text-emerald-600" />
-                      ) : (
-                        <ToggleLeft className="w-8 h-8 text-slate-400" />
-                      )}
-                    </button>
+              {isConnected ? (
+                <div className="mt-4 flex items-center gap-3">
+                  <UserAvatar src={instagramAccount?.profile_pic_url} username={instagramAccount?.username} showInstagramBadge size="lg" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-bold text-slate-950">@{instagramAccount?.username}</p>
+                    <p className="mt-0.5 text-xs font-medium text-slate-500">{instagramAccount?.followers_count != null ? `${instagramAccount.followers_count.toLocaleString()} followers` : 'Instagram profile connected'}</p>
+                    {instagramAccount?.connected_at && <p className="mt-0.5 text-[11px] font-medium text-slate-400">Connected {relativeTime(instagramAccount.connected_at)}</p>}
                   </div>
                 </div>
-              );
-            })
+              ) : (
+                <div className="mt-4">
+                  <p className="text-sm font-semibold text-slate-700">No Instagram account connected</p>
+                  <p className="mt-1 text-xs text-slate-500">Connect an Instagram Business or Creator account to start automating.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              {isConnected ? (
+                <>
+                  <button onClick={() => setActiveTab('settings')} className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 transition hover:bg-slate-50">Manage Account</button>
+                  <button onClick={() => { if (window.confirm('Disconnect this Instagram account?')) disconnectChannel(); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-bold text-rose-700 transition hover:bg-rose-100"><Trash2 className="h-4 w-4" />Disconnect</button>
+                </>
+              ) : (
+                <button onClick={() => setIsConnectModalOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-5 text-sm font-bold text-white shadow-md transition hover:-translate-y-px hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2" style={{backgroundImage:'linear-gradient(100deg,#FA7E1E 0%,#D62976 48%,#962FBF 100%)'}}><Instagram className="h-5 w-5" />Connect Instagram</button>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {kpis.map(({label,value,icon:Icon,tone}) => (
+            <div key={label} className="rounded-[18px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_8px_26px_rgba(30,41,59,.05)] transition hover:-translate-y-0.5 hover:shadow-md sm:p-5">
+              <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4.5 w-4.5" /></div>
+              <p className="mt-3 text-xs font-semibold text-slate-500">{label}</p>
+              <p className="mt-0.5 text-2xl font-bold tracking-tight text-slate-950">{value.toLocaleString()}</p>
+              <p className="mt-1 text-[11px] font-medium text-slate-400">All available data</p>
+            </div>
+          ))}
+        </section>
+
+        <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_10px_35px_rgba(30,41,59,.06)] sm:p-6">
+          <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div><h2 className="flex items-center gap-2 text-base font-bold text-slate-950"><Zap className="h-4.5 w-4.5 text-violet-600" />Top Performing Automations</h2><p className="mt-1 text-xs font-medium text-slate-500">Performance from your existing automation data.</p></div>
+            <button onClick={() => setActiveTab('automations')} className="inline-flex min-h-10 items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800">View All <ArrowRight className="h-3.5 w-3.5" /></button>
+          </div>
+          {topAutomations.length === 0 ? (
+            <div className="py-8 text-center">
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Zap className="h-5 w-5" /></div>
+              <p className="mt-3 text-sm font-bold text-slate-800">No automations yet</p>
+              <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">Create your first Instagram automation to start seeing performance here.</p>
+              <button onClick={() => setIsBuilderOpen(true)} className="mt-4 min-h-11 rounded-xl bg-indigo-600 px-4 text-xs font-bold text-white transition hover:bg-indigo-700"><Plus className="mr-1 inline h-4 w-4" />Create Automation</button>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {topAutomations.map(auto => {
+                const runs=auto.stats?.runs || 0, sent=auto.stats?.dms_sent || 0;
+                const pct=runs > 0 ? Math.min(100,Math.round((sent/runs)*100)) : 0;
+                return <div key={auto.id} className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2"><p className="truncate text-sm font-bold text-slate-900">{auto.name}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${auto.status==='active'?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-500'}`}>{auto.status==='active'?'Active':'Paused'}</span></div>
+                    <p className="mt-1 text-xs capitalize text-slate-500">{auto.trigger_type.replaceAll('_',' ')} automation</p>
+                    <div className="mt-2 h-1.5 max-w-md overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-500" style={{width:`${pct}%`}} /></div>
+                  </div>
+                  <div className="flex gap-5 text-xs sm:text-right"><div><p className="font-bold text-slate-900">{runs.toLocaleString()}</p><p className="text-slate-400">Triggered</p></div><div><p className="font-bold text-slate-900">{sent.toLocaleString()}</p><p className="text-slate-400">DMs sent</p></div><div><p className="font-bold text-slate-900">{pct}%</p><p className="text-slate-400">Delivery</p></div></div>
+                </div>;
+              })}
+            </div>
           )}
+        </section>
+
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,.85fr)]">
+          <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_10px_35px_rgba(30,41,59,.06)] sm:p-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4"><h2 className="text-base font-bold text-slate-950">Recent Activity</h2><button onClick={() => setActiveTab('inbox')} className="inline-flex min-h-10 items-center gap-1 text-xs font-bold text-indigo-600">View All <ChevronRight className="h-4 w-4" /></button></div>
+            {recentActivity.length === 0 ? <div className="py-8 text-center"><Activity className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-700">No recent activity yet</p><p className="mt-1 text-xs text-slate-500">New Instagram conversations will appear here.</p></div> :
+              <div className="divide-y divide-slate-100">{recentActivity.map(msg => <div key={msg.id} className="flex items-center gap-3 py-3.5"><UserAvatar src={msg.from_avatar} username={msg.from_username} size="sm" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{msg.direction==='out' ? `DM sent to @${msg.from_username}` : `@${msg.from_username} sent a DM`}</p><p className="truncate text-xs text-slate-500">{msg.message_text}</p></div><span className="shrink-0 text-[11px] text-slate-400">{relativeTime(msg.timestamp)}</span></div>)}</div>}
+          </section>
+
+          <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_10px_35px_rgba(30,41,59,.06)] sm:p-6">
+            <h2 className="border-b border-slate-100 pb-4 text-base font-bold text-slate-950">System Status</h2>
+            <div className="mt-2 divide-y divide-slate-100">
+              <StatusRow icon={Instagram} ok={isConnected && !accountExpired} label={accountExpired?'Instagram Connection Expired':'Instagram Connected'} detail={isConnected ? (accountExpired?'Reconnect Instagram':'Account is connected') : 'No account connected'} />
+              <StatusRow icon={Zap} ok={activeAutomations.length > 0} label="Automations Running" detail={activeAutomations.length > 0 ? `${activeAutomations.length} active workflow${activeAutomations.length===1?'':'s'}` : 'No active workflows'} />
+              <StatusRow icon={Bot} ok={activeAutomations.some(a=>a.trigger_type==='dm_ai_conversation')} label="AI Replies Active" detail={activeAutomations.some(a=>a.trigger_type==='dm_ai_conversation') ? 'AI conversation automation active' : 'No active AI conversation automation'} />
+              <StatusRow icon={Webhook} ok={null} label="Webhook Connection" detail="Live health is not exposed to this page" />
+            </div>
+          </section>
         </div>
+
+        <footer className="pb-2 pt-1 text-center text-[11px] font-medium text-slate-400">© 2026 AutoReply.io</footer>
       </div>
-
-      {/* 6. Quick Actions */}
-      <div className="space-y-4 rounded-2xl border border-white/90 bg-white/85 p-6 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-          <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-600 fill-amber-500/20" />
-            <span>Quick Actions</span>
-          </h3>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={() => setIsBuilderOpen(true)}
-            className="p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/30 text-left transition-all shadow-2xs hover:shadow-xs group flex items-center gap-3.5 cursor-pointer"
-          >
-            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold shrink-0 shadow-2xs">
-              <Plus className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-black text-slate-900 group-hover:text-[#3B5BFF] transition-colors">
-                New Automation
-              </div>
-              <div className="text-xs text-slate-600 font-semibold">Create custom workflow</div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('inbox')}
-            className="p-3.5 rounded-xl border border-slate-200 hover:border-purple-300 hover:bg-purple-50/30 text-left transition-all shadow-2xs hover:shadow-xs group flex items-center gap-3.5 cursor-pointer"
-          >
-            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold shrink-0 shadow-2xs">
-              <Inbox className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-black text-slate-900 group-hover:text-purple-700 transition-colors">
-                View Messages
-              </div>
-              <div className="text-xs text-slate-600 font-semibold">Open DM inbox</div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('settings')}
-            className="p-3.5 rounded-xl border border-slate-200 hover:border-amber-300 hover:bg-amber-50/30 text-left transition-all shadow-2xs hover:shadow-xs group flex items-center gap-3.5 cursor-pointer"
-          >
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold shrink-0 shadow-2xs">
-              <UserCheck className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-black text-slate-900 group-hover:text-amber-700 transition-colors">
-                Channel Settings
-              </div>
-              <div className="text-xs text-slate-600 font-semibold">Manage Instagram account</div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('settings')}
-            className="p-3.5 rounded-xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/30 text-left transition-all shadow-2xs hover:shadow-xs group flex items-center gap-3.5 cursor-pointer"
-          >
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0 shadow-2xs">
-              <Settings className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-black text-slate-900 group-hover:text-emerald-700 transition-colors">
-                AI Settings
-              </div>
-              <div className="text-xs text-slate-600 font-semibold">Prompt & automation options</div>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <footer className="flex flex-col items-center justify-between gap-4 border-t border-indigo-100/80 pb-2 pt-6 text-xs font-medium text-slate-500 sm:flex-row">
-        <div className="flex items-center gap-2">
-          <Zap className="w-4 h-4 text-indigo-600 fill-indigo-600/20" />
-          <span className="font-bold text-slate-800">AutoReply.io</span>
-          <span>•</span>
-          <span>Meta Graph API DM & Comment Automation</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => setActiveTab('about')}
-            className="font-bold text-indigo-600 hover:underline cursor-pointer"
-          >
-            About Us
-          </button>
-          <span>•</span>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className="hover:text-slate-800 transition-colors cursor-pointer"
-          >
-            Settings
-          </button>
-          <span>•</span>
-          <span>&copy; 2026 AutoReply.io. All rights reserved.</span>
-        </div>
-      </footer>
     </div>
   );
 };
 
+const StatusRow: React.FC<{icon:React.ComponentType<{className?:string}>;ok:boolean|null;label:string;detail:string}> = ({icon:Icon,ok,label,detail}) => (
+  <div className="flex items-start gap-3 py-3.5">
+    <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${ok===true?'bg-emerald-50 text-emerald-600':ok===false?'bg-amber-50 text-amber-600':'bg-slate-100 text-slate-500'}`}>{ok===false?<AlertTriangle className="h-4 w-4" />:ok===true?<CheckCircle2 className="h-4 w-4" />:<Icon className="h-4 w-4" />}</div>
+    <div><p className="text-xs font-bold text-slate-800">{label}</p><p className="mt-0.5 text-[11px] leading-4 text-slate-500">{detail}</p></div>
+  </div>
+);
