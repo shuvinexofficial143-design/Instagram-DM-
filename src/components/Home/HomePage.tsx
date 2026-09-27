@@ -56,26 +56,23 @@ export const HomePage: React.FC = () => {
 
   return (
     <div className="min-h-screen space-y-6 bg-[#F7FAFF] px-4 py-6 md:px-6">
-      {/* 1. Welcome back, Nazha! Top Banner Card */}
-      <div className="flex w-full items-center gap-4 rounded-2xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm transition-all md:gap-6 md:p-6">
-        {/* Pink/Magenta Circular Avatar with white first initial */}
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-500 to-violet-500 text-xl font-black text-white shadow-md shadow-indigo-500/20 md:h-14 md:w-14 md:text-2xl">
-          {user.name ? user.name.charAt(0).toUpperCase() : 'C'}
-        </div>
-
-        {/* Banner Text Details */}
-        <div className="space-y-0.5">
-          <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight leading-tight">
-            Welcome back, {user.name || 'Creator'}!
+      {/* Compact dashboard greeting — real profile + connection state only */}
+      <section className="flex w-full items-start justify-between gap-4 px-0.5 py-1 md:items-center md:px-1 md:py-2">
+        <div className="min-w-0">
+          <h2 className="truncate text-[20px] font-bold leading-tight tracking-tight text-slate-950 md:text-[24px]">
+            Good evening, {user.name || 'Creator'} 👋
           </h2>
-          <p className="text-xs font-bold text-slate-600">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
-          <p className="text-xs text-slate-700 font-semibold">
-            Your social media automation at a glance.
-          </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] font-medium text-slate-500 md:text-[14px]">
+            <span className="md:hidden">{connectedCount} {connectedCount === 1 ? 'account' : 'accounts'} connected</span>
+            <span className="hidden md:inline">{connectedCount} Instagram {connectedCount === 1 ? 'account' : 'accounts'} connected</span>
+            <span aria-hidden="true">•</span>
+            <span className={`inline-flex items-center gap-1.5 ${isConnected ? 'text-slate-500' : 'text-slate-500'}`}>
+              <span className={`h-2 w-2 shrink-0 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-slate-400'}`} aria-hidden="true" />
+              {isConnected ? 'Everything running normally' : 'Connect Instagram to get started'}
+            </span>
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* 2. "LIVE - MAGIC IN PROGRESS" Main Banner Card */}
       <div className="group relative flex min-h-[250px] flex-col justify-between gap-4 overflow-hidden rounded-3xl border border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 p-7 shadow-[0_18px_55px_rgba(78,93,169,0.10)] transition-all duration-300 hover:shadow-[0_22px_65px_rgba(78,93,169,0.13)] md:min-h-[285px] md:p-8">
