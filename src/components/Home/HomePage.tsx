@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Zap, ChevronRight, ArrowRight, MessageCircle, Send, Plus, Instagram,
-  Users, Activity, CheckCircle2, AlertTriangle, Bot, Webhook, Trash2,
+  Users, Activity, CheckCircle2, AlertTriangle, Bot, Webhook, Trash2, Settings,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -65,43 +65,32 @@ export const HomePage: React.FC = () => {
           </div>
         </header>
 
-        <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_10px_35px_rgba(30,41,59,.06)] sm:p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-[#FA7E1E] via-[#D62976] to-[#962FBF] text-white"><Instagram className="h-5 w-5" /></div>
-                <h2 className="text-base font-bold text-slate-950">Instagram Account</h2>
-                {isConnected && <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${accountExpired ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}><span className={`h-2 w-2 rounded-full ${accountExpired ? 'bg-amber-500' : 'bg-emerald-500'}`} />{accountExpired ? 'Action required' : 'Connected'}</span>}
-              </div>
-
-              {isConnected ? (
-                <div className="mt-4 flex items-center gap-3">
-                  <UserAvatar src={instagramAccount?.profile_pic_url} username={instagramAccount?.username} showInstagramBadge size="lg" />
-                  <div className="min-w-0">
-                    <p className="truncate text-[15px] font-bold text-slate-950">@{instagramAccount?.username}</p>
-                    <p className="mt-0.5 text-xs font-medium text-slate-500">{instagramAccount?.followers_count != null ? `${instagramAccount.followers_count.toLocaleString()} followers` : 'Instagram profile connected'}</p>
-                    {instagramAccount?.connected_at && <p className="mt-0.5 text-[11px] font-medium text-slate-400">Connected {relativeTime(instagramAccount.connected_at)}</p>}
+        <section className="rounded-[20px] border border-slate-200/80 bg-white/90 px-4 py-[18px] shadow-[0_8px_28px_rgba(30,41,59,.055)] sm:px-5">
+          {isConnected ? (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <UserAvatar src={instagramAccount?.profile_pic_url} username={instagramAccount?.username} showInstagramBadge size="lg" />
+                <div className="min-w-0">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-[#FA7E1E] via-[#D62976] to-[#962FBF] text-white sm:flex"><Instagram className="h-4 w-4" /></span>
+                    <h2 className="text-[14px] font-bold text-slate-950 sm:text-[15px]">Instagram Account</h2>
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${accountExpired ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}><span className={`h-1.5 w-1.5 rounded-full ${accountExpired ? 'bg-amber-500' : 'bg-emerald-500'}`} />{accountExpired ? 'Action required' : 'Connected'}</span>
                   </div>
+                  <p className="mt-1 truncate text-[13px] font-bold text-slate-800">@{instagramAccount?.username}</p>
+                  <p className="text-[11px] font-medium text-slate-500">{instagramAccount?.followers_count != null ? `${instagramAccount.followers_count.toLocaleString()} followers` : 'Instagram profile connected'}</p>
                 </div>
-              ) : (
-                <div className="mt-4">
-                  <p className="text-sm font-semibold text-slate-700">No Instagram account connected</p>
-                  <p className="mt-1 text-xs text-slate-500">Connect an Instagram Business or Creator account to start automating.</p>
-                </div>
-              )}
+              </div>
+              <div className="flex shrink-0 flex-nowrap gap-2 pl-[52px] sm:pl-0">
+                <button onClick={() => setActiveTab('settings')} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Settings className="h-3.5 w-3.5" />Manage Account</button>
+                <button onClick={() => { if (window.confirm('Disconnect this Instagram account?')) disconnectChannel(); }} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50/70 px-3 text-[11px] font-bold text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"><Trash2 className="h-3.5 w-3.5" />Disconnect</button>
+              </div>
             </div>
-
-            <div className="flex flex-wrap gap-2 lg:justify-end">
-              {isConnected ? (
-                <>
-                  <button onClick={() => setActiveTab('settings')} className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 transition hover:bg-slate-50">Manage Account</button>
-                  <button onClick={() => { if (window.confirm('Disconnect this Instagram account?')) disconnectChannel(); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-bold text-rose-700 transition hover:bg-rose-100"><Trash2 className="h-4 w-4" />Disconnect</button>
-                </>
-              ) : (
-                <button onClick={() => setIsConnectModalOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-5 text-sm font-bold text-white shadow-md transition hover:-translate-y-px hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2" style={{backgroundImage:'linear-gradient(100deg,#FA7E1E 0%,#D62976 48%,#962FBF 100%)'}}><Instagram className="h-5 w-5" />Connect Instagram</button>
-              )}
+          ) : (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-[#FA7E1E] via-[#D62976] to-[#962FBF] text-white"><Instagram className="h-5 w-5" /></div><div><h2 className="text-sm font-bold text-slate-950">Instagram Account</h2><p className="mt-0.5 text-xs text-slate-500">No Instagram account connected</p></div></div>
+              <button onClick={() => setIsConnectModalOpen(true)} className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-xl px-4 text-xs font-bold text-white shadow-md transition hover:-translate-y-px hover:brightness-105 sm:self-auto" style={{backgroundImage:'linear-gradient(100deg,#FA7E1E 0%,#D62976 48%,#962FBF 100%)'}}><Instagram className="h-4 w-4" />Connect Instagram</button>
             </div>
-          </div>
+          )}
         </section>
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
