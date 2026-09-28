@@ -10,6 +10,7 @@ import {
   CreditCard,
   Menu,
   X,
+  CircleHelp,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { UserAvatar } from './Common/UserAvatar';
@@ -32,6 +33,7 @@ export const Header: React.FC = () => {
     { id: 'inbox' as const, label: 'Inbox', icon: MessageSquare },
     { id: 'billing' as const, label: 'Billing', icon: CreditCard },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
+    { id: 'help' as const, label: 'Help Center', icon: CircleHelp },
   ];
 
   const unreadCount = (inboxMessages || []).filter((m) => m?.direction === 'in').length;
