@@ -69,8 +69,8 @@ export const HomePage: React.FC = () => {
           </div>
         </header>
 
-        <section className={`relative overflow-hidden rounded-[18px] border p-4 shadow-[0_8px_28px_rgba(76,88,160,.08)] sm:p-5 ${isConnected ? "border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75" : "border-slate-200/80 bg-white"}`}>
-          {isConnected && <><div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(129,140,248,0.16),transparent_30%),radial-gradient(circle_at_10%_85%,rgba(56,189,248,0.12),transparent_34%)]" aria-hidden="true" /><div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-violet-300/20 blur-3xl" aria-hidden="true" /><div className="pointer-events-none absolute -left-12 bottom-0 h-44 w-44 rounded-full bg-cyan-200/20 blur-3xl" aria-hidden="true" /></>}
+        <section className="relative overflow-hidden rounded-[18px] border border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 p-4 shadow-[0_8px_28px_rgba(76,88,160,.08)] sm:p-5">
+          <><div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(129,140,248,0.16),transparent_30%),radial-gradient(circle_at_10%_85%,rgba(56,189,248,0.12),transparent_34%)]" aria-hidden="true" /><div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-violet-300/20 blur-3xl" aria-hidden="true" /><div className="pointer-events-none absolute -left-12 bottom-0 h-44 w-44 rounded-full bg-cyan-200/20 blur-3xl" aria-hidden="true" /></>
           <div className="relative z-10">
           {isConnected ? (
             <div className="min-w-0">
