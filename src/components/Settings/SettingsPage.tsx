@@ -16,6 +16,7 @@ import {
   MessageCircle,
   Bot,
   BadgeCheck,
+  Download,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -26,6 +27,9 @@ export const SettingsPage: React.FC = () => {
     firebaseUser,
     logout,
     instagramAccount,
+    automations,
+    contacts,
+    inboxMessages,
     disconnectChannel,
     setIsConnectModalOpen,
     setActiveTab,
@@ -34,6 +38,26 @@ export const SettingsPage: React.FC = () => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [openGuide, setOpenGuide] = useState<string | null>(null);
+
+  const handleExportData = () => {
+    const exportData = {
+      exported_at: new Date().toISOString(),
+      profile: user,
+      instagram_account: instagramAccount ? { ...instagramAccount, access_token: undefined } : null,
+      automations,
+      contacts,
+      inbox_messages: inboxMessages,
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `autoreply-workspace-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const handleLogout = async () => {
     if (!window.confirm('Are you sure you want to sign out?')) return;
@@ -262,6 +286,13 @@ export const SettingsPage: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div><p className="text-[11px] font-black uppercase tracking-[0.15em] text-indigo-500">Data Controls</p><h2 className="mt-1 text-lg font-black text-slate-950">Export workspace data</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">Download a JSON copy of the profile, Instagram account metadata, automations, contacts and inbox messages currently loaded in this workspace. Access tokens are excluded.</p></div>
+          <button onClick={handleExportData} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white hover:bg-slate-800"><Download className="h-4 w-4"/>Export data</button>
         </div>
       </section>
 
