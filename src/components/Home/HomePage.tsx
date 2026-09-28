@@ -69,7 +69,9 @@ export const HomePage: React.FC = () => {
           </div>
         </header>
 
-        <section className="rounded-[18px] border border-slate-200/80 bg-white p-4 shadow-[0_6px_22px_rgba(30,41,59,.045)] sm:p-5">
+        <section className={`relative overflow-hidden rounded-[18px] border p-4 shadow-[0_8px_28px_rgba(76,88,160,.08)] sm:p-5 ${isConnected ? "border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75" : "border-slate-200/80 bg-white"}`}>
+          {isConnected && <><div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(129,140,248,0.16),transparent_30%),radial-gradient(circle_at_10%_85%,rgba(56,189,248,0.12),transparent_34%)]" aria-hidden="true" /><div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-violet-300/20 blur-3xl" aria-hidden="true" /><div className="pointer-events-none absolute -left-12 bottom-0 h-44 w-44 rounded-full bg-cyan-200/20 blur-3xl" aria-hidden="true" /></>}
+          <div className="relative z-10">
           {isConnected ? (
             <div className="min-w-0">
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
@@ -111,6 +113,7 @@ export const HomePage: React.FC = () => {
               <button onClick={() => setIsConnectModalOpen(true)} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 self-start rounded-xl px-4 text-xs font-bold text-white shadow-md transition hover:-translate-y-px hover:brightness-105 sm:self-auto" style={{backgroundImage:'linear-gradient(100deg,#FA7E1E 0%,#D62976 48%,#962FBF 100%)'}}><Instagram className="h-4 w-4" />Connect Instagram <ArrowRight className="h-3.5 w-3.5" /></button>
             </div>
           )}
+          </div>
         </section>
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
