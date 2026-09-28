@@ -71,7 +71,7 @@ export const HomePage: React.FC = () => {
 
         <section className="rounded-[18px] border border-slate-200/80 bg-white p-4 shadow-[0_6px_22px_rgba(30,41,59,.045)] sm:p-5">
           {isConnected ? (
-            <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,1.45fr)_auto] lg:grid-cols-[minmax(260px,1.45fr)_minmax(220px,.9fr)_auto]">
+            <div className="grid items-center gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1.35fr)_minmax(210px,.9fr)_auto]">
               <div className="min-w-0">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-[#FA7E1E] via-[#D62976] to-[#962FBF] text-white"><Instagram className="h-4 w-4" /></div>
@@ -88,13 +88,13 @@ export const HomePage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4 border-slate-100 sm:col-span-2 sm:border-t sm:pt-3 lg:col-span-1 lg:border-l lg:border-t-0 lg:px-5 lg:pt-0">
+              <div className="grid grid-cols-3 gap-3 border-slate-100 border-l pl-4 sm:col-span-1 sm:border-t-0 sm:pt-0">
                 <Metric label="Followers" value={instagramAccount?.followers_count} />
                 <Metric label="Following" value={followingCount} />
                 <Metric label="Posts" value={postsCount} />
               </div>
 
-              <div className="flex flex-nowrap gap-2 sm:col-span-2 sm:justify-end lg:col-span-1">
+              <div className="flex flex-nowrap gap-2 sm:col-span-1 sm:justify-end">
                 <button onClick={() => setActiveTab('settings')} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50"><Settings className="h-3.5 w-3.5" />Manage Account</button>
                 <button onClick={() => { if (window.confirm('Disconnect this Instagram account?')) disconnectChannel(); }} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50/60 px-3 text-[11px] font-bold text-rose-700 transition hover:bg-rose-100"><Trash2 className="h-3.5 w-3.5" />Disconnect</button>
               </div>
