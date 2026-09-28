@@ -4,20 +4,12 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist",
   "rewrites": [
-    {
-      "source": "/webhook",
-      "destination": "/api/webhook"
-    },
-    {
-      "source": "/webhook/",
-      "destination": "/api/webhook"
-    },
-    {
-      "source": "/admin",
-      "destination": "/index.html"
-    }
+    { "source": "/webhook", "destination": "/api/webhook" },
+    { "source": "/webhook/", "destination": "/api/webhook" },
+    { "source": "/api/google-sheets/connect", "destination": "/api/google-sheets?action=connect" },
+    { "source": "/api/google-sheets/callback", "destination": "/api/google-sheets?action=callback" },
+    { "source": "/api/google-sheets/status", "destination": "/api/google-sheets?action=status" },
+    { "source": "/admin", "destination": "/index.html" }
   ],
-  "regions": [
-    "bom1"
-  ]
+  "regions": ["bom1"]
 }
