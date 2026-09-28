@@ -18,6 +18,7 @@ import { BillingUsagePage } from './components/Billing/BillingUsagePage';
 import { AboutUsPage } from './components/About/AboutUsPage';
 import { AdminPage } from './components/Admin/AdminPage';
 import { LoginPage } from './components/Auth/LoginPage';
+import { SupportPage } from './components/Support/SupportPage';
 
 const MainContent: React.FC = () => {
   const { activeTab } = useApp();
@@ -34,6 +35,11 @@ const MainContent: React.FC = () => {
         {activeTab === 'billing' && <BillingUsagePage />}
         {activeTab === 'settings' && <SettingsPage />}
         {activeTab === 'about' && <AboutUsPage />}
+        {activeTab === 'help' && <SupportPage page="help" />}
+        {activeTab === 'faq' && <SupportPage page="faq" />}
+        {activeTab === 'billing-help' && <SupportPage page="billing-help" />}
+        {activeTab === 'privacy' && <SupportPage page="privacy" />}
+        {activeTab === 'terms' && <SupportPage page="terms" />}
       </ErrorBoundary>
 
       <ErrorBoundary>
