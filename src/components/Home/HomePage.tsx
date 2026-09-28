@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Zap, ChevronRight, ArrowRight, MessageCircle, Send, Plus, Instagram,
-  Users, Activity, CheckCircle2, AlertTriangle, Bot, Webhook, Trash2, Settings,
+  Users, Activity, CheckCircle2, AlertTriangle, Bot, Webhook, Trash2, Settings, MoreHorizontal,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -71,32 +71,30 @@ export const HomePage: React.FC = () => {
 
         <section className="rounded-[18px] border border-slate-200/80 bg-white p-4 shadow-[0_6px_22px_rgba(30,41,59,.045)] sm:p-5">
           {isConnected ? (
-            <div className="grid items-center gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1.35fr)_minmax(210px,.9fr)_auto]">
-              <div className="min-w-0">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-[#FA7E1E] via-[#D62976] to-[#962FBF] text-white"><Instagram className="h-4 w-4" /></div>
-                  <h2 className="text-sm font-bold text-slate-950">Instagram Account</h2>
-                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${accountExpired?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'}`}><span className={`h-1.5 w-1.5 rounded-full ${accountExpired?'bg-amber-500':'bg-emerald-500'}`} />{accountExpired?'Action required':'Connected'}</span>
-                </div>
-                <div className="flex items-center gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+                <div className="flex min-w-0 items-center gap-3">
                   <UserAvatar src={instagramAccount?.profile_pic_url} username={instagramAccount?.username} showInstagramBadge size="lg" />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-slate-900">@{instagramAccount?.username}</p>
-                    <p className="mt-0.5 text-[11px] font-medium text-slate-500">{accountType ? `${accountType.charAt(0).toUpperCase() + accountType.slice(1).toLowerCase()} Account` : 'Instagram account'}</p>
-                    <p className="mt-0.5 text-[10px] font-medium text-slate-400">{accountExpired ? 'Connection needs attention' : instagramAccount?.connected_at ? `Connected ${relativeTime(instagramAccount.connected_at)}` : 'Connected'}</p>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="max-w-[220px] truncate whitespace-nowrap text-[14px] font-semibold text-slate-900 sm:max-w-[320px]">@{instagramAccount?.username}</p>
+                      <span className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold ${accountExpired?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'}`}><span className={`h-1.5 w-1.5 rounded-full ${accountExpired?'bg-amber-500':'bg-emerald-500'}`} />{accountExpired?'Action required':'Connected'}</span>
+                    </div>
+                    <p className="mt-0.5 whitespace-nowrap text-[11px] font-medium text-slate-500">{accountType ? `${accountType.charAt(0).toUpperCase() + accountType.slice(1).toLowerCase()} Account` : 'Instagram account'}</p>
+                    <p className="mt-0.5 whitespace-nowrap text-[10px] font-medium text-slate-400">{accountExpired ? 'Connection needs attention' : instagramAccount?.connected_at ? `Connected ${relativeTime(instagramAccount.connected_at)}` : 'Connected'}</p>
                   </div>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  <button onClick={() => setActiveTab('settings')} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Settings className="h-3.5 w-3.5" />Manage Account</button>
+                  <button title="Disconnect account" aria-label="Disconnect Instagram account" onClick={() => { if (window.confirm('Disconnect this Instagram account?')) disconnectChannel(); }} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"><MoreHorizontal className="h-4 w-4" /></button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 border-slate-100 border-l pl-4 sm:col-span-1 sm:border-t-0 sm:pt-0">
+              <div className="mt-3 grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 pt-3">
                 <Metric label="Followers" value={instagramAccount?.followers_count} />
                 <Metric label="Following" value={followingCount} />
                 <Metric label="Posts" value={postsCount} />
-              </div>
-
-              <div className="flex flex-nowrap gap-2 sm:col-span-1 sm:justify-end">
-                <button onClick={() => setActiveTab('settings')} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50"><Settings className="h-3.5 w-3.5" />Manage Account</button>
-                <button onClick={() => { if (window.confirm('Disconnect this Instagram account?')) disconnectChannel(); }} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50/60 px-3 text-[11px] font-bold text-rose-700 transition hover:bg-rose-100"><Trash2 className="h-3.5 w-3.5" />Disconnect</button>
               </div>
             </div>
           ) : (
