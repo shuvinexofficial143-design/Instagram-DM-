@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Plus,
   CreditCard,
+  CircleHelp,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { UserAvatar } from './Common/UserAvatar';
@@ -46,7 +47,7 @@ export const Sidebar: React.FC = () => {
   }, [isCollapsed]);
 
   interface NavItem {
-    id: 'home' | 'automations' | 'contacts' | 'inbox' | 'billing' | 'settings' | 'about' | 'admin';
+    id: 'home' | 'automations' | 'contacts' | 'inbox' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: number;
@@ -65,6 +66,7 @@ export const Sidebar: React.FC = () => {
     },
     { id: 'billing', label: 'Billing & Usage', icon: CreditCard, tag: String(user?.plan || 'free') },
     { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'help', label: 'Help Center', icon: CircleHelp },
   ];
 
   const navItems: NavItem[] = isAdmin
