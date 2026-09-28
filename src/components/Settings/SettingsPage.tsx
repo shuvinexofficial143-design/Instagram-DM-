@@ -28,6 +28,7 @@ export const SettingsPage: React.FC = () => {
     instagramAccount,
     disconnectChannel,
     setIsConnectModalOpen,
+    setActiveTab,
   } = useApp();
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -261,6 +262,13 @@ export const SettingsPage: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div><p className="text-[11px] font-black uppercase tracking-[0.15em] text-indigo-500">Support & Legal</p><h2 className="mt-1 text-lg font-black text-slate-950">Help, billing and policies</h2><p className="mt-1 text-xs text-slate-500">Product guides and important account information.</p></div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {[['help','Help Center'],['faq','FAQ'],['billing-help','Billing Help'],['privacy','Privacy'],['terms','Terms']].map(([id,label])=><button key={id} onClick={()=>setActiveTab(id as any)} className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">{label}</button>)}
         </div>
       </section>
 
