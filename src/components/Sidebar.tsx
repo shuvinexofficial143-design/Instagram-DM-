@@ -100,6 +100,8 @@ export const Sidebar: React.FC = () => {
     activeTab,
     setActiveTab,
     automations,
+    user,
+    firebaseUser,
     logout,
     instagramAccount,
     inboxMessages,
@@ -116,6 +118,10 @@ export const Sidebar: React.FC = () => {
   ];
   const highestUsagePct = Math.max(...usagePcts);
   const highestPalette = usagePalette(highestUsagePct);
+  const accountName =
+    firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || user?.name || 'Account';
+  const accountEmail = firebaseUser?.email || user?.email || '';
+  const accountPhoto = firebaseUser?.photoURL || user?.avatar_url || '';
 
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
@@ -336,6 +342,46 @@ export const Sidebar: React.FC = () => {
         </nav>
       </div>
 
+      {/* Bottom Account Identity */}
+      <div className="shrink-0 border-t border-slate-200/80 bg-white px-2.5 pt-2.5">
+        {!isCollapsed ? (
+          <div className="flex w-full min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-2 shadow-sm">
+            <button
+              onClick={() => setActiveTab('settings')}
+              className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+              title="Account settings"
+            >
+              <div className="shrink-0">
+                <UserAvatar src={accountPhoto} name={accountName} size="md" />
+              </div>
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <p className="truncate text-sm font-black text-slate-950">{accountName}</p>
+                <p className="mt-0.5 truncate text-[11px] font-bold text-slate-600" title={accountEmail}>
+                  {accountEmail || 'Signed in with Google'}
+                </p>
+              </div>
+            </button>
+            <button
+              onClick={() => {
+                if (window.confirm('Sign out of AutoReply.io?')) logout();
+              }}
+              title="Sign Out"
+              className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setActiveTab('settings')}
+            className="flex w-full justify-center rounded-xl border border-slate-200 bg-slate-50 p-1.5"
+            title={accountEmail || accountName}
+          >
+            <UserAvatar src={accountPhoto} name={accountName} size="md" />
+          </button>
+        )}
+      </div>
+
       {/* Bottom Workspace Usage */}
       <div className="shrink-0 border-t border-slate-200/80 bg-white p-2.5">
         {!isCollapsed ? (
@@ -394,19 +440,10 @@ export const Sidebar: React.FC = () => {
             <div className="mt-2 flex items-center gap-1.5">
               <button
                 onClick={() => setActiveTab('billing')}
-                className="flex min-h-8 flex-1 items-center justify-between rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-black text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700"
+                className="flex min-h-8 w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-black text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700"
               >
                 <span>{usage.source === 'server' ? 'Monthly usage' : 'View usage'}</span>
                 <ArrowRight className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => {
-                  if (window.confirm('Sign out of AutoReply.io?')) logout();
-                }}
-                title="Sign Out"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-              >
-                <LogOut className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
@@ -441,4 +478,5 @@ export const Sidebar: React.FC = () => {
     </aside>
   );
 };
+
 
