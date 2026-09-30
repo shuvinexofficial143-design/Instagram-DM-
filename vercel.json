@@ -107,6 +107,14 @@
     {
       "source": "/lead-forms",
       "destination": "/index.html"
+    },
+    {
+      "source": "/crm",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/flow-builder",
+      "destination": "/index.html"
     }
   ],
   "regions": [

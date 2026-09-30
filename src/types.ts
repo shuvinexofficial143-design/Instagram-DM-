@@ -34,6 +34,14 @@ export interface InstagramAccount {
 
 export type TriggerType = 'dm' | 'comment' | 'story_reply' | 'dm_ai_conversation';
 
+export interface FlowInstructionNode {
+  id: string;
+  type: 'business' | 'qualification' | 'lead_capture' | 'sales' | 'handoff' | 'guardrail' | 'custom';
+  title: string;
+  instruction: string;
+  enabled: boolean;
+}
+
 export interface TriggerConfig {
   all_or_keywords: 'all' | 'keywords' | 'ai_conversation';
   keywords: string[];
@@ -50,6 +58,13 @@ export interface TriggerConfig {
   selected_media_permalink?: string;
   selected_media_thumbnail_url?: string;
   selected_media_caption?: string;
+  flow_version?: 1;
+  flow_nodes?: FlowInstructionNode[];
+  flow_settings?: {
+    tone: string;
+    language: string;
+    handoff: boolean;
+  };
 }
 
 export type ActionType = 'send_dm' | 'auto_like_comment' | 'reply_comment' | 'add_delay' | 'add_tag' | 'ai_chatbot';

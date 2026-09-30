@@ -18,8 +18,10 @@ const KnowledgeBasePage = lazy(() => import('./components/Knowledge/KnowledgeBas
 const CatalogPage = lazy(() => import('./components/Catalog/CatalogPage').then((m) => ({ default: m.CatalogPage })));
 const LeadFormsPage = lazy(() => import('./components/LeadForms/LeadFormsPage').then((m) => ({ default: m.LeadFormsPage })));
 const AutomationsPage = lazy(() => import('./components/Automations/AutomationsPage').then((m) => ({ default: m.AutomationsPage })));
+const FlowBuilderPage = lazy(() => import('./components/FlowBuilder/FlowBuilderPage').then((m) => ({ default: m.FlowBuilderPage })));
 const AutomationBuilder = lazy(() => import('./components/Automations/AutomationBuilder').then((m) => ({ default: m.AutomationBuilder })));
 const ContactsPage = lazy(() => import('./components/Contacts/ContactsPage').then((m) => ({ default: m.ContactsPage })));
+const CrmPage = lazy(() => import('./components/CRM/CrmPage').then((m) => ({ default: m.CrmPage })));
 const InboxPage = lazy(() => import('./components/Inbox/InboxPage').then((m) => ({ default: m.InboxPage })));
 const SettingsPage = lazy(() => import('./components/Settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const BillingUsagePage = lazy(() => import('./components/Billing/BillingUsagePage').then((m) => ({ default: m.BillingUsagePage })));
@@ -39,11 +41,13 @@ const MainContent: React.FC = () => {
         {(!activeTab || activeTab === 'home') && <HomePage />}
         {activeTab === 'analytics' && <AnalyticsPage />}
         {activeTab === 'automations' && <AutomationsPage />}
+        {activeTab === 'flow-builder' && <FlowBuilderPage />}
         {activeTab === 'activity' && <ActivityLogsPage />}
         {activeTab === 'knowledge' && <KnowledgeBasePage />}
         {activeTab === 'catalog' && <CatalogPage />}
         {activeTab === 'lead-forms' && <LeadFormsPage />}
         {activeTab === 'contacts' && <ContactsPage />}
+        {activeTab === 'crm' && <CrmPage />}
         {activeTab === 'inbox' && <InboxPage />}
         {activeTab === 'integrations' && <IntegrationsPage />}
         {activeTab === 'billing' && <BillingUsagePage />}

@@ -24,6 +24,7 @@ import {
   Clock,
   Wand2,
   Instagram,
+  GitBranch,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Automation, TriggerType } from '../../types';
@@ -36,6 +37,7 @@ export const AutomationsPage: React.FC = () => {
     createAutomation,
     setEditingAutomation,
     setIsBuilderOpen,
+    setActiveTab,
   } = useApp();
 
   const [search, setSearch] = useState('');
@@ -287,16 +289,25 @@ export const AutomationsPage: React.FC = () => {
             />
           </div>
 
-          <button
-            onClick={() => {
-              setEditingAutomation(null);
-              setIsBuilderOpen(true);
-            }}
-            className="w-full sm:w-auto bg-[#3B5BFF] hover:bg-indigo-700 text-white font-black text-xs py-2.5 px-5 rounded-xl btn-primary-elevated flex items-center justify-center gap-2 shrink-0 cursor-pointer"
-          >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Create Automation</span>
-          </button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <button
+              onClick={() => setActiveTab('flow-builder')}
+              className="w-full sm:w-auto border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-black text-xs py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+            >
+              <GitBranch className="w-4 h-4 stroke-[2.5]" />
+              <span>Advanced Flow Builder</span>
+            </button>
+            <button
+              onClick={() => {
+                setEditingAutomation(null);
+                setIsBuilderOpen(true);
+              }}
+              className="w-full sm:w-auto bg-[#3B5BFF] hover:bg-indigo-700 text-white font-black text-xs py-2.5 px-5 rounded-xl btn-primary-elevated flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Create Automation</span>
+            </button>
+          </div>
         </div>
 
         {/* Row 2: Three Filter Buttons Side-by-Side in a Line */}

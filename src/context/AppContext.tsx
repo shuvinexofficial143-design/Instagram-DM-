@@ -23,17 +23,19 @@ import {
   isSupabaseInitialized,
 } from '../lib/supabase';
 
-export type ActiveTab = 'home' | 'analytics' | 'automations' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'inbox' | 'integrations' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
+export type ActiveTab = 'home' | 'analytics' | 'automations' | 'flow-builder' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'crm' | 'inbox' | 'integrations' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
 
 const TAB_PATHS: Record<ActiveTab, string> = {
   home: '/',
   analytics: '/analytics',
   automations: '/automations',
+  'flow-builder': '/flow-builder',
   activity: '/activity',
   knowledge: '/knowledge',
   catalog: '/catalog',
   'lead-forms': '/lead-forms',
   contacts: '/contacts',
+  crm: '/crm',
   inbox: '/inbox',
   integrations: '/integrations',
   billing: '/billing',
