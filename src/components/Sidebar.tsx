@@ -21,22 +21,101 @@ import {
   Plus,
   CreditCard,
   CircleHelp,
+  Bot,
+  Send,
+  Gauge,
+  ArrowRight,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { UserAvatar } from './Common/UserAvatar';
+import { useWorkspaceUsage } from '../hooks/useWorkspaceUsage';
+import { usageLevel, usagePercent } from '../lib/planUsage';
+
+const usagePalette = (pct: number) => {
+  const level = usageLevel(pct);
+  if (level === 'critical') return {
+    bar: 'bg-rose-500',
+    text: 'text-rose-700',
+    chip: 'border-rose-200 bg-rose-50 text-rose-700',
+    ring: '#f43f5e',
+  };
+  if (level === 'warning') return {
+    bar: 'bg-amber-500',
+    text: 'text-amber-700',
+    chip: 'border-amber-200 bg-amber-50 text-amber-700',
+    ring: '#f59e0b',
+  };
+  return {
+    bar: 'bg-emerald-500',
+    text: 'text-emerald-700',
+    chip: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    ring: '#10b981',
+  };
+};
+
+const UsageRow = ({
+  icon: Icon,
+  label,
+  used,
+  limit,
+  detail,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  used: number;
+  limit: number | null;
+  detail?: string;
+}) => {
+  const pct = usagePercent(used, limit);
+  const palette = usagePalette(pct);
+  const remaining = limit === null ? null : Math.max(0, limit - used);
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-[0_2px_8px_rgba(15,23,42,.025)]">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Icon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+          <span className="truncate text-[10px] font-black text-slate-700">{label}</span>
+        </div>
+        <span className={"shrink-0 text-[10px] font-black " + palette.text}>
+          {used.toLocaleString()} / {limit === null ? '∞' : limit.toLocaleString()}
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={"h-full rounded-full transition-all duration-500 " + (limit === null ? 'bg-indigo-500' : palette.bar)}
+          style={{ width: limit === null ? '18%' : Math.max(pct, used > 0 ? 3 : 0) + '%' }}
+        />
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2 text-[9px] font-bold text-slate-400">
+        <span className="truncate">{detail || (remaining === null ? 'Unlimited' : remaining.toLocaleString() + ' left')}</span>
+        <span>{limit === null ? 'Unlimited' : pct + '%'}</span>
+      </div>
+    </div>
+  );
+};
+
 
 export const Sidebar: React.FC = () => {
   const {
     activeTab,
     setActiveTab,
-    user,
-    firebaseUser,
+    automations,
     logout,
     instagramAccount,
     inboxMessages,
     setIsConnectModalOpen,
     isAdmin,
   } = useApp();
+
+  const usage = useWorkspaceUsage();
+  const aiWorkflowCount = (automations || []).filter((automation) => automation.trigger_type === 'dm_ai_conversation').length;
+  const usagePcts = [
+    usagePercent(usage.messageUsed, usage.messageLimit),
+    usagePercent(usage.aiUsed, usage.aiLimit),
+    usagePercent(usage.automationUsed, usage.automationLimit),
+  ];
+  const highestUsagePct = Math.max(...usagePcts);
+  const highestPalette = usagePalette(highestUsagePct);
 
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
@@ -80,7 +159,7 @@ export const Sidebar: React.FC = () => {
       badge: (inboxMessages || []).filter((m) => m?.direction === 'in' && !m?.is_read).length,
     },
     { id: 'integrations', label: 'Integrations', icon: Plug },
-    { id: 'billing', label: 'Billing & Usage', icon: CreditCard, tag: String(user?.plan || 'free') },
+    { id: 'billing', label: 'Billing & Usage', icon: CreditCard, tag: usage.plan.id },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'help', label: 'Help Center', icon: CircleHelp },
     { id: 'about', label: 'About Us', icon: CircleHelp },
@@ -97,11 +176,6 @@ export const Sidebar: React.FC = () => {
         },
       ]
     : baseNavItems;
-
-  const accountName =
-    firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || user?.name || 'Account';
-  const accountEmail = firebaseUser?.email || user?.email || '';
-  const accountPhoto = firebaseUser?.photoURL || user?.avatar_url || '';
 
   return (
     <aside
@@ -262,52 +336,106 @@ export const Sidebar: React.FC = () => {
         </nav>
       </div>
 
-      {/* Bottom User Card & Plan Notice */}
-      <div className="shrink-0 border-t border-slate-200/80 bg-white p-3 overflow-hidden">
-        {!isCollapsed && (
-          <>
-            <div className="mb-2 flex items-center justify-between px-1">
-              <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Current Plan</span>
-              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-black uppercase text-indigo-700">
-                {String(user?.plan || 'free')}
+      {/* Bottom Workspace Usage */}
+      <div className="shrink-0 border-t border-slate-200/80 bg-white p-2.5">
+        {!isCollapsed ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5 shadow-sm">
+            <div className="flex items-center justify-between gap-2 px-0.5">
+              <div className="flex items-center gap-1.5">
+                <Gauge className="h-3.5 w-3.5 text-indigo-600" />
+                <span className="text-[10px] font-black uppercase tracking-[.12em] text-slate-600">
+                  Workspace Usage
+                </span>
+              </div>
+              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-indigo-700">
+                {usage.plan.name}
               </span>
             </div>
-            <div className="flex w-full min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-2 shadow-sm">
+
+            <div className="mt-2 space-y-1.5">
+              <UsageRow
+                icon={Send}
+                label="Messages"
+                used={usage.messageUsed}
+                limit={usage.messageLimit}
+              />
+              <UsageRow
+                icon={Bot}
+                label="AI Replies"
+                used={usage.aiUsed}
+                limit={usage.aiLimit}
+              />
+              <UsageRow
+                icon={GitBranch}
+                label="Workflows"
+                used={usage.automationUsed}
+                limit={usage.automationLimit}
+                detail={
+                  aiWorkflowCount +
+                  ' AI flow' +
+                  (aiWorkflowCount === 1 ? '' : 's') +
+                  (usage.automationLimit === null
+                    ? ' · unlimited'
+                    : ' · ' + Math.max(0, usage.automationLimit - usage.automationUsed) + ' left')
+                }
+              />
+            </div>
+
+            {highestUsagePct >= 90 && (
               <button
-                onClick={() => setActiveTab('settings')}
-                className="flex min-w-0 flex-1 items-center gap-2.5 text-left cursor-pointer"
-                title="Google Account Settings"
+                onClick={() => setActiveTab('billing')}
+                className="mt-2 flex w-full items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-left text-[9px] font-black text-rose-700"
               >
-                <div className="shrink-0">
-                  <UserAvatar src={accountPhoto} name={accountName} size="md" />
-                </div>
-                <div className="min-w-0 flex-1 overflow-hidden">
-                  <p className="truncate text-sm font-black text-slate-950">{accountName}</p>
-                  <p className="mt-0.5 truncate text-[11px] font-bold text-slate-600" title={accountEmail}>
-                    {accountEmail || 'Signed in with Google'}
-                  </p>
-                </div>
+                <span>{highestUsagePct >= 100 ? 'Monthly limit reached' : 'Usage is close to the limit'}</span>
+                <ArrowRight className="h-3 w-3" />
+              </button>
+            )}
+
+            <div className="mt-2 flex items-center gap-1.5">
+              <button
+                onClick={() => setActiveTab('billing')}
+                className="flex min-h-8 flex-1 items-center justify-between rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-black text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700"
+              >
+                <span>{usage.source === 'server' ? 'Monthly usage' : 'View usage'}</span>
+                <ArrowRight className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={() => {
                   if (window.confirm('Sign out of AutoReply.io?')) logout();
                 }}
                 title="Sign Out"
-                className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
               >
-                <LogOut className="h-4 w-4" />
+                <LogOut className="h-3.5 w-3.5" />
               </button>
             </div>
-          </>
-        )}
-        {isCollapsed && (
-          <button
-            onClick={() => setActiveTab('settings')}
-            className="flex w-full justify-center rounded-xl border border-slate-200 bg-slate-50 p-1.5"
-            title={accountEmail || accountName}
-          >
-            <UserAvatar src={accountPhoto} name={accountName} size="md" />
-          </button>
+          </div>
+        ) : (
+          <div className="group relative flex justify-center">
+            <button
+              onClick={() => setActiveTab('billing')}
+              className="relative flex h-11 w-11 items-center justify-center rounded-full p-[3px]"
+              style={{
+                background:
+                  'conic-gradient(' +
+                  highestPalette.ring +
+                  ' ' +
+                  Math.max(highestUsagePct, 4) * 3.6 +
+                  'deg, #e2e8f0 0deg)',
+              }}
+              aria-label="Open workspace usage"
+            >
+              <span className="flex h-full w-full items-center justify-center rounded-full bg-white text-[9px] font-black text-slate-700">
+                {highestUsagePct}%
+              </span>
+            </button>
+            <div className="pointer-events-none absolute bottom-0 left-full z-50 ml-3 w-52 rounded-xl bg-slate-950 p-3 text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-300">{usage.plan.name} usage</p>
+              <p className="mt-1 text-[10px] text-slate-300">Messages {usage.messageUsed.toLocaleString()} / {usage.messageLimit.toLocaleString()}</p>
+              <p className="text-[10px] text-slate-300">AI {usage.aiUsed.toLocaleString()} / {usage.aiLimit.toLocaleString()}</p>
+              <p className="text-[10px] text-slate-300">Workflows {usage.automationUsed.toLocaleString()} / {usage.automationLimit === null ? '∞' : usage.automationLimit.toLocaleString()}</p>
+            </div>
+          </div>
         )}
       </div>
     </aside>

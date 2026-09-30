@@ -1,13 +1,10 @@
 import React from 'react';
 import { BarChart3, Bot, Check, CreditCard, Instagram, Sparkles, Zap, ArrowUpRight, ShieldCheck, ReceiptText } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { PLAN_CATALOG } from '../../lib/planUsage';
+import { useWorkspaceUsage } from '../../hooks/useWorkspaceUsage';
 
-const plans=[
-  {name:'Free',price:'₹0',messages:1500,ai:1000,accounts:1,automations:'5'},
-  {name:'Starter',price:'₹299',messages:7500,ai:5000,accounts:1,automations:'Unlimited'},
-  {name:'Pro',price:'₹599',messages:25000,ai:15000,accounts:2,automations:'Unlimited',popular:true},
-  {name:'Business',price:'₹1,299',messages:75000,ai:40000,accounts:5,automations:'Unlimited'}
-];
+const plans=PLAN_CATALOG.map((plan)=>({...plan,popular:plan.id==='pro'}));
 
 const Usage=({icon:Icon,label,used,limit,note}:{icon:any,label:string,used:number,limit:number,note:string})=>{
   const pct=Math.min(100,Math.round(used/Math.max(limit,1)*100));
@@ -24,16 +21,10 @@ const Usage=({icon:Icon,label,used,limit,note}:{icon:any,label:string,used:numbe
 };
 
 export const BillingUsagePage:React.FC=()=>{
-  const{user,automations,instagramAccount,inboxMessages,setIsRenewModalOpen}=useApp();
-  const key=String(user?.plan||'free').toLowerCase();
-  const plan=plans.find(p=>p.name.toLowerCase()===key)||plans[0];
-  const carryMessages=Number(user?.carry_forward_messages||0);
-  const carryAi=Number(user?.carry_forward_ai_replies||0);
-  const autoLimit=plan.automations==='Unlimited'?Math.max(automations.length,1):Number(plan.automations);
-  const monthStart=new Date();monthStart.setDate(1);monthStart.setHours(0,0,0,0);
-  const monthlyAutomated=(inboxMessages||[]).filter(m=>m.direction==='out'&&m.is_automated&&new Date(m.timestamp||0).getTime()>=monthStart.getTime());
-  const aiAutomationIds=new Set((automations||[]).filter(a=>a.trigger_type==='dm_ai_conversation').map(a=>a.id));
-  const monthlyAi=monthlyAutomated.filter(m=>Boolean(m.automation_id&&aiAutomationIds.has(m.automation_id)));
+  const{instagramAccount,setIsRenewModalOpen}=useApp();
+  const usage=useWorkspaceUsage();
+  const plan=usage.plan;
+  const autoLimit=usage.automationLimit===null?Math.max(usage.automationUsed,1):usage.automationLimit;
 
   return <div className="min-h-full bg-[radial-gradient(circle_at_85%_0%,rgba(224,231,255,.55),transparent_28%),#F8FAFD] px-4 py-5 sm:px-6 lg:px-8">
     <div className="mx-auto max-w-[1380px] space-y-6">
@@ -50,9 +41,9 @@ export const BillingUsagePage:React.FC=()=>{
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">Usage resets monthly. AI replies count inside your total message limit.</p>
           </div>
           <div className="grid grid-cols-2 gap-x-7 gap-y-2 rounded-2xl border border-white/90 bg-white/75 px-5 py-4 text-xs shadow-sm">
-            <div><p className="text-slate-400">Messages</p><p className="mt-1 font-bold text-slate-800">{(plan.messages+carryMessages).toLocaleString()}</p></div>
-            <div><p className="text-slate-400">AI replies</p><p className="mt-1 font-bold text-slate-800">{(plan.ai+carryAi).toLocaleString()}</p></div>
-            <div><p className="text-slate-400">Automations</p><p className="mt-1 font-bold text-slate-800">{plan.automations}</p></div>
+            <div><p className="text-slate-400">Messages</p><p className="mt-1 font-bold text-slate-800">{usage.messageLimit.toLocaleString()}</p></div>
+            <div><p className="text-slate-400">AI replies</p><p className="mt-1 font-bold text-slate-800">{usage.aiLimit.toLocaleString()}</p></div>
+            <div><p className="text-slate-400">Automations</p><p className="mt-1 font-bold text-slate-800">{plan.automations===null?'Unlimited':plan.automations}</p></div>
             <div><p className="text-slate-400">IG accounts</p><p className="mt-1 font-bold text-slate-800">{plan.accounts}</p></div>
           </div>
         </div>
@@ -61,9 +52,9 @@ export const BillingUsagePage:React.FC=()=>{
       <section>
         <div className="mb-3"><h2 className="text-base font-bold text-slate-950">Monthly usage</h2><p className="mt-0.5 text-xs text-slate-500">Your current workspace limits and consumption.</p></div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Usage icon={BarChart3} label="Total Messages" used={monthlyAutomated.length} limit={plan.messages+carryMessages} note={carryMessages>0?`Includes ${carryMessages.toLocaleString()} Free carry-forward`:"Monthly outgoing automation messages"}/>
-          <Usage icon={Bot} label="AI Replies" used={monthlyAi.length} limit={plan.ai+carryAi} note={carryAi>0?`Includes ${carryAi.toLocaleString()} Free carry-forward`:"Included inside total messages"}/>
-          <Usage icon={Zap} label="Automations" used={automations.length} limit={autoLimit} note={plan.automations==='Unlimited'?'Unlimited on this plan':'Workspace automations'}/>
+          <Usage icon={BarChart3} label="Total Messages" used={usage.messageUsed} limit={usage.messageLimit} note={usage.source==='server'?"Authoritative monthly automation usage":"Monthly outgoing automation messages"}/>
+          <Usage icon={Bot} label="AI Replies" used={usage.aiUsed} limit={usage.aiLimit} note="Included inside total messages"/>
+          <Usage icon={Zap} label="Automations" used={usage.automationUsed} limit={autoLimit} note={usage.automationLimit===null?"Unlimited on this plan":"Workspace automations"}/>
           <Usage icon={Instagram} label="Instagram Accounts" used={instagramAccount?1:0} limit={plan.accounts} note="Connected Instagram accounts"/>
         </div>
       </section>
@@ -71,10 +62,10 @@ export const BillingUsagePage:React.FC=()=>{
       <section>
         <div className="mb-3 flex items-end justify-between gap-3"><div><h2 className="text-base font-bold text-slate-950">Plans & pricing</h2><p className="mt-0.5 text-xs text-slate-500">Choose the capacity that fits your workspace.</p></div><CreditCard className="h-5 w-5 text-slate-300"/></div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {plans.map(p=>{const active=p.name===plan.name;return <article key={p.name} className={`relative flex flex-col rounded-[18px] border bg-white p-5 shadow-[0_5px_20px_rgba(15,23,42,.035)] ${p.popular?'border-indigo-300 ring-1 ring-indigo-100':'border-slate-200/80'}`}>
+          {plans.map(p=>{const active=p.id===plan.id;return <article key={p.name} className={`relative flex flex-col rounded-[18px] border bg-white p-5 shadow-[0_5px_20px_rgba(15,23,42,.035)] ${p.popular?'border-indigo-300 ring-1 ring-indigo-100':'border-slate-200/80'}`}>
             <div className="flex items-start justify-between gap-2"><div><h3 className="text-base font-bold text-slate-950">{p.name}</h3><div className="mt-2"><span className="text-[26px] font-bold tracking-tight text-slate-950">{p.price}</span><span className="text-[11px] font-semibold text-slate-400"> / month</span></div></div>{p.popular&&<span className="rounded-full bg-indigo-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-indigo-700">Popular</span>}</div>
             <div className="my-4 h-px bg-slate-100"/>
-            <div className="flex-1 space-y-2.5 text-xs font-medium text-slate-600">{[p.messages.toLocaleString()+' total messages',p.ai.toLocaleString()+' max AI replies',p.automations+' automations',p.accounts+' Instagram account'+(p.accounts===1?'':'s')].map(x=><div key={x} className="flex items-start gap-2"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600"/><span>{x}</span></div>)}</div>
+            <div className="flex-1 space-y-2.5 text-xs font-medium text-slate-600">{[p.messages.toLocaleString()+' total messages',p.ai.toLocaleString()+' max AI replies',(p.automations===null?'Unlimited':p.automations.toLocaleString())+' automations',p.accounts+' Instagram account'+(p.accounts===1?'':'s')].map(x=><div key={x} className="flex items-start gap-2"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600"/><span>{x}</span></div>)}</div>
             <button disabled={active} onClick={()=>setIsRenewModalOpen(true)} className={`mt-5 min-h-10 w-full rounded-xl px-3 text-xs font-bold transition ${active?'cursor-default border border-slate-200 bg-slate-50 text-slate-500':'bg-slate-950 text-white hover:bg-slate-800'}`}>{active?'Current Plan':(p.name==='Free'?'Use Free Plan':'Upgrade')}</button>
           </article>})}
         </div>
