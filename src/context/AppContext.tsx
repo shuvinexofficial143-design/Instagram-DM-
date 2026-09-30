@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, startTransition } from 'react';
 import {
   UserProfile,
   InstagramAccount,
@@ -274,7 +274,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     typeof window === 'undefined' ? 'home' : tabFromPath(window.location.pathname)
   );
   const setActiveTab = (tab: ActiveTab) => {
-    setActiveTabState(tab);
+    startTransition(() => {
+      setActiveTabState(tab);
+    });
     if (typeof window !== 'undefined') {
       const nextPath = TAB_PATHS[tab];
       if (window.location.pathname !== nextPath) {
@@ -285,7 +287,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const onPopState = () => setActiveTabState(tabFromPath(window.location.pathname));
+    const onPopState = () => {
+      startTransition(() => setActiveTabState(tabFromPath(window.location.pathname)));
+    };
     window.addEventListener('popstate', onPopState);
     onPopState();
     return () => window.removeEventListener('popstate', onPopState);

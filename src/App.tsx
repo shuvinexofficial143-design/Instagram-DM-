@@ -30,6 +30,19 @@ const AdminPage = lazy(() => import('./components/Admin/AdminPage').then((m) => 
 const ResetPasswordPage = lazy(() => import('./components/Auth/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
 const SupportPage = lazy(() => import('./components/Support/SupportPage').then((m) => ({ default: m.SupportPage })));
 
+const PageLoadingFallback: React.FC = () => (
+  <div className="animate-pulse space-y-4 px-4 py-6 sm:px-6 lg:px-8" aria-hidden="true">
+    <div className="h-7 w-40 rounded-lg bg-slate-200/80" />
+    <div className="h-4 w-72 max-w-full rounded bg-slate-200/70" />
+    <div className="grid gap-4 pt-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="h-28 rounded-2xl border border-slate-200 bg-white" />
+      <div className="h-28 rounded-2xl border border-slate-200 bg-white" />
+      <div className="h-28 rounded-2xl border border-slate-200 bg-white" />
+    </div>
+    <div className="h-64 rounded-2xl border border-slate-200 bg-white" />
+  </div>
+);
+
 const MainContent: React.FC = () => {
   const { activeTab } = useApp();
 
@@ -38,30 +51,34 @@ const MainContent: React.FC = () => {
       <PlanBanner />
 
       <ErrorBoundary>
-        {(!activeTab || activeTab === 'home') && <HomePage />}
-        {activeTab === 'analytics' && <AnalyticsPage />}
-        {activeTab === 'automations' && <AutomationsPage />}
-        {activeTab === 'flow-builder' && <FlowBuilderPage />}
-        {activeTab === 'activity' && <ActivityLogsPage />}
-        {activeTab === 'knowledge' && <KnowledgeBasePage />}
-        {activeTab === 'catalog' && <CatalogPage />}
-        {activeTab === 'lead-forms' && <LeadFormsPage />}
-        {activeTab === 'contacts' && <ContactsPage />}
-        {activeTab === 'crm' && <CrmPage />}
-        {activeTab === 'inbox' && <InboxPage />}
-        {activeTab === 'integrations' && <IntegrationsPage />}
-        {activeTab === 'billing' && <BillingUsagePage />}
-        {activeTab === 'settings' && <SettingsPage />}
-        {activeTab === 'about' && <AboutUsPage />}
-        {activeTab === 'help' && <SupportPage page="help" />}
-        {activeTab === 'faq' && <SupportPage page="faq" />}
-        {activeTab === 'billing-help' && <SupportPage page="billing-help" />}
-        {activeTab === 'privacy' && <SupportPage page="privacy" />}
-        {activeTab === 'terms' && <SupportPage page="terms" />}
+        <Suspense fallback={<PageLoadingFallback />}>
+          {(!activeTab || activeTab === 'home') && <HomePage />}
+          {activeTab === 'analytics' && <AnalyticsPage />}
+          {activeTab === 'automations' && <AutomationsPage />}
+          {activeTab === 'flow-builder' && <FlowBuilderPage />}
+          {activeTab === 'activity' && <ActivityLogsPage />}
+          {activeTab === 'knowledge' && <KnowledgeBasePage />}
+          {activeTab === 'catalog' && <CatalogPage />}
+          {activeTab === 'lead-forms' && <LeadFormsPage />}
+          {activeTab === 'contacts' && <ContactsPage />}
+          {activeTab === 'crm' && <CrmPage />}
+          {activeTab === 'inbox' && <InboxPage />}
+          {activeTab === 'integrations' && <IntegrationsPage />}
+          {activeTab === 'billing' && <BillingUsagePage />}
+          {activeTab === 'settings' && <SettingsPage />}
+          {activeTab === 'about' && <AboutUsPage />}
+          {activeTab === 'help' && <SupportPage page="help" />}
+          {activeTab === 'faq' && <SupportPage page="faq" />}
+          {activeTab === 'billing-help' && <SupportPage page="billing-help" />}
+          {activeTab === 'privacy' && <SupportPage page="privacy" />}
+          {activeTab === 'terms' && <SupportPage page="terms" />}
+        </Suspense>
       </ErrorBoundary>
 
       <ErrorBoundary>
-        <AutomationBuilder />
+        <Suspense fallback={null}>
+          <AutomationBuilder />
+        </Suspense>
         <ConnectChannelModal />
         <PlanRenewModal />
       </ErrorBoundary>
