@@ -24,12 +24,16 @@ const Usage=({icon:Icon,label,used,limit,note}:{icon:any,label:string,used:numbe
 };
 
 export const BillingUsagePage:React.FC=()=>{
-  const{user,automations,instagramAccount,setIsRenewModalOpen}=useApp();
+  const{user,automations,instagramAccount,inboxMessages,setIsRenewModalOpen}=useApp();
   const key=String(user?.plan||'free').toLowerCase();
   const plan=plans.find(p=>p.name.toLowerCase()===key)||plans[0];
   const carryMessages=Number(user?.carry_forward_messages||0);
   const carryAi=Number(user?.carry_forward_ai_replies||0);
   const autoLimit=plan.automations==='Unlimited'?Math.max(automations.length,1):Number(plan.automations);
+  const monthStart=new Date();monthStart.setDate(1);monthStart.setHours(0,0,0,0);
+  const monthlyAutomated=(inboxMessages||[]).filter(m=>m.direction==='out'&&m.is_automated&&new Date(m.timestamp||0).getTime()>=monthStart.getTime());
+  const aiAutomationIds=new Set((automations||[]).filter(a=>a.trigger_type==='dm_ai_conversation').map(a=>a.id));
+  const monthlyAi=monthlyAutomated.filter(m=>Boolean(m.automation_id&&aiAutomationIds.has(m.automation_id)));
 
   return <div className="min-h-full bg-[radial-gradient(circle_at_85%_0%,rgba(224,231,255,.55),transparent_28%),#F8FAFD] px-4 py-5 sm:px-6 lg:px-8">
     <div className="mx-auto max-w-[1380px] space-y-6">
@@ -57,8 +61,8 @@ export const BillingUsagePage:React.FC=()=>{
       <section>
         <div className="mb-3"><h2 className="text-base font-bold text-slate-950">Monthly usage</h2><p className="mt-0.5 text-xs text-slate-500">Your current workspace limits and consumption.</p></div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Usage icon={BarChart3} label="Total Messages" used={0} limit={plan.messages+carryMessages} note={carryMessages>0?`Includes ${carryMessages.toLocaleString()} Free carry-forward`:"Monthly outgoing automation messages"}/>
-          <Usage icon={Bot} label="AI Replies" used={0} limit={plan.ai+carryAi} note={carryAi>0?`Includes ${carryAi.toLocaleString()} Free carry-forward`:"Included inside total messages"}/>
+          <Usage icon={BarChart3} label="Total Messages" used={monthlyAutomated.length} limit={plan.messages+carryMessages} note={carryMessages>0?`Includes ${carryMessages.toLocaleString()} Free carry-forward`:"Monthly outgoing automation messages"}/>
+          <Usage icon={Bot} label="AI Replies" used={monthlyAi.length} limit={plan.ai+carryAi} note={carryAi>0?`Includes ${carryAi.toLocaleString()} Free carry-forward`:"Included inside total messages"}/>
           <Usage icon={Zap} label="Automations" used={automations.length} limit={autoLimit} note={plan.automations==='Unlimited'?'Unlimited on this plan':'Workspace automations'}/>
           <Usage icon={Instagram} label="Instagram Accounts" used={instagramAccount?1:0} limit={plan.accounts} note="Connected Instagram accounts"/>
         </div>

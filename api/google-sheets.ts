@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
 const CLIENT_ID=()=>String(process.env.GOOGLE_SHEETS_CLIENT_ID||'').trim(),CLIENT_SECRET=()=>String(process.env.GOOGLE_SHEETS_CLIENT_SECRET||'').trim();
-const REDIRECT=()=>String(process.env.GOOGLE_SHEETS_REDIRECT_URI||'https://autoreplys.vercel.app/api/google-sheets/callback').trim();
-const SITE='https://autoreplys.vercel.app',SB='https://dwgxmmftybxwpurgsxkx.supabase.co',PUB='sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08';
+const SITE=String(process.env.APP_URL||'https://autoreplys.vercel.app').replace(/\/+$/,'');
+const SB=String(process.env.SUPABASE_URL||'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/,'');
+const PUB=String(process.env.SUPABASE_PUBLISHABLE_KEY||'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08');
+const REDIRECT=()=>String(process.env.GOOGLE_SHEETS_REDIRECT_URI||SITE+'/api/google-sheets/callback').trim();
 const authHeaders=(token:string)=>({apikey:PUB,Authorization:'Bearer '+token});
 const cookieToken=(req:any)=>{const m=String(req.headers?.cookie||'').match(/(?:^|;\s*)gs_oauth_session=([^;]+)/);return m?decodeURIComponent(m[1]):''};
 const SECRET=()=>String(process.env.GOOGLE_SHEETS_STATE_SECRET||process.env.INSTAGRAM_APP_SECRET||'').trim(),sign=(s:string)=>crypto.createHmac('sha256',SECRET()).update(s).digest('hex');

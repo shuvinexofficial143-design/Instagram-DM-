@@ -33,8 +33,8 @@ export const PlanRenewModal: React.FC = () => {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {PLANS.map(plan => {
             const active = current === plan.id;
-            return <article key={plan.id} className={`relative flex min-h-[330px] flex-col rounded-3xl border bg-white/80 p-5 shadow-sm ${plan.popular ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
-              {plan.popular && <span className="absolute right-4 top-4 rounded-full bg-indigo-600 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">Most Popular</span>}
+            return <article key={plan.id} className={`relative flex min-h-[330px] flex-col rounded-3xl border bg-white/80 p-5 shadow-sm ${('popular' in plan && plan.popular) ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
+              {'popular' in plan && plan.popular && <span className="absolute right-4 top-4 rounded-full bg-indigo-600 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">Most Popular</span>}
               <h3 className="text-lg font-black text-slate-950">{plan.name}</h3>
               <div className="mt-2"><span className="text-3xl font-black text-slate-950">{plan.price}</span><span className="text-xs font-bold text-slate-500"> / month</span></div>
               <div className="my-5 h-px bg-slate-200" />

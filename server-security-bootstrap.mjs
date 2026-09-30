@@ -1,9 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://jnrftwolkhkuvpsbvbww.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY =
-  process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_Eae4_ClutOufXa5U2vo6MA_nhnOL8D7';
+  process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08';
 
 const sessionSecret =
   process.env.AUTH_SESSION_SECRET ||

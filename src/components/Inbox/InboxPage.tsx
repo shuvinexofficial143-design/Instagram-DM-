@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   MessageSquare,
   Search,
@@ -28,6 +28,8 @@ export const InboxPage: React.FC = () => {
     toggleAiForUser,
     deleteInboxThread,
     deleteInboxThreadsBulk,
+    markInboxThreadRead,
+    markInboxThreadUnread,
   } = useApp();
   const [inputText, setInputText] = useState('');
   const [search, setSearch] = useState('');
@@ -104,6 +106,11 @@ export const InboxPage: React.FC = () => {
     : [];
 
   const isCurrentAiPaused = selectedUser ? isAiPausedForUser(selectedUser) : false;
+
+  useEffect(() => {
+    if (!selectedUser) return;
+    void markInboxThreadRead(selectedUser);
+  }, [selectedUser]);
 
   const getContactAvatar = (uname: string): string | null => {
     if (!uname) return null;
@@ -256,6 +263,7 @@ export const InboxPage: React.FC = () => {
                 const isUserAiPaused = isAiPausedForUser(username);
                 const avatar = getContactAvatar(username);
                 const isSelected = selectedThreadUsernames.includes(username);
+                const unreadCount = userMsgs.filter((m) => m.direction === 'in' && !m.is_read).length;
 
                 return (
                   <div
@@ -288,7 +296,9 @@ export const InboxPage: React.FC = () => {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-xs text-slate-900 truncate">@{username}</span>
+                          {unreadCount > 0 && <span className="min-w-5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-center text-[10px] font-black text-white">{Math.min(unreadCount, 99)}</span>}
                         </div>
+                        <p className="mt-0.5 truncate text-[11px] text-slate-500">{cleanMessagePreview(lastMsg?.message_text)}</p>
                       </div>
                     </div>
 
@@ -342,6 +352,14 @@ export const InboxPage: React.FC = () => {
 
                 {/* AI Toggle Switch & Delete Thread Button */}
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void markInboxThreadUnread(selectedUser)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                    title="Mark this conversation unread"
+                  >
+                    Mark unread
+                  </button>
                   <button
                     type="button"
                     onClick={() => toggleAiForUser(selectedUser)}
@@ -442,6 +460,7 @@ export const InboxPage: React.FC = () => {
 
                         <span className="text-[10px] text-slate-400 px-1 font-medium">
                           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {isOut && msg.delivery_status ? ' · ' + msg.delivery_status : ''}
                         </span>
                       </div>
                     );

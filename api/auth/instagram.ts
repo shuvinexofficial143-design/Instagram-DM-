@@ -1,6 +1,9 @@
 import { createHmac, randomUUID } from 'node:crypto';
 
-const PROD_ORIGIN = 'https://autoreplys.vercel.app';
+const PROD_ORIGIN = String(process.env.APP_URL || 'https://autoreplys.vercel.app').replace(/\/+$/, '');
+const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
+const SUPABASE_URL = String(process.env.SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
+const SUPABASE_PUBLISHABLE_KEY = String(process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08');
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
 function cleanEnv(name: string): string {
@@ -12,7 +15,7 @@ function getRedirectUri(req: any): string {
   const host = String(req?.headers?.host || '').trim().toLowerCase();
   const proto = String(req?.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
 
-  if (host === 'autoreplys.vercel.app') {
+  if (host === PROD_HOST) {
     return `${PROD_ORIGIN}/api/auth/instagram/callback`;
   }
 
@@ -54,10 +57,10 @@ async function getAuthenticatedUserId(req: any): Promise<string> {
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
   if (!token) return '';
 
-  const response = await fetch('https://dwgxmmftybxwpurgsxkx.supabase.co/auth/v1/user', {
+  const response = await fetch(SUPABASE_URL + '/auth/v1/user', {
     headers: {
       Authorization: `Bearer ${token}`,
-      apikey: 'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08',
+      apikey: SUPABASE_PUBLISHABLE_KEY,
     },
   });
   if (!response.ok) return '';

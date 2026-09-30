@@ -1,27 +1,6 @@
+import { enforceRateLimit, resolveAiIdentity } from '../_auth';
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = 'gpt-4o-mini';
-const GUEST_COOKIE = 'autoreply_guest_workspace';
-
-function getCookie(req: any, name: string): string {
-  const raw = String(req?.headers?.cookie || '');
-  for (const part of raw.split(';')) {
-    const idx = part.indexOf('=');
-    if (idx < 0) continue;
-    if (part.slice(0, idx).trim() !== name) continue;
-    const value = part.slice(idx + 1).trim();
-    try {
-      return decodeURIComponent(value);
-    } catch {
-      return value;
-    }
-  }
-  return '';
-}
-
-function isGuestWorkspace(value: string): boolean {
-  return /^guest_[a-f0-9-]{16,}$/i.test(value);
-}
-
 function cleanHistory(value: any): Array<{ role: 'user' | 'assistant'; content: string }> {
   if (!Array.isArray(value)) return [];
 
@@ -46,18 +25,32 @@ function maxTokensForLength(length: unknown): number {
 }
 
 export default async function handler(req: any, res: any) {
-  if (req.method === 'GET' && String(req.query?.check || '') === '1') {
-    return res.status(200).json({
-      ok: true,
-      model: OPENAI_MODEL,
-      apiKeyConfigured: Boolean(OPENAI_API_KEY),
-      endpoint: '/api/openai/chat',
+  const isHealthCheck = req.method === 'GET' && String(req.query?.check || '') === '1';
+  if (req.method !== 'POST' && !isHealthCheck) {
+    res.setHeader('Allow', 'GET, POST');
+    return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
+  }
+
+  const identity = await resolveAiIdentity(req, true);
+  if (!identity) {
+    return res.status(401).json({
+      ok: false,
+      error: 'Authentication or a valid connected Instagram workspace is required.',
     });
   }
 
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'GET, POST');
-    return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
+  const rate = enforceRateLimit(identity.key + ':openai-chat', isHealthCheck ? 20 : 30, 60_000);
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfter));
+    return res.status(429).json({ ok: false, error: 'Too many AI requests. Please try again shortly.' });
+  }
+
+  if (isHealthCheck) {
+    return res.status(200).json({
+      ok: true,
+      model: OPENAI_MODEL,
+      endpoint: '/api/openai/chat',
+    });
   }
 
   if (!OPENAI_API_KEY) {
@@ -65,16 +58,6 @@ export default async function handler(req: any, res: any) {
       ok: false,
       error: 'OPENAI_API_KEY is not configured in Vercel.',
       code: 'OPENAI_KEY_MISSING',
-    });
-  }
-
-  // Keep the paid OpenAI endpoint private to a browser that has connected an
-  // Instagram workspace on this site. The secret API key never reaches the client.
-  const workspaceId = getCookie(req, GUEST_COOKIE);
-  if (!isGuestWorkspace(workspaceId)) {
-    return res.status(401).json({
-      ok: false,
-      error: 'Connect Instagram before using DM AI Conversation.',
     });
   }
 

@@ -117,6 +117,9 @@ export interface InboxMessage {
   is_automated?: boolean;
   automation_id?: string;
   timestamp: string;
+  is_read?: boolean;
+  read_at?: string;
+  delivery_status?: 'sending' | 'sent' | 'failed';
   is_test?: boolean;
 }
 

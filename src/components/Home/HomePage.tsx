@@ -22,9 +22,21 @@ export const HomePage: React.FC = () => {
   const followingCount = accountMeta?.following_count;
   const postsCount = accountMeta?.media_count;
   const activeAutomations = (automations || []).filter(a => a?.status === 'active');
-  const totalDmsSent = (automations || []).reduce((n, a) => n + (a?.stats?.dms_sent || 0), 0);
-  const commentsReplied = (automations || []).filter(a => a?.trigger_type === 'comment').reduce((n, a) => n + (a?.stats?.runs || 0), 0);
-  const newLeads = (contacts || []).length;
+  const periodStart = useMemo(() => {
+    const now = new Date();
+    if (period === 'today') {
+      now.setHours(0, 0, 0, 0);
+      return now.getTime();
+    }
+    return Date.now() - (period === '7d' ? 7 : 30) * 24 * 60 * 60 * 1000;
+  }, [period]);
+  const periodMessages = useMemo(
+    () => (inboxMessages || []).filter((m) => new Date(m.timestamp || 0).getTime() >= periodStart),
+    [inboxMessages, periodStart]
+  );
+  const totalDmsSent = periodMessages.filter((m) => m.direction === 'out').length;
+  const aiReplies = periodMessages.filter((m) => m.direction === 'out' && m.is_automated).length;
+  const newLeads = (contacts || []).filter((c) => new Date(c.first_interaction_at || 0).getTime() >= periodStart).length;
 
   const topAutomations = useMemo(
     () => [...(automations || [])].sort((a,b) => (b?.stats?.runs || 0) - (a?.stats?.runs || 0)).slice(0,3),
@@ -50,7 +62,7 @@ export const HomePage: React.FC = () => {
   const kpis = [
     { label:'Active Automations', value:activeAutomations.length, icon:Zap, tone:'text-violet-600 bg-violet-50' },
     { label:'DMs Sent', value:totalDmsSent, icon:Send, tone:'text-blue-600 bg-blue-50' },
-    { label:'Comments Replied', value:commentsReplied, icon:MessageCircle, tone:'text-pink-600 bg-pink-50' },
+    { label:'AI Replies', value:aiReplies, icon:Bot, tone:'text-pink-600 bg-pink-50' },
     { label:'New Leads', value:newLeads, icon:Users, tone:'text-orange-600 bg-orange-50' },
   ];
 
@@ -60,7 +72,7 @@ export const HomePage: React.FC = () => {
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-[22px] font-bold tracking-tight text-slate-950 sm:text-[26px]">Good evening, {user.name || 'Creator'} 👋</h1>
-            <p className="mt-1 text-sm font-medium text-slate-500">Here’s what’s happening with your Instagram automation today.</p>
+            <p className="mt-1 text-sm font-medium text-slate-500">Here’s what’s happening with your Instagram automation in the selected period.</p>
           </div>
           <div className="inline-flex self-start rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
             {([['today','Today'],['7d','7 Days'],['30d','30 Days']] as const).map(([id,label]) => (

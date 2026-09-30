@@ -1,22 +1,14 @@
 import { createClient, type User as SupabaseUser, type Session } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://dwgxmmftybxwpurgsxkx.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08';
+const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
+const SUPABASE_PUBLISHABLE_KEY = String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08');
 
 const PRODUCTION_SITE_URL = 'https://autoreplys.vercel.app';
 
 function getAuthRedirectUrl(): string {
-  if (typeof window !== 'undefined') {
-    const { hostname, origin } = window.location;
-
-    // Production must never inherit a stale localhost URL from deployment env.
-    if (hostname === 'autoreplys.vercel.app') return PRODUCTION_SITE_URL;
-
-    // Keep Vercel preview deployments on their own HTTPS origin when explicitly used.
-    if (hostname.endsWith('.vercel.app')) return origin.replace(/\/+$/, '');
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin.replace(/\/+$/, '');
   }
-
-  // OAuth for this deployed app always returns to the live site.
   return PRODUCTION_SITE_URL;
 }
 
@@ -169,10 +161,19 @@ export async function createUserWithEmailAndPassword(_auth: typeof auth, email: 
 }
 
 export async function sendPasswordResetEmail(_auth: typeof auth, email: string) {
+  const base = getAuthRedirectUrl().replace(/\/+$/, '');
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: getAuthRedirectUrl(),
+    redirectTo: `${base}/reset-password`,
   });
   if (error) throw error;
+}
+
+export async function updatePassword(password: string) {
+  const { data, error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+  const next = toCompatUser(data.user, (await supabase.auth.getSession()).data.session);
+  if (next) auth.currentUser = next;
+  return next;
 }
 
 export async function signOut(_auth?: typeof auth) {

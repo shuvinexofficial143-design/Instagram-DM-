@@ -1,3 +1,4 @@
+import { enforceRateLimit, resolveAiIdentity } from '../_auth';
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = 'gpt-4o-mini';
 
@@ -312,6 +313,16 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
+  }
+
+  const identity = await resolveAiIdentity(req, false);
+  if (!identity) {
+    return res.status(401).json({ ok: false, error: 'Sign in before using AI prompt analysis.' });
+  }
+  const rate = enforceRateLimit(identity.key + ':prompt-analyzer', 12, 60_000);
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfter));
+    return res.status(429).json({ ok: false, error: 'Too many prompt analysis requests. Try again shortly.' });
   }
 
   const prompt = String(req.body?.prompt || '').trim();

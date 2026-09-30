@@ -23,6 +23,36 @@ import {
   isSupabaseInitialized,
 } from '../lib/supabase';
 
+export type ActiveTab = 'home' | 'analytics' | 'automations' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'inbox' | 'integrations' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
+
+const TAB_PATHS: Record<ActiveTab, string> = {
+  home: '/',
+  analytics: '/analytics',
+  automations: '/automations',
+  activity: '/activity',
+  knowledge: '/knowledge',
+  catalog: '/catalog',
+  'lead-forms': '/lead-forms',
+  contacts: '/contacts',
+  inbox: '/inbox',
+  integrations: '/integrations',
+  billing: '/billing',
+  settings: '/settings',
+  about: '/about',
+  help: '/help',
+  faq: '/help/faq',
+  'billing-help': '/help/billing',
+  privacy: '/privacy',
+  terms: '/terms',
+  admin: '/admin',
+};
+
+const tabFromPath = (pathname: string): ActiveTab => {
+  const clean = (pathname || '/').replace(/\/+$/, '') || '/';
+  const entry = (Object.entries(TAB_PATHS) as Array<[ActiveTab, string]>).find(([, path]) => path === clean);
+  return entry?.[0] || 'home';
+};
+
 interface AppContextType {
   user: UserProfile;
   firebaseUser: User | null;
@@ -36,10 +66,11 @@ interface AppContextType {
   automations: Automation[];
   contacts: Contact[];
   inboxMessages: InboxMessage[];
+  webhookLogs: WebhookLogEvent[];
   pausedAiUsers: string[];
   isAdmin: boolean;
-  activeTab: 'home' | 'automations' | 'contacts' | 'inbox' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
-  setActiveTab: (tab: 'home' | 'automations' | 'contacts' | 'inbox' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin') => void;
+  activeTab: ActiveTab;
+  setActiveTab: (tab: ActiveTab) => void;
   
   // Modals & Builder States
   isBuilderOpen: boolean;
@@ -68,6 +99,8 @@ interface AppContextType {
   
   // Inbox Actions
   sendManualReply: (fromUsername: string, text: string) => void;
+  markInboxThreadRead: (username: string) => Promise<void>;
+  markInboxThreadUnread: (username: string) => Promise<void>;
   
   // Deletion Actions (Permanent DB Removal)
   deleteContact: (contactId: string, username?: string) => Promise<void>;
@@ -231,11 +264,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([]);
-  const [, setLogs] = useState<WebhookLogEvent[]>([]);
+  const [webhookLogs, setLogs] = useState<WebhookLogEvent[]>([]);
   const [pausedAiUsers, setPausedAiUsers] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
-  const [activeTab, setActiveTab] = useState<'home' | 'automations' | 'contacts' | 'inbox' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin'>('home');
+  const [activeTab, setActiveTabState] = useState<ActiveTab>(() =>
+    typeof window === 'undefined' ? 'home' : tabFromPath(window.location.pathname)
+  );
+  const setActiveTab = (tab: ActiveTab) => {
+    setActiveTabState(tab);
+    if (typeof window !== 'undefined') {
+      const nextPath = TAB_PATHS[tab];
+      if (window.location.pathname !== nextPath) {
+        window.history.pushState({ tab }, '', nextPath);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPopState = () => setActiveTabState(tabFromPath(window.location.pathname));
+    window.addEventListener('popstate', onPopState);
+    onPopState();
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
   const [isBuilderOpen, setIsBuilderOpen] = useState<boolean>(false);
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState<boolean>(false);
@@ -500,6 +552,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             message_text: message.message_text || '',
             direction: message.direction === 'out' ? 'out' : 'in',
             timestamp: message.timestamp || new Date().toISOString(),
+            is_read: message.direction === 'out' ? true : Boolean(message.is_read),
+            read_at: message.read_at || undefined,
           }));
 
           setInboxMessages(
@@ -573,12 +627,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           message_text: m.message_text || '',
           direction: m.direction || 'in',
           timestamp: m.timestamp || new Date().toISOString(),
+          is_read: (m.direction || 'in') === 'out' ? true : Boolean(m.is_read),
+          read_at: m.read_at || undefined,
         }));
         const filtered = filterOutMockMessages(sanitized);
         setInboxMessages(filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
       } else {
         setInboxMessages([]);
       }
+    });
+
+    const unsubscribeLogs = subscribeToUserCollection<WebhookLogEvent>(uid, 'webhook_logs', (data) => {
+      const items = Array.isArray(data) ? [...data] : [];
+      setLogs(items.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
     });
 
     const unsubscribeAccount = subscribeToUserCollection<InstagramAccount>(uid, 'instagram_account', (data) => {
@@ -594,6 +655,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribeAutomations();
       unsubscribeContacts();
       unsubscribeInbox();
+      unsubscribeLogs();
       unsubscribeAccount();
     };
   }, [firebaseUser?.uid, isSupabaseInitialized]);
@@ -1171,6 +1233,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       direction: 'out',
       is_automated: false,
       timestamp: nowIso,
+      is_read: true,
+      delivery_status: 'sending',
     };
 
     setInboxMessages((prev) => [newOutMsg, ...prev]);
@@ -1181,19 +1245,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Dispatch live Instagram Graph API call to send message to recipient
     try {
-      await fetch('/api/instagram/send-dm', {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/instagram/send-dm', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           recipientUsername: cleanUser,
           messageText: text.trim(),
           userId: uid,
         }),
       });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || `Instagram send failed (HTTP ${response.status})`);
+      }
+      const sent = { ...newOutMsg, delivery_status: 'sent' as const };
+      setInboxMessages((prev) => prev.map((m) => (m.id === sent.id ? sent : m)));
+      saveUserDocument(uid, 'inbox_messages', sent);
     } catch (err) {
       console.warn('[SEND_MANUAL_DM_DISPATCH_WARN]', err);
+      const failed = { ...newOutMsg, delivery_status: 'failed' as const };
+      setInboxMessages((prev) => prev.map((m) => (m.id === failed.id ? failed : m)));
+      saveUserDocument(uid, 'inbox_messages', failed);
     }
   };
+
+  const setThreadReadState = async (username: string, read: boolean) => {
+    const clean = String(username || '').replace(/^@/, '').toLowerCase();
+    if (!clean) return;
+    const now = new Date().toISOString();
+    const uid = firebaseUser?.uid;
+    const affected = inboxMessages.filter(
+      (m) =>
+        m.direction === 'in' &&
+        (m.from_username || m.from_ig_id || '').replace(/^@/, '').toLowerCase() === clean &&
+        Boolean(m.is_read) !== read
+    );
+    setInboxMessages((prev) =>
+      prev.map((m) => {
+        const same =
+          m.direction === 'in' &&
+          (m.from_username || m.from_ig_id || '').replace(/^@/, '').toLowerCase() === clean;
+        return same ? { ...m, is_read: read, read_at: read ? now : undefined } : m;
+      })
+    );
+    if (!uid) return;
+    await Promise.all(
+      affected.map((m) =>
+        saveUserDocument(uid, 'inbox_messages', {
+          ...m,
+          is_read: read,
+          read_at: read ? now : undefined,
+        })
+      )
+    );
+  };
+
+  const markInboxThreadRead = (username: string) => setThreadReadState(username, true);
+  const markInboxThreadUnread = (username: string) => setThreadReadState(username, false);
 
   // Contacts & Inbox Deletion (Scoped strictly by user UID)
   const deleteContact = async (contactId: string, username?: string) => {
@@ -1397,6 +1509,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         automations,
         contacts,
         inboxMessages,
+        webhookLogs,
         pausedAiUsers,
         isAdmin,
         activeTab,
@@ -1419,6 +1532,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         simulateWebhookEvent,
         triggerWebhookSimulation,
         sendManualReply,
+        markInboxThreadRead,
+        markInboxThreadUnread,
         deleteContact,
         deleteContactsBulk,
         deleteInboxThread,

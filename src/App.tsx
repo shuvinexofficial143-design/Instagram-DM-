@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 // Deployment refresh: 2026-09-20T08:59Z
 import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/Sidebar';
@@ -9,16 +9,24 @@ import { ConnectChannelModal } from './components/Common/ConnectChannelModal';
 import { IntroSplash } from './components/Common/IntroSplash';
 import { ErrorBoundary } from './components/Common/ErrorBoundary';
 import { HomePage } from './components/Home/HomePage';
-import { AutomationsPage } from './components/Automations/AutomationsPage';
-import { AutomationBuilder } from './components/Automations/AutomationBuilder';
-import { ContactsPage } from './components/Contacts/ContactsPage';
-import { InboxPage } from './components/Inbox/InboxPage';
-import { SettingsPage } from './components/Settings/SettingsPage';
-import { BillingUsagePage } from './components/Billing/BillingUsagePage';
-import { AboutUsPage } from './components/About/AboutUsPage';
-import { AdminPage } from './components/Admin/AdminPage';
 import { LoginPage } from './components/Auth/LoginPage';
-import { SupportPage } from './components/Support/SupportPage';
+
+const AnalyticsPage = lazy(() => import('./components/Analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
+const ActivityLogsPage = lazy(() => import('./components/Activity/ActivityLogsPage').then((m) => ({ default: m.ActivityLogsPage })));
+const IntegrationsPage = lazy(() => import('./components/Integrations/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })));
+const KnowledgeBasePage = lazy(() => import('./components/Knowledge/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })));
+const CatalogPage = lazy(() => import('./components/Catalog/CatalogPage').then((m) => ({ default: m.CatalogPage })));
+const LeadFormsPage = lazy(() => import('./components/LeadForms/LeadFormsPage').then((m) => ({ default: m.LeadFormsPage })));
+const AutomationsPage = lazy(() => import('./components/Automations/AutomationsPage').then((m) => ({ default: m.AutomationsPage })));
+const AutomationBuilder = lazy(() => import('./components/Automations/AutomationBuilder').then((m) => ({ default: m.AutomationBuilder })));
+const ContactsPage = lazy(() => import('./components/Contacts/ContactsPage').then((m) => ({ default: m.ContactsPage })));
+const InboxPage = lazy(() => import('./components/Inbox/InboxPage').then((m) => ({ default: m.InboxPage })));
+const SettingsPage = lazy(() => import('./components/Settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const BillingUsagePage = lazy(() => import('./components/Billing/BillingUsagePage').then((m) => ({ default: m.BillingUsagePage })));
+const AboutUsPage = lazy(() => import('./components/About/AboutUsPage').then((m) => ({ default: m.AboutUsPage })));
+const AdminPage = lazy(() => import('./components/Admin/AdminPage').then((m) => ({ default: m.AdminPage })));
+const ResetPasswordPage = lazy(() => import('./components/Auth/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
+const SupportPage = lazy(() => import('./components/Support/SupportPage').then((m) => ({ default: m.SupportPage })));
 
 const MainContent: React.FC = () => {
   const { activeTab } = useApp();
@@ -29,9 +37,15 @@ const MainContent: React.FC = () => {
 
       <ErrorBoundary>
         {(!activeTab || activeTab === 'home') && <HomePage />}
+        {activeTab === 'analytics' && <AnalyticsPage />}
         {activeTab === 'automations' && <AutomationsPage />}
+        {activeTab === 'activity' && <ActivityLogsPage />}
+        {activeTab === 'knowledge' && <KnowledgeBasePage />}
+        {activeTab === 'catalog' && <CatalogPage />}
+        {activeTab === 'lead-forms' && <LeadFormsPage />}
         {activeTab === 'contacts' && <ContactsPage />}
         {activeTab === 'inbox' && <InboxPage />}
+        {activeTab === 'integrations' && <IntegrationsPage />}
         {activeTab === 'billing' && <BillingUsagePage />}
         {activeTab === 'settings' && <SettingsPage />}
         {activeTab === 'about' && <AboutUsPage />}
@@ -65,6 +79,28 @@ const AppShell: React.FC = () => {
     );
   }
 
+
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const isResetPasswordRoute = pathname === '/reset-password';
+  const isPublicLegalRoute = pathname === '/privacy' || pathname === '/terms';
+
+  if (isResetPasswordRoute) {
+    return (
+      <ErrorBoundary>
+        <ResetPasswordPage />
+      </ErrorBoundary>
+    );
+  }
+
+  if (isPublicLegalRoute && !firebaseUser) {
+    return (
+      <ErrorBoundary>
+        <div className="min-h-[100dvh] bg-[#F7FAFF]">
+          <SupportPage page={pathname === '/privacy' ? 'privacy' : 'terms'} />
+        </div>
+      </ErrorBoundary>
+    );
+  }
 
   if (!firebaseUser) {
     return (
@@ -101,7 +137,9 @@ const AppShell: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <AppShell />
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#F7FAFF] text-sm font-semibold text-slate-500">Loading workspace…</div>}>
+        <AppShell />
+      </Suspense>
     </AppProvider>
   );
 }

@@ -12,10 +12,11 @@ export type StoredInstagramAccount = {
   status: 'connected';
 };
 
-const SUPABASE_URL = 'https://dwgxmmftybxwpurgsxkx.supabase.co';
+const SUPABASE_URL = String(process.env.SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
 const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const GUEST_COOKIE = 'autoreply_guest_workspace';
-const PROD_ORIGIN = 'https://autoreplys.vercel.app';
+const PROD_ORIGIN = String(process.env.APP_URL || 'https://autoreplys.vercel.app').replace(/\/+$/, '');
+const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
 
 export const metaAppId = String(process.env.INSTAGRAM_APP_ID || '').trim();
 export const metaAppSecret = String(process.env.INSTAGRAM_APP_SECRET || '').trim();
@@ -38,7 +39,7 @@ export function getInstagramRedirectUri(req: any): string {
   const configured = String(process.env.REDIRECT_URI || '').trim();
   const host = String(req?.headers?.host || '').trim().toLowerCase();
 
-  if (host === 'autoreplys.vercel.app') {
+  if (host === PROD_HOST) {
     return `${PROD_ORIGIN}/api/auth/instagram/callback`;
   }
 

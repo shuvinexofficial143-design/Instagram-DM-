@@ -86,7 +86,7 @@ export default async function handler(req: any, res: any) {
   // Keep the already-issued Meta verification token working even if a stale
   // Vercel environment variable is missing during a migration/deploy.
   const acceptedVerifyTokens = new Set(
-    [configuredVerifyToken, 'nazha12'].filter(Boolean)
+    [configuredVerifyToken].filter(Boolean)
   );
   const appSecret = String(process.env.INSTAGRAM_APP_SECRET || '').trim();
   const openaiKey = String(process.env.OPENAI_API_KEY || '').trim();
@@ -175,7 +175,7 @@ export default async function handler(req: any, res: any) {
         openaiKey,
         relayReceivedAt,
         appSecret,
-        configuredVerifyToken || 'nazha12'
+        configuredVerifyToken
       );
 
       console.log('[LIVE_DM_AI] Processor complete', {

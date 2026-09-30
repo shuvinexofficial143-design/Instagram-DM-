@@ -11,6 +11,8 @@ export default function handler(req: any, res: any) {
     process.env.WEBHOOK_VERIFY_TOKEN || process.env.VERIFY_TOKEN || ''
   ).trim();
   const redirectUri = String(process.env.REDIRECT_URI || '').trim();
+  const productionOrigin = String(process.env.APP_URL || 'https://autoreplys.vercel.app').replace(/\/+$/, '');
+  const expectedRedirectUri = productionOrigin + '/api/auth/instagram/callback';
 
   return res.status(200).json({
     ok: true,
@@ -22,9 +24,8 @@ export default function handler(req: any, res: any) {
     redirectUri:
       redirectUri && !redirectUri.includes('localhost')
         ? redirectUri
-        : 'https://autoreplys.vercel.app/api/auth/instagram/callback',
-    expectedRedirectUri:
-      'https://autoreplys.vercel.app/api/auth/instagram/callback',
-    productionOrigin: 'https://autoreplys.vercel.app',
+        : expectedRedirectUri,
+    expectedRedirectUri,
+    productionOrigin,
   });
 }

@@ -17,6 +17,7 @@ import {
   Bot,
 } from 'lucide-react';
 import { PromptAnalysisResult } from '../../types';
+import { auth } from '../../lib/supabase';
 
 interface SmartPromptAnalyzerProps {
   currentPrompt: string;
@@ -61,9 +62,11 @@ export const SmartPromptAnalyzer: React.FC<SmartPromptAnalyzerProps> = ({
     setApplied(false);
 
     try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Sign in before using prompt analysis.');
       const res = await fetch('/api/openai/analyze-prompt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         credentials: 'same-origin',
         body: JSON.stringify({ prompt: currentPrompt }),
       });

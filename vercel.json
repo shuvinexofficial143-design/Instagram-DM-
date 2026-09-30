@@ -4,14 +4,112 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/webhook", "destination": "/api/webhook" },
-    { "source": "/webhook/", "destination": "/api/webhook" },
-    { "source": "/api/google-sheets/connect", "destination": "/api/google-sheets?action=connect" },
-    { "source": "/api/google-sheets/callback", "destination": "/api/google-sheets?action=callback" },
-    { "source": "/api/google-sheets/status", "destination": "/api/google-sheets?action=status" },
-    { "source": "/api/google-sheets/create-sheet", "destination": "/api/google-sheets?action=create-sheet" },
-    { "source": "/api/google-sheets/append-lead", "destination": "/api/google-sheets?action=append-lead" },
-    { "source": "/admin", "destination": "/index.html" }
+    {
+      "source": "/webhook",
+      "destination": "/api/webhook"
+    },
+    {
+      "source": "/webhook/",
+      "destination": "/api/webhook"
+    },
+    {
+      "source": "/api/google-sheets/connect",
+      "destination": "/api/google-sheets?action=connect"
+    },
+    {
+      "source": "/api/google-sheets/callback",
+      "destination": "/api/google-sheets?action=callback"
+    },
+    {
+      "source": "/api/google-sheets/status",
+      "destination": "/api/google-sheets?action=status"
+    },
+    {
+      "source": "/api/google-sheets/create-sheet",
+      "destination": "/api/google-sheets?action=create-sheet"
+    },
+    {
+      "source": "/api/google-sheets/append-lead",
+      "destination": "/api/google-sheets?action=append-lead"
+    },
+    {
+      "source": "/admin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/analytics",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/automations",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/activity",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/contacts",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/inbox",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/integrations",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/billing",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/settings",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/about",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/help",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/help/faq",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/help/billing",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/knowledge",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/catalog",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/lead-forms",
+      "destination": "/index.html"
+    }
   ],
-  "regions": ["bom1"]
+  "regions": [
+    "bom1"
+  ]
 }

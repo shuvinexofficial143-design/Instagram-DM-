@@ -364,7 +364,7 @@
 }
 
 
-/* Global typography lift — approximately +2px across the product while preserving hierarchy. */
+/* Keep Tailwind rem sizing predictable across desktop and mobile. */
 html {
-  font-size: 18px;
+  font-size: 16px;
 }

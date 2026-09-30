@@ -5,6 +5,12 @@ import {
   Users,
   MessageSquare,
   Settings,
+  ChartNoAxesCombined,
+  Activity,
+  Plug,
+  BookOpen,
+  Package,
+  ClipboardList,
   Info,
   Instagram,
   CreditCard,
@@ -28,15 +34,22 @@ export const Header: React.FC = () => {
 
   const navItems = [
     { id: 'home' as const, label: 'Home', icon: Home },
+    { id: 'analytics' as const, label: 'Analytics', icon: ChartNoAxesCombined },
     { id: 'automations' as const, label: 'Automations', icon: Zap },
+    { id: 'activity' as const, label: 'Activity', icon: Activity },
+    { id: 'knowledge' as const, label: 'Knowledge', icon: BookOpen },
+    { id: 'catalog' as const, label: 'Catalog', icon: Package },
+    { id: 'lead-forms' as const, label: 'Lead Forms', icon: ClipboardList },
     { id: 'contacts' as const, label: 'Contacts', icon: Users },
     { id: 'inbox' as const, label: 'Inbox', icon: MessageSquare },
     { id: 'billing' as const, label: 'Billing', icon: CreditCard },
+    { id: 'integrations' as const, label: 'Integrations', icon: Plug },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
     { id: 'help' as const, label: 'Help Center', icon: CircleHelp },
+    { id: 'about' as const, label: 'About Us', icon: Info },
   ];
 
-  const unreadCount = (inboxMessages || []).filter((m) => m?.direction === 'in').length;
+  const unreadCount = (inboxMessages || []).filter((m) => m?.direction === 'in' && !m?.is_read).length;
 
   return (
     <>
@@ -61,7 +74,7 @@ export const Header: React.FC = () => {
               <div className="flex items-center gap-2.5"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 text-white"><Zap className="h-4.5 w-4.5 fill-white" /></div><div><p className="text-sm font-black text-slate-950">AutoReply.io</p><p className="text-[10px] font-semibold text-slate-500">Instagram automation</p></div></div>
               <button onClick={() => setDrawerOpen(false)} aria-label="Close navigation" className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500"><X className="h-4 w-4" /></button>
             </div>
-            <nav className="mt-4 space-y-1">
+            <nav className="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto">
               {navItems.map(item => {
                 const Icon=item.icon, active=activeTab===item.id;
                 const showBadge=item.id==='inbox' && unreadCount>0;

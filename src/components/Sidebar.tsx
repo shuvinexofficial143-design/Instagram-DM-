@@ -6,6 +6,12 @@ import {
   Users,
   MessageSquare,
   Settings,
+  ChartNoAxesCombined,
+  Activity,
+  Plug,
+  BookOpen,
+  Package,
+  ClipboardList,
   LogOut,
   ChevronRight,
   ChevronLeft,
@@ -47,7 +53,7 @@ export const Sidebar: React.FC = () => {
   }, [isCollapsed]);
 
   interface NavItem {
-    id: 'home' | 'automations' | 'contacts' | 'inbox' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
+    id: 'home' | 'analytics' | 'automations' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'inbox' | 'integrations' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: number;
@@ -56,17 +62,24 @@ export const Sidebar: React.FC = () => {
 
   const baseNavItems: NavItem[] = [
     { id: 'home', label: 'Home', icon: LayoutDashboard },
+    { id: 'analytics', label: 'Analytics', icon: ChartNoAxesCombined },
     { id: 'automations', label: 'Automations', icon: Zap },
+    { id: 'activity', label: 'Activity Logs', icon: Activity },
+    { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
+    { id: 'catalog', label: 'Catalog', icon: Package },
+    { id: 'lead-forms', label: 'Lead Forms', icon: ClipboardList },
     { id: 'contacts', label: 'Contacts', icon: Users },
     {
       id: 'inbox',
       label: 'Inbox',
       icon: MessageSquare,
-      badge: (inboxMessages || []).filter((m) => m?.direction === 'in').length,
+      badge: (inboxMessages || []).filter((m) => m?.direction === 'in' && !m?.is_read).length,
     },
+    { id: 'integrations', label: 'Integrations', icon: Plug },
     { id: 'billing', label: 'Billing & Usage', icon: CreditCard, tag: String(user?.plan || 'free') },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'help', label: 'Help Center', icon: CircleHelp },
+    { id: 'about', label: 'About Us', icon: CircleHelp },
   ];
 
   const navItems: NavItem[] = isAdmin
