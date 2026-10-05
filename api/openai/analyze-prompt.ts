@@ -24,6 +24,8 @@ type Analysis = {
   quality_score: number;
   analysis_summary: string;
   suggestions: string[];
+  missing_information: string[];
+  customer_data_fields: string[];
   enhanced_structured_prompt: string;
 };
 
@@ -104,6 +106,14 @@ function localAnalyze(prompt: string): Analysis {
     suggestions.push('Add guardrails: what the assistant must never claim, reveal, or promise.');
   }
 
+  const missingInformation = suggestions.map((item) => item.replace(/^Add /, '').replace(/\.$/, ''));
+  const fieldRules: Array<[string, RegExp]> = [
+    ['Name', /name|नाम/i], ['Phone', /phone|mobile|number|फोन|मोबाइल/i], ['Email', /email|ईमेल/i],
+    ['City', /city|location|शहर/i], ['Address', /address|पता/i], ['Product', /product|item|प्रोडक्ट/i],
+    ['Quantity', /quantity|qty|क्वांटिटी/i], ['Date', /date|तारीख/i], ['Time', /time|समय/i], ['Budget', /budget|बजट/i]
+  ];
+  const customerDataFields = fieldRules.filter(([, rule]) => rule.test(prompt)).map(([field]) => field);
+
   const scoreBase = Math.min(
     100,
     35 +
@@ -181,6 +191,8 @@ function localAnalyze(prompt: string): Analysis {
     suggestions: suggestions.length
       ? suggestions
       : ['The prompt is already well structured. Keep business facts current and specific.'],
+    missing_information: missingInformation,
+    customer_data_fields: customerDataFields,
     enhanced_structured_prompt: structured,
   };
 }
@@ -232,6 +244,12 @@ function normalizeAnalysis(value: any, fallback: Analysis): Analysis {
     suggestions: Array.isArray(obj?.suggestions)
       ? obj.suggestions.map(String).slice(0, 8)
       : fallback.suggestions,
+    missing_information: Array.isArray(obj?.missing_information)
+      ? obj.missing_information.map(String).slice(0, 10)
+      : fallback.missing_information,
+    customer_data_fields: Array.isArray(obj?.customer_data_fields)
+      ? obj.customer_data_fields.map(String).slice(0, 12)
+      : fallback.customer_data_fields,
     enhanced_structured_prompt: String(
       obj?.enhanced_structured_prompt || fallback.enhanced_structured_prompt
     ),
@@ -273,12 +291,16 @@ async function analyzeWithOpenAI(prompt: string, fallback: Analysis): Promise<An
   "quality_score": 0,
   "analysis_summary": "",
   "suggestions": [],
+  "missing_information": [],
+  "customer_data_fields": [],
   "enhanced_structured_prompt": ""
 }
 
 Rules:
 - Do not fabricate facts missing from the prompt.
 - enhanced_structured_prompt should be ready to paste as a system prompt.
+- missing_information must list important business facts that are absent and would improve reliability.
+- customer_data_fields must list only details the prompt explicitly asks the AI to collect from customers (for example Name, Phone, City, Product, Quantity, Date, Time, Budget).
 - Keep analysis concise and practical for Instagram DM automation.
 
 PROMPT:
