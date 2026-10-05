@@ -19,6 +19,7 @@ const KnowledgeBasePage = lazy(() => import('./components/Knowledge/KnowledgeBas
 const CatalogPage = lazy(() => import('./components/Catalog/CatalogPage').then((m) => ({ default: m.CatalogPage })));
 const LeadFormsPage = lazy(() => import('./components/LeadForms/LeadFormsPage').then((m) => ({ default: m.LeadFormsPage })));
 const AutomationsPage = lazy(() => import('./components/Automations/AutomationsPage').then((m) => ({ default: m.AutomationsPage })));
+const AutomationBuilder = lazy(() => import('./components/Automations/AutomationBuilder').then((m) => ({ default: m.AutomationBuilder })));
 const ContactsPage = lazy(() => import('./components/Contacts/ContactsPage').then((m) => ({ default: m.ContactsPage })));
 const CrmPage = lazy(() => import('./components/CRM/CrmPage').then((m) => ({ default: m.CrmPage })));
 const InboxPage = lazy(() => import('./components/Inbox/InboxPage').then((m) => ({ default: m.InboxPage })));
@@ -74,6 +75,9 @@ const MainContent: React.FC = () => {
       </ErrorBoundary>
 
       <ErrorBoundary>
+        <Suspense fallback={null}>
+          <AutomationBuilder />
+        </Suspense>
         <ConnectChannelModal />
         <PlanRenewModal />
       </ErrorBoundary>
