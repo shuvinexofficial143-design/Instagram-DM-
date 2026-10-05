@@ -1,3 +1,4 @@
+import { googleLogo } from '../Common/googleBrandAssets';
 import React, { useEffect, useState } from 'react';
 import {
   Zap,
@@ -218,11 +219,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           type="button"
           onClick={handleGoogleSignIn}
           disabled={isLoading}
-          className="w-full mb-6 py-3.5 px-4 bg-[#F8FAFF] hover:bg-[#EEF4FF] text-[#172554] font-bold text-[15px] rounded-2xl border border-blue-200 transition-all shadow-sm flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60"
+          className="google-brand-button mb-6"
         >
-          <span className="w-6 h-6 rounded-full bg-white border border-blue-100 flex items-center justify-center text-xs font-bold text-blue-600">
-            G
-          </span>
+          <img src={googleLogo} width={20} height={20} alt=""/>
           <span>Continue with Google</span>
         </button>
 

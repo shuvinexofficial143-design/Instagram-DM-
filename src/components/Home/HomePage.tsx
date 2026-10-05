@@ -89,7 +89,6 @@ export const HomePage: React.FC = () => {
         </header>
 
         {(!isConnected || accountExpired || automations.length===0) && <section className="getting-started" aria-label="Getting started">
-          <div><span className="eyebrow">Your next step</span><h2>{accountExpired?'Reconnect to keep replies running':'Set up your Instagram assistant'}</h2><p>Follow these steps, then test a customer message before publishing.</p></div>
           <div className="getting-started-steps">{setupSteps.map((item,i)=><button key={item.title} onClick={item.action}><span>{item.done?<CheckCircle2/>:i+1}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight/></button>)}</div>
         </section>}
         {isConnected && !accountExpired && automations.length>0 && <div className="dashboard-next-action"><div><strong>{unread>0?`${unread} unread messages`:'Your workspace is ready'}</strong><p>{unread>0?'Check conversations that may need your attention.':'Review your inbox or create another automation.'}</p></div><button onClick={()=>setActiveTab('inbox')}>Open inbox <ArrowRight/></button></div>}
