@@ -116,7 +116,7 @@ export const PublicLandingPage: React.FC = () => {
                       ['AI Replies', '936', Bot],
                       ['Contacts', '428', Users],
                       ['Automations', '12', Zap],
-                    ].map(([label, value, Icon]) => (
+                    ] as const).map(([label, value, Icon]) => (
                       <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4">
                         <Icon className="h-4 w-4 text-indigo-500" />
                         <p className="mt-4 text-xl font-black text-slate-950">{value}</p>
