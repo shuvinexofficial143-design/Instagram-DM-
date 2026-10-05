@@ -782,49 +782,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveTabState('home');
   };
 
-  // Automation CRUD. Authenticated users use Supabase RLS directly;
-  // no-login users persist under their secure guest workspace cookie.
-  const persistGuestAutomation = async (automation: Automation) => {
-    const response = await fetch('/api/automations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ automation }),
-    });
-
-    const payload = await response.json().catch(() => null);
-    if (!response.ok || !payload?.ok) {
-      throw new Error(payload?.error || 'Automation could not be saved.');
-    }
-
-    if (Array.isArray(payload?.pausedAutomationIds) && payload.pausedAutomationIds.length) {
-      const paused = new Set<string>(payload.pausedAutomationIds);
-      setAutomations((prev) =>
-        prev.map((item) =>
-          paused.has(item.id)
-            ? { ...item, status: 'paused', updated_at: new Date().toISOString() }
-            : item
-        )
-      );
-    }
-
-    return payload;
+  // Automation CRUD goes through one server route for both authenticated and
+  // guest workspaces. This avoids transient browser -> PostgREST failures and
+  // guarantees the same validation/cache-sync path used by the live webhook engine.
+  const automationAuthHeaders = async () => {
+    const token = await auth.currentUser?.getIdToken().catch(() => '');
+    return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
-  const persistAutomationRecord = (
-    automation: Automation,
-    uid: string | undefined
-  ) => {
-    if (uid) {
-      saveUserDocument(uid, 'automations', automation).catch((err) =>
+  const automationRequest = async (
+    input: { method: 'POST' | 'DELETE'; automation?: Automation; id?: string },
+    attempt = 0
+  ): Promise<any> => {
+    const authHeaders = await automationAuthHeaders();
+    const url =
+      input.method === 'DELETE'
+        ? `/api/automations?id=${encodeURIComponent(input.id || '')}`
+        : '/api/automations';
+
+    try {
+      const response = await fetch(url, {
+        method: input.method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        credentials: 'same-origin',
+        body:
+          input.method === 'POST'
+            ? JSON.stringify({ automation: input.automation })
+            : undefined,
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        const error = new Error(payload?.error || 'Automation request failed.');
+        (error as any).status = response.status;
+        throw error;
+      }
+      return payload;
+    } catch (err: any) {
+      const retryable =
+        attempt < 1 &&
+        (!err?.status || err.status >= 500 || err?.name === 'TypeError');
+      if (retryable) {
+        await new Promise((resolve) => setTimeout(resolve, 450));
+        return automationRequest(input, attempt + 1);
+      }
+      throw err;
+    }
+  };
+
+  const persistAutomationRecord = (automation: Automation) => {
+    automationRequest({ method: 'POST', automation })
+      .then((payload) => {
+        if (
+          Array.isArray(payload?.pausedAutomationIds) &&
+          payload.pausedAutomationIds.length
+        ) {
+          const paused = new Set<string>(payload.pausedAutomationIds);
+          setAutomations((prev) =>
+            prev.map((item) =>
+              paused.has(item.id)
+                ? {
+                    ...item,
+                    status: 'paused',
+                    updated_at: new Date().toISOString(),
+                  }
+                : item
+            )
+          );
+        }
+      })
+      .catch((err) =>
         console.warn('[AUTOMATION_SAVE_WARN]', err?.message || err)
       );
-      return;
-    }
-
-    persistGuestAutomation(automation).catch((err) =>
-      console.warn('[GUEST_AUTOMATION_SAVE_WARN]', err?.message || err)
-    );
   };
 
   const hasDuplicateAutomationName = (name: string, exceptId?: string) =>
@@ -837,7 +869,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createAutomation = (
     newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'>
   ) => {
-    const uid = firebaseUser?.uid;
     const now = new Date().toISOString();
     const cleanName = newAuto.name.trim();
 
@@ -889,12 +920,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ),
     ]);
 
-    for (const paused of pausedOthers) persistAutomationRecord(paused, uid);
-    persistAutomationRecord(created, uid);
+    for (const paused of pausedOthers) persistAutomationRecord(paused);
+    persistAutomationRecord(created);
   };
 
   const updateAutomation = (id: string, updates: Partial<Automation>) => {
-    const uid = firebaseUser?.uid;
     const current = automations.find((auto) => auto.id === id);
     if (!current) return;
 
@@ -942,30 +972,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    for (const paused of pausedOthers) persistAutomationRecord(paused, uid);
-    persistAutomationRecord(updated, uid);
+    for (const paused of pausedOthers) persistAutomationRecord(paused);
+    persistAutomationRecord(updated);
   };
 
   const deleteAutomation = (id: string) => {
-    const uid = firebaseUser?.uid;
+    const deleted = automations.find((auto) => auto.id === id);
     setAutomations((prev) => prev.filter((auto) => auto.id !== id));
 
-    if (uid) {
-      removeUserDocument(uid, 'automations', id).catch((err) =>
-        console.warn('[AUTOMATION_DELETE_SAVE_WARN]', err?.message || err)
-      );
-    } else {
-      fetch(`/api/automations?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        credentials: 'same-origin',
-      }).catch((err) =>
-        console.warn('[GUEST_AUTOMATION_DELETE_WARN]', err?.message || err)
-      );
-    }
+    automationRequest({ method: 'DELETE', id }).catch((err) => {
+      console.warn('[AUTOMATION_DELETE_WARN]', err?.message || err);
+      if (deleted) {
+        setAutomations((prev) =>
+          prev.some((item) => item.id === deleted.id)
+            ? prev
+            : [deleted, ...prev]
+        );
+      }
+    });
   };
 
   const toggleAutomationStatus = (id: string) => {
-    const uid = firebaseUser?.uid;
     const current = automations.find((auto) => auto.id === id);
     if (!current) return;
 
@@ -1007,8 +1034,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    for (const paused of pausedOthers) persistAutomationRecord(paused, uid);
-    persistAutomationRecord(updated, uid);
+    for (const paused of pausedOthers) persistAutomationRecord(paused);
+    persistAutomationRecord(updated);
   };
 
   // Simulator & Webhook Engine implementation
