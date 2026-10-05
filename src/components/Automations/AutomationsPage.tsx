@@ -78,10 +78,10 @@ export const AutomationsPage: React.FC = () => {
       trigger_type: 'comment' as TriggerType,
       keywords: ['LINK', 'GUIDE', 'PDF', 'INFO'],
       badge: 'Link requests',
-      badgeColor: 'bg-indigo-50 text-[#3B5BFF] border-indigo-200/80',
+      badgeColor: 'bg-violet-50 text-violet-700 border-violet-200/80',
       category: 'comment',
       icon: MessageCircle,
-      iconBg: 'bg-indigo-50 text-[#3B5BFF]',
+      iconBg: 'bg-violet-50 text-violet-700',
       flowPreview: { trigger: 'Comment "LINK"', action: 'Send PDF Link DM' },
     },
     {
@@ -219,10 +219,10 @@ export const AutomationsPage: React.FC = () => {
           {/* Row 1: Total Runs (Left) & DMs Sent (Right) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Total Runs */}
-            <div className="p-4 rounded-xl bg-slate-50/90 border border-slate-200 space-y-2 hover:border-indigo-300 shadow-2xs transition-all">
+            <div className="p-4 rounded-xl bg-slate-50/90 border border-slate-200 space-y-2 hover:border-violet-300 shadow-2xs transition-all">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Total Runs</span>
-                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-[#3B5BFF] flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-[#6D28D9] flex items-center justify-center font-bold">
                   <Zap className="w-4 h-4 stroke-[2.5]" />
                 </div>
               </div>
@@ -272,6 +272,70 @@ export const AutomationsPage: React.FC = () => {
         </div>
       </div>
 
+      {(automations || []).length === 0 && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[.14em] text-violet-700">Quick start</p>
+              <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-950">Build your first Instagram automation</h2>
+              <p className="mt-1 max-w-2xl text-sm text-slate-500">Start from a proven workflow instead of an empty screen. You can edit every trigger, message and AI instruction before publishing.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsTemplateModalOpen(true)}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-bold text-violet-800 hover:bg-violet-100"
+            >
+              <Layers className="h-4 w-4" />
+              Browse all templates
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {templates.slice(0, 4).map((tpl) => {
+              const Icon = tpl.icon;
+              return (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => handleSelectTemplate(tpl)}
+                  className="group rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-left transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-white hover:shadow-md"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-violet-700 shadow-sm ring-1 ring-slate-200">
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-violet-600" />
+                  </div>
+                  <h3 className="mt-4 text-sm font-bold leading-5 text-slate-900">{tpl.title}</h3>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{tpl.description}</p>
+                  <div className="mt-4 flex items-center gap-2 text-xs font-bold text-violet-700">
+                    <span>{tpl.flowPreview.trigger}</span>
+                    <ArrowRight className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{tpl.flowPreview.action}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 grid gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:grid-cols-3">
+            {[
+              ['1', 'Choose a trigger', 'DM, comment, story reply or AI conversation.'],
+              ['2', 'Set the response', 'Write a fixed reply or configure the AI assistant.'],
+              ['3', 'Review & publish', 'Test the flow, then switch it on when ready.'],
+            ].map(([stepNo, title, desc]) => (
+              <div key={stepNo} className="flex gap-3">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-violet-100 text-xs font-bold text-violet-800">{stepNo}</span>
+                <div>
+                  <p className="text-sm font-bold text-slate-800">{title}</p>
+                  <p className="mt-0.5 text-xs leading-5 text-slate-500">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* 2. Controls & Search Filter Bar */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
         {/* Row 1: Search Automation/Keyword Input (Left) & Create Automation Button (Top Right) */}
@@ -283,7 +347,7 @@ export const AutomationsPage: React.FC = () => {
               placeholder="Search automations or keywords (e.g. LINK, PRICE)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder:text-slate-500 focus:ring-2 focus:ring-[#3B5BFF] focus:outline-hidden"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder:text-slate-500 focus:ring-2 focus:ring-violet-500 focus:outline-hidden"
             />
           </div>
 
@@ -293,7 +357,7 @@ export const AutomationsPage: React.FC = () => {
                 setEditingAutomation(null);
                 setIsBuilderOpen(true);
               }}
-              className="w-full sm:w-auto bg-[#3B5BFF] hover:bg-indigo-700 text-white font-bold text-xs py-2.5 px-5 rounded-xl btn-primary-elevated flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+              className="w-full sm:w-auto bg-[#6D28D9] hover:bg-violet-800 text-white font-bold text-xs py-2.5 px-5 rounded-xl btn-primary-elevated flex items-center justify-center gap-2 shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>Create Automation</span>
@@ -307,7 +371,7 @@ export const AutomationsPage: React.FC = () => {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-[#3B5BFF] focus:outline-hidden cursor-pointer"
+            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-violet-500 focus:outline-hidden cursor-pointer"
           >
             <option value="all">All Status</option>
             <option value="active">Active Only</option>
@@ -318,7 +382,7 @@ export const AutomationsPage: React.FC = () => {
           <select
             value={triggerFilter}
             onChange={(e) => setTriggerFilter(e.target.value as any)}
-            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-[#3B5BFF] focus:outline-hidden cursor-pointer"
+            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-violet-500 focus:outline-hidden cursor-pointer"
           >
             <option value="all">All Triggers</option>
             <option value="comment">Comment Triggers</option>
@@ -331,7 +395,7 @@ export const AutomationsPage: React.FC = () => {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-[#3B5BFF] focus:outline-hidden cursor-pointer"
+            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-violet-500 focus:outline-hidden cursor-pointer"
           >
             <option value="runs">Most Runs</option>
             <option value="newest">Recently Created</option>
@@ -343,21 +407,37 @@ export const AutomationsPage: React.FC = () => {
       {/* 3. Automation List Cards */}
       <div className="space-y-4">
         {filteredAutomations.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center border border-slate-200/80 space-y-3">
-            <Zap className="w-10 h-10 text-slate-300 mx-auto" />
-            <h3 className="text-base font-bold text-slate-800">No Automations Found</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              Try adjusting your search query or filter settings, or pick a template to create your first Instagram DM flow.
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-10">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-violet-50 text-violet-700 ring-1 ring-violet-100">
+              <Zap className="h-6 w-6" />
+            </span>
+            <h3 className="mt-4 text-base font-bold text-slate-900">{(automations || []).length ? 'No automations match these filters' : 'Your automation workspace is ready'}</h3>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              {(automations || []).length
+                ? 'Clear or change the search and filters to find an existing automation.'
+                : 'Choose a quick-start template above or create a custom workflow for Instagram DMs, comments, stories or AI conversations.'}
             </p>
-            <button
-              onClick={() => {
-                setEditingAutomation(null);
-                setIsBuilderOpen(true);
-              }}
-              className="bg-[#3B5BFF] text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-md mt-2"
-            >
-              + Create Automation
-            </button>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              {(automations || []).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setSearch(''); setStatusFilter('all'); setTriggerFilter('all'); }}
+                  className="min-h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Clear filters
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingAutomation(null);
+                  setIsBuilderOpen(true);
+                }}
+                className="min-h-10 rounded-xl bg-violet-700 px-4 text-sm font-bold text-white shadow-sm hover:bg-violet-800"
+              >
+                + Create automation
+              </button>
+            </div>
           </div>
         ) : (
           filteredAutomations.map((auto) => {
@@ -482,8 +562,8 @@ export const AutomationsPage: React.FC = () => {
 
                   <ArrowRight className="w-4 h-4 text-slate-600 shrink-0 stroke-[2.5]" />
 
-                  <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl text-xs font-bold text-[#3B5BFF]">
-                    <Zap className="w-3.5 h-3.5 fill-[#3B5BFF]" />
+                  <div className="flex items-center gap-1.5 bg-indigo-50 border border-violet-200 px-3 py-1.5 rounded-xl text-xs font-bold text-[#6D28D9]">
+                    <Zap className="w-3.5 h-3.5 fill-[#6D28D9]" />
                     <span>[ ⚡ {Array.isArray(auto.actions) ? auto.actions.length : 1} action ]</span>
                   </div>
                 </div>
@@ -528,7 +608,7 @@ export const AutomationsPage: React.FC = () => {
             {/* Modal Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pr-8 border-b border-slate-100 pb-5">
               <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#3B5BFF] via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#6D28D9] via-violet-700 to-fuchsia-600 text-white flex items-center justify-center shadow-lg shadow-violet-500/25 shrink-0">
                   <Sparkles className="w-6 h-6" />
                 </div>
                 <div>
@@ -561,7 +641,7 @@ export const AutomationsPage: React.FC = () => {
                   onClick={() => setTemplateCategory(cat.id as any)}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
                     templateCategory === cat.id
-                      ? 'bg-[#3B5BFF] text-white shadow-sm shadow-indigo-500/20'
+                      ? 'bg-[#6D28D9] text-white shadow-sm shadow-violet-500/20'
                       : 'bg-slate-100/80 hover:bg-slate-200/80 text-slate-600'
                   }`}
                 >
@@ -585,7 +665,7 @@ export const AutomationsPage: React.FC = () => {
                   <div
                     key={tpl.id}
                     onClick={() => handleSelectTemplate(tpl)}
-                    className="p-5 rounded-2xl border border-slate-200/80 hover:border-[#3B5BFF] bg-white hover:bg-gradient-to-br hover:from-white hover:via-indigo-50/20 hover:to-purple-50/20 cursor-pointer transition-all duration-200 group relative flex flex-col justify-between shadow-2xs hover:shadow-xl hover:shadow-indigo-500/10 space-y-4 hover:-translate-y-0.5"
+                    className="p-5 rounded-2xl border border-slate-200/80 hover:border-[#6D28D9] bg-white hover:bg-gradient-to-br hover:from-white hover:via-indigo-50/20 hover:to-purple-50/20 cursor-pointer transition-all duration-200 group relative flex flex-col justify-between shadow-2xs hover:shadow-xl hover:shadow-violet-500/10 space-y-4 hover:-translate-y-0.5"
                   >
                     {/* Top Row: Icon + Badge */}
                     <div className="space-y-3">
@@ -600,7 +680,7 @@ export const AutomationsPage: React.FC = () => {
 
                       {/* Title & Description */}
                       <div>
-                        <h3 className="font-bold text-sm text-slate-900 group-hover:text-[#3B5BFF] transition-colors leading-snug">
+                        <h3 className="font-bold text-sm text-slate-900 group-hover:text-[#6D28D9] transition-colors leading-snug">
                           {tpl.title}
                         </h3>
                         <p className="text-xs text-slate-500 mt-1 leading-relaxed">
@@ -614,18 +694,18 @@ export const AutomationsPage: React.FC = () => {
                           {tpl.flowPreview.trigger}
                         </span>
                         <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate bg-indigo-50 text-[#3B5BFF] px-2 py-0.5 rounded border border-indigo-200/60 font-bold">
+                        <span className="truncate bg-violet-50 text-violet-700 px-2 py-0.5 rounded border border-violet-200/60 font-bold">
                           {tpl.flowPreview.action}
                         </span>
                       </div>
                     </div>
 
                     {/* Footer CTA */}
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-[#3B5BFF]">
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-[#6D28D9]">
                       <span className="flex items-center gap-1">
                         Use Template
                       </span>
-                      <div className="w-7 h-7 rounded-lg bg-indigo-50 group-hover:bg-[#3B5BFF] text-[#3B5BFF] group-hover:text-white flex items-center justify-center transition-colors">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-50 group-hover:bg-[#6D28D9] text-[#6D28D9] group-hover:text-white flex items-center justify-center transition-colors">
                         <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                       </div>
                     </div>
@@ -644,7 +724,7 @@ export const AutomationsPage: React.FC = () => {
                 onClick={() => {
                   handleSelectTemplate(templates[templates.length - 1]);
                 }}
-                className="text-[#3B5BFF] hover:underline font-bold text-xs"
+                className="text-[#6D28D9] hover:underline font-bold text-xs"
               >
                 + Start from Scratch (Blank Canvas)
               </button>
