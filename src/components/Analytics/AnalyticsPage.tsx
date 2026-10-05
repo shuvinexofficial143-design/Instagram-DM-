@@ -30,6 +30,26 @@ type DailyPoint = {
   leads: number;
 };
 
+type ChartPoint = { x: number; y: number };
+
+const smoothPath = (points: ChartPoint[]) => {
+  if (!points.length) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  let path = `M ${points[0].x} ${points[0].y}`;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const p0 = points[index - 1] || points[index];
+    const p1 = points[index];
+    const p2 = points[index + 1];
+    const p3 = points[index + 2] || p2;
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    path += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return path;
+};
+
 const DAY = 86400000;
 
 const startOfDay = (date: Date) => {
@@ -310,16 +330,20 @@ export const AnalyticsPage: React.FC = () => {
     : 0;
 
   const maxDaily = Math.max(1, ...analytics.daily.flatMap((day) => [day.incoming, day.outgoing]));
-  const incomingPoints = analytics.daily.map((day, index) => {
-    const x = analytics.daily.length <= 1 ? 0 : (index / (analytics.daily.length - 1)) * 100;
-    const y = 88 - (day.incoming / maxDaily) * 72;
-    return x.toFixed(2) + ',' + y.toFixed(2);
-  }).join(' ');
-  const outgoingPoints = analytics.daily.map((day, index) => {
-    const x = analytics.daily.length <= 1 ? 0 : (index / (analytics.daily.length - 1)) * 100;
-    const y = 88 - (day.outgoing / maxDaily) * 72;
-    return x.toFixed(2) + ',' + y.toFixed(2);
-  }).join(' ');
+  const chartPoints = (field: 'incoming' | 'outgoing') => analytics.daily.map((day, index) => ({
+    x: analytics.daily.length <= 1 ? 0 : (index / (analytics.daily.length - 1)) * 100,
+    y: 88 - (day[field] / maxDaily) * 70,
+  }));
+  const incomingPoints = chartPoints('incoming');
+  const outgoingPoints = chartPoints('outgoing');
+  const incomingPath = smoothPath(incomingPoints);
+  const outgoingPath = smoothPath(outgoingPoints);
+  const incomingAreaPath = incomingPoints.length
+    ? incomingPath + ` L ${incomingPoints[incomingPoints.length - 1].x} 92 L ${incomingPoints[0].x} 92 Z`
+    : '';
+  const outgoingAreaPath = outgoingPoints.length
+    ? outgoingPath + ` L ${outgoingPoints[outgoingPoints.length - 1].x} 92 L ${outgoingPoints[0].x} 92 Z`
+    : '';
 
   const aiHandleRate = analytics.current.outgoing.length
     ? Math.round((analytics.current.ai.length / analytics.current.outgoing.length) * 100)
@@ -431,7 +455,7 @@ export const AnalyticsPage: React.FC = () => {
         <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-[.16em] text-indigo-600">Workspace insights</p>
+              <p className="text-xs font-bold uppercase tracking-[.16em] text-violet-700">Workspace insights</p>
               <div className="mt-1 flex flex-wrap items-center gap-3">
                 <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Analytics</h1>
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
@@ -450,7 +474,7 @@ export const AnalyticsPage: React.FC = () => {
                     onClick={() => setPeriod(value as Period)}
                     className={
                       'min-h-9 shrink-0 rounded-lg px-3 text-xs font-bold transition ' +
-                      (period === value ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white')
+                      (period === value ? 'bg-violet-700 text-white shadow-sm' : 'text-slate-600 hover:bg-white')
                     }
                   >
                     {value} days
@@ -461,7 +485,7 @@ export const AnalyticsPage: React.FC = () => {
                   onClick={() => setPeriod('custom')}
                   className={
                     'min-h-9 shrink-0 rounded-lg px-3 text-xs font-bold transition ' +
-                    (period === 'custom' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white')
+                    (period === 'custom' ? 'bg-violet-700 text-white shadow-sm' : 'text-slate-600 hover:bg-white')
                   }
                 >
                   Custom
@@ -479,7 +503,7 @@ export const AnalyticsPage: React.FC = () => {
           </div>
 
           {period === 'custom' && (
-            <div className="mt-4 grid gap-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 sm:grid-cols-2 lg:max-w-xl">
+            <div className="mt-4 grid gap-3 rounded-xl border border-violet-100 bg-violet-50/50 p-3 sm:grid-cols-2 lg:max-w-xl">
               <label className="text-xs font-bold text-slate-600">
                 From
                 <span className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3">
@@ -498,12 +522,12 @@ export const AnalyticsPage: React.FC = () => {
           )}
         </header>
 
-        <section className="flex items-start gap-3 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-white p-4 sm:p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white shadow-sm">
+        <section className="flex items-start gap-3 rounded-2xl border border-violet-100 bg-gradient-to-r from-violet-50 to-white p-4 sm:p-5">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-700 text-white shadow-sm">
             <Sparkles className="h-5 w-5" />
           </span>
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[.12em] text-indigo-600">AI insight</p>
+            <p className="text-xs font-bold uppercase tracking-[.12em] text-violet-700">AI insight</p>
             <p className="mt-1 text-sm font-semibold leading-6 text-slate-800 sm:text-[15px]">{insight}</p>
           </div>
         </section>
@@ -512,7 +536,7 @@ export const AnalyticsPage: React.FC = () => {
           {cards.map(({ label, value, icon: Icon, trend, inverse, note }) => (
             <article key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-5">
               <div className="flex items-start justify-between gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><Icon className="h-5 w-5" /></span>
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-700"><Icon className="h-5 w-5" /></span>
                 <TrendBadge value={trend} inverse={inverse} />
               </div>
               <p className="mt-4 text-xs font-semibold text-slate-500">{label}</p>
@@ -526,33 +550,43 @@ export const AnalyticsPage: React.FC = () => {
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-indigo-600" />
+                <Activity className="h-5 w-5 text-violet-700" />
                 <div>
                   <h2 className="text-base font-bold text-slate-900">Message activity</h2>
                   <p className="text-xs text-slate-500">Incoming DMs compared with replies sent.</p>
                 </div>
               </div>
               <div className="flex gap-4 text-xs font-semibold text-slate-500">
-                <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-indigo-600" /> Incoming</span>
-                <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-violet-300" /> Replies</span>
+                <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-violet-700" /> Incoming</span>
+                <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-orange-500" /> Replies</span>
               </div>
             </div>
 
             {analytics.current.incoming.length || analytics.current.outgoing.length ? (
               <>
-                <div className="mt-5 h-[260px] w-full overflow-hidden rounded-xl bg-slate-50/70 p-3 sm:h-[300px]">
+                <div className="mt-5 h-[260px] w-full overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50/70 p-3 sm:h-[300px]">
                   <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full" role="img" aria-label="Incoming and outgoing message trend">
-                    {[16, 34, 52, 70, 88].map((y) => (
-                      <line key={y} x1="0" x2="100" y1={y} y2={y} stroke="#e2e8f0" strokeWidth="0.45" vectorEffect="non-scaling-stroke" />
+                    <defs>
+                      <linearGradient id="incoming-area" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#6D28D9" stopOpacity="0.18" />
+                        <stop offset="100%" stopColor="#6D28D9" stopOpacity="0.01" />
+                      </linearGradient>
+                      <linearGradient id="reply-area" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#F97316" stopOpacity="0.12" />
+                        <stop offset="100%" stopColor="#F97316" stopOpacity="0.01" />
+                      </linearGradient>
+                    </defs>
+                    {[18, 36, 54, 72, 90].map((y) => (
+                      <line key={y} x1="0" x2="100" y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.35" vectorEffect="non-scaling-stroke" />
                     ))}
-                    <polyline points={outgoingPoints} fill="none" stroke="#c4b5fd" strokeWidth="2.4" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
-                    <polyline points={incomingPoints} fill="none" stroke="#4f46e5" strokeWidth="2.7" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+                    <path d={outgoingAreaPath} fill="url(#reply-area)" />
+                    <path d={incomingAreaPath} fill="url(#incoming-area)" />
+                    <path d={outgoingPath} fill="none" stroke="#F97316" strokeWidth="2.2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+                    <path d={incomingPath} fill="none" stroke="#6D28D9" strokeWidth="2.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
                     {analytics.daily.map((day, index) => {
-                      const shouldShow = analytics.daily.length <= 30 || index % Math.max(1, Math.floor(analytics.daily.length / 24)) === 0;
-                      if (!shouldShow) return null;
-                      const x = analytics.daily.length <= 1 ? 0 : (index / (analytics.daily.length - 1)) * 100;
-                      const y = 88 - (day.incoming / maxDaily) * 72;
-                      return <circle key={day.label + index} cx={x} cy={y} r="1.05" fill="#4f46e5"><title>{day.label + ': ' + day.incoming + ' incoming, ' + day.outgoing + ' replies'}</title></circle>;
+                      const point = incomingPoints[index];
+                      if (!point) return null;
+                      return <circle key={day.label + index} cx={point.x} cy={point.y} r="2.2" fill="transparent"><title>{day.label + ': ' + day.incoming + ' incoming, ' + day.outgoing + ' replies'}</title></circle>;
                     })}
                   </svg>
                 </div>
@@ -564,7 +598,7 @@ export const AnalyticsPage: React.FC = () => {
               </>
             ) : (
               <div className="mt-5 flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center">
-                <MessageCircle className="h-9 w-9 text-indigo-300" />
+                <MessageCircle className="h-9 w-9 text-violet-300" />
                 <h3 className="mt-3 text-sm font-bold text-slate-800">No message activity in this period</h3>
                 <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">Incoming Instagram DMs and replies will appear here automatically as conversations are recorded.</p>
               </div>
@@ -577,7 +611,7 @@ export const AnalyticsPage: React.FC = () => {
                 <h2 className="text-base font-bold text-slate-900">Lead funnel</h2>
                 <p className="mt-1 text-xs text-slate-500">From conversation to conversion.</p>
               </div>
-              <span className="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-bold text-indigo-700">{analytics.converted} converted</span>
+              <span className="rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-bold text-violet-800">{analytics.converted} converted</span>
             </div>
             <div className="mt-5 space-y-3">
               {funnel.map((stage, index) => (
@@ -591,7 +625,7 @@ export const AnalyticsPage: React.FC = () => {
                   </div>
                   <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-400"
+                      className="h-full rounded-full bg-gradient-to-r from-violet-700 to-fuchsia-400"
                       style={{ width: Math.max(stage.value ? 6 : 0, Math.min(100, (stage.value / funnelMax) * 100)) + '%' }}
                     />
                   </div>
@@ -641,7 +675,7 @@ export const AnalyticsPage: React.FC = () => {
                         <td className="px-4 py-4 text-right text-sm font-semibold text-slate-700">{(automation.stats?.runs || 0).toLocaleString()}</td>
                         <td className="px-4 py-4 text-right text-sm font-semibold text-slate-700">{(automation.stats?.dms_sent || 0).toLocaleString()}</td>
                         <td className="px-4 py-4 text-right text-sm font-semibold text-slate-700">{(automation.stats?.unique_users || 0).toLocaleString()}</td>
-                        <td className="px-5 py-4 text-right text-sm font-bold text-indigo-700">{Number(automation.stats?.open_rate || 0).toFixed(0)}%</td>
+                        <td className="px-5 py-4 text-right text-sm font-bold text-violet-800">{Number(automation.stats?.open_rate || 0).toFixed(0)}%</td>
                       </tr>
                     ))}
                   </tbody>
@@ -649,10 +683,10 @@ export const AnalyticsPage: React.FC = () => {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center px-5 py-12 text-center">
-                <Zap className="h-9 w-9 text-indigo-300" />
+                <Zap className="h-9 w-9 text-violet-300" />
                 <h3 className="mt-3 text-sm font-bold text-slate-800">No automation activity yet</h3>
                 <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">Create and activate an Instagram automation to start tracking runs, replies and audience reach.</p>
-                <button type="button" onClick={() => setActiveTab('automations')} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-700">Open automations</button>
+                <button type="button" onClick={() => setActiveTab('automations')} className="mt-4 rounded-xl bg-violet-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-violet-800">Open automations</button>
               </div>
             )}
           </article>
@@ -660,8 +694,8 @@ export const AnalyticsPage: React.FC = () => {
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h2 className="text-base font-bold text-slate-900">AI performance</h2>
             <p className="mt-1 text-xs text-slate-500">How much of the conversation workload AI is handling.</p>
-            <div className="mt-5 flex items-center gap-4 rounded-2xl bg-indigo-50 p-4">
-              <div className="relative grid h-20 w-20 shrink-0 place-items-center rounded-full" style={{ background: 'conic-gradient(#4f46e5 ' + aiHandleRate + '%, #e0e7ff 0)' }}>
+            <div className="mt-5 flex items-center gap-4 rounded-2xl bg-violet-50 p-4">
+              <div className="relative grid h-20 w-20 shrink-0 place-items-center rounded-full" style={{ background: 'conic-gradient(#6D28D9 ' + aiHandleRate + '%, #ede9fe 0)' }}>
                 <div className="grid h-14 w-14 place-items-center rounded-full bg-white text-center">
                   <span className="text-lg font-bold text-slate-950">{aiHandleRate}%</span>
                 </div>
@@ -704,7 +738,7 @@ export const AnalyticsPage: React.FC = () => {
                     <span className="font-bold text-slate-800">{intent.value.toLocaleString()}</span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-indigo-500" style={{ width: (intent.value / maxIntent) * 100 + '%' }} />
+                    <div className="h-full rounded-full bg-violet-500" style={{ width: (intent.value / maxIntent) * 100 + '%' }} />
                   </div>
                 </div>
               ))}
@@ -759,7 +793,7 @@ export const AnalyticsPage: React.FC = () => {
         <section className="grid gap-5 xl:grid-cols-[.85fr_1.15fr]">
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex items-center gap-2">
-              <UserCheck className="h-5 w-5 text-indigo-600" />
+              <UserCheck className="h-5 w-5 text-violet-700" />
               <div>
                 <h2 className="text-base font-bold text-slate-900">Lead health</h2>
                 <p className="text-xs text-slate-500">Current selected-period lead status.</p>
@@ -788,7 +822,7 @@ export const AnalyticsPage: React.FC = () => {
                 <h2 className="text-base font-bold text-slate-900">Recent activity</h2>
                 <p className="mt-1 text-xs text-slate-500">Latest conversation and lead events in this period.</p>
               </div>
-              <button type="button" onClick={() => setActiveTab('activity')} className="text-xs font-bold text-indigo-600 hover:text-indigo-700">View activity</button>
+              <button type="button" onClick={() => setActiveTab('activity')} className="text-xs font-bold text-violet-700 hover:text-violet-800">View activity</button>
             </div>
 
             <div className="mt-4 divide-y divide-slate-100">
@@ -800,7 +834,7 @@ export const AnalyticsPage: React.FC = () => {
                   <Send className="h-4 w-4" />;
                 return (
                   <div key={item.id} className="flex gap-3 py-3">
-                    <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-600">{icon}</span>
+                    <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-violet-50 text-violet-700">{icon}</span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                         <p className="truncate text-xs font-bold text-slate-800">{item.title}</p>
