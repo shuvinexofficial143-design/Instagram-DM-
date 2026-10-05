@@ -10,6 +10,7 @@ import { IntroSplash } from './components/Common/IntroSplash';
 import { ErrorBoundary } from './components/Common/ErrorBoundary';
 import { HomePage } from './components/Home/HomePage';
 import { LoginPage } from './components/Auth/LoginPage';
+import { PublicLandingPage } from './components/Public/PublicLandingPage';
 
 const AnalyticsPage = lazy(() => import('./components/Analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 const ActivityLogsPage = lazy(() => import('./components/Activity/ActivityLogsPage').then((m) => ({ default: m.ActivityLogsPage })));
@@ -18,8 +19,6 @@ const KnowledgeBasePage = lazy(() => import('./components/Knowledge/KnowledgeBas
 const CatalogPage = lazy(() => import('./components/Catalog/CatalogPage').then((m) => ({ default: m.CatalogPage })));
 const LeadFormsPage = lazy(() => import('./components/LeadForms/LeadFormsPage').then((m) => ({ default: m.LeadFormsPage })));
 const AutomationsPage = lazy(() => import('./components/Automations/AutomationsPage').then((m) => ({ default: m.AutomationsPage })));
-const FlowBuilderPage = lazy(() => import('./components/FlowBuilder/FlowBuilderPage').then((m) => ({ default: m.FlowBuilderPage })));
-const AutomationBuilder = lazy(() => import('./components/Automations/AutomationBuilder').then((m) => ({ default: m.AutomationBuilder })));
 const ContactsPage = lazy(() => import('./components/Contacts/ContactsPage').then((m) => ({ default: m.ContactsPage })));
 const CrmPage = lazy(() => import('./components/CRM/CrmPage').then((m) => ({ default: m.CrmPage })));
 const InboxPage = lazy(() => import('./components/Inbox/InboxPage').then((m) => ({ default: m.InboxPage })));
@@ -55,7 +54,6 @@ const MainContent: React.FC = () => {
           {(!activeTab || activeTab === 'home') && <HomePage />}
           {activeTab === 'analytics' && <AnalyticsPage />}
           {activeTab === 'automations' && <AutomationsPage />}
-          {activeTab === 'flow-builder' && <FlowBuilderPage />}
           {activeTab === 'activity' && <ActivityLogsPage />}
           {activeTab === 'knowledge' && <KnowledgeBasePage />}
           {activeTab === 'catalog' && <CatalogPage />}
@@ -76,9 +74,6 @@ const MainContent: React.FC = () => {
       </ErrorBoundary>
 
       <ErrorBoundary>
-        <Suspense fallback={null}>
-          <AutomationBuilder />
-        </Suspense>
         <ConnectChannelModal />
         <PlanRenewModal />
       </ErrorBoundary>
@@ -104,6 +99,7 @@ const AppShell: React.FC = () => {
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
   const isResetPasswordRoute = pathname === '/reset-password';
   const isPublicLegalRoute = pathname === '/privacy' || pathname === '/terms';
+  const isPublicLandingRoute = pathname === '/';
 
   if (isResetPasswordRoute) {
     return (
@@ -126,7 +122,7 @@ const AppShell: React.FC = () => {
   if (!firebaseUser) {
     return (
       <ErrorBoundary>
-        <LoginPage />
+        {isPublicLandingRoute ? <PublicLandingPage /> : <LoginPage />}
       </ErrorBoundary>
     );
   }
