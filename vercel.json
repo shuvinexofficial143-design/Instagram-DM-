@@ -113,11 +113,18 @@
       "destination": "/index.html"
     },
     {
-      "source": "/flow-builder",
+      "source": "/login",
       "destination": "/index.html"
     }
   ],
   "regions": [
     "bom1"
+  ],
+  "redirects": [
+    {
+      "source": "/flow-builder",
+      "destination": "/automations",
+      "permanent": false
+    }
   ]
 }
