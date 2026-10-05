@@ -17,9 +17,14 @@ export const Sidebar = () => {
   return <aside className={'workspace-sidebar '+(collapsed?'is-collapsed':'')} aria-label="Workspace navigation">
     <div className="sidebar-brand"><Zap aria-hidden="true"/><span>Auto Replies</span></div>
     <button onClick={toggle} className="sidebar-collapse" aria-label={collapsed?'Expand navigation':'Collapse navigation'}>{collapsed?<ChevronRight/>:<ChevronLeft/>}</button>
-    <button className="sidebar-account" onClick={()=>instagramAccount?setActiveTab('settings'):setIsConnectModalOpen(true)} aria-label={instagramAccount?'Manage Instagram account':'Connect Instagram'} title={instagramAccount?.username || 'Connect Instagram'}>
-      {instagramAccount?<UserAvatar src={instagramAccount.profile_pic_url} username={instagramAccount.username} size="sm"/>:<Instagram/>}
-      <span>{instagramAccount?'@'+instagramAccount.username:'Connect Instagram'}<small>{instagramAccount?.status==='connected'?'Connected':instagramAccount?'Needs attention':'Start here'}</small></span>
+    <button className={'sidebar-account '+(instagramAccount?'has-instagram':'')} onClick={()=>instagramAccount?setActiveTab('settings'):setIsConnectModalOpen(true)} aria-label={instagramAccount?'Manage Instagram account':'Connect Instagram'} title={instagramAccount?.username || 'Connect Instagram'}>
+      {instagramAccount
+        ? <span className="sidebar-instagram-avatar-ring"><UserAvatar src={instagramAccount.profile_pic_url} username={instagramAccount.username} size="sm"/></span>
+        : <span className="sidebar-instagram-icon"><Instagram/></span>}
+      <span className="sidebar-instagram-copy">
+        <strong>{instagramAccount?'@'+instagramAccount.username:'Connect Instagram'}</strong>
+        <small>{instagramAccount?.status==='connected'?<><i/>Connected Instagram</>:instagramAccount?'Needs attention':'Start here'}</small>
+      </span>
     </button>
     <nav className="sidebar-menu">
       {workspaceNavigation.filter(item=>item.id!=='settings'&&item.id!=='help').map((item,index)=>{const Icon=item.icon;const active=(item.tabs as string[]).includes(activeTab);return <React.Fragment key={item.id}>
