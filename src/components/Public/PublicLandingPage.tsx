@@ -111,7 +111,7 @@ export const PublicLandingPage: React.FC = () => {
                     <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-700">Connected</span>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-3">
-                    {[
+                    {([
                       ['Messages', '1,284', MessageSquare],
                       ['AI Replies', '936', Bot],
                       ['Contacts', '428', Users],
