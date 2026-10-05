@@ -377,3 +377,39 @@ img,video,canvas { max-width:100%; }
   .ai-phone-screen { height:585px; min-height:545px; border-radius:24px; }
   .ai-instagram-actions { gap:9px; }
 }
+
+/* Workspace readability pass — larger UI text without inflating headings */
+.app-unified-theme .text-xs { font-size:15px!important; line-height:1.55!important; }
+.app-unified-theme .text-sm { font-size:16px!important; line-height:1.55!important; }
+.app-unified-theme [class*="text-[11px]"] { font-size:14px!important; line-height:1.5!important; }
+.app-unified-theme [class*="text-[10px]"] { font-size:13px!important; line-height:1.45!important; }
+.workspace-tabs button { font-size:15px; }
+.sidebar-account { font-size:15px; }
+.sidebar-account small { font-size:14px; }
+.sidebar-menu button { font-size:16px; }
+.sidebar-menu b { font-size:13px; }
+.sidebar-account-links button { font-size:15px; }
+.sidebar-section-label { font-size:13px; }
+.sidebar-upgrade-title { font-size:15px; }
+.sidebar-upgrade p { font-size:14px; }
+.sidebar-upgrade button { font-size:14px; }
+.sidebar-owner strong,.sidebar-owner span { font-size:14px; }
+.ai-setup-heading>div>p:last-child { font-size:16px; }
+.ai-setup-card label { font-size:16px; }
+.ai-setup-card label+p,.ai-sheet-title p { font-size:15px; }
+.ai-setup-card textarea { font-size:16px; }
+.ai-prompt-count { font-size:14px; }
+.ai-prompt-tips button { font-size:15px; }
+.ai-setup-details summary { font-size:15px; }
+.ai-optional,.ai-preview-label { font-size:14px; }
+.ai-setup-note { font-size:14px; }
+.ai-sheet-connected { font-size:15px; }
+.ai-sheet-connected button { font-size:14px; }
+.ai-readiness { font-size:15px; }
+.google-brand-button { font-size:15px; }
+.ai-phone-preview-heading p { font-size:14px; }
+.ai-phone-preview-note { font-size:13px; }
+@media(max-width:767px) {
+  .app-unified-theme .text-xs { font-size:15px!important; }
+  .app-unified-theme .text-sm { font-size:16px!important; }
+}
