@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, authenticatedUser, cleanEnvironment, upstreamFetch, UpstreamError } from '../src/server/supabaseConfig';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, authenticatedUser, cleanEnvironment, upstreamFetch, UpstreamError } from '../src/server/supabaseConfig.js';
 
 const env = (key: string) => cleanEnvironment(process.env[key]);
 const site = () => (env('APP_URL') || 'https://autoreplys.vercel.app').replace(/\/+$/, '');

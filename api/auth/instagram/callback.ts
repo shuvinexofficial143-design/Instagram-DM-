@@ -1,4 +1,4 @@
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../../src/server/supabaseConfig';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../../src/server/supabaseConfig.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const PROD_ORIGIN = String(process.env.APP_URL || 'https://autoreplys.vercel.app').replace(/\/+$/, '');
