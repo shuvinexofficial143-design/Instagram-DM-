@@ -330,20 +330,34 @@ export const AnalyticsPage: React.FC = () => {
     : 0;
 
   const maxDaily = Math.max(1, ...analytics.daily.flatMap((day) => [day.incoming, day.outgoing]));
+  const roughStep = maxDaily / 4;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(roughStep, 1))));
+  const normalizedStep = roughStep / magnitude;
+  const niceStepMultiplier =
+    normalizedStep <= 1 ? 1 :
+    normalizedStep <= 2 ? 2 :
+    normalizedStep <= 2.5 ? 2.5 :
+    normalizedStep <= 5 ? 5 : 10;
+  const chartStep = niceStepMultiplier * magnitude;
+  const chartMax = Math.max(4, chartStep * 4);
+  const chartTicks = [chartMax, chartMax - chartStep, chartMax - chartStep * 2, chartMax - chartStep * 3, 0];
   const chartPoints = (field: 'incoming' | 'outgoing') => analytics.daily.map((day, index) => ({
-    x: analytics.daily.length <= 1 ? 0 : (index / (analytics.daily.length - 1)) * 100,
-    y: 88 - (day[field] / maxDaily) * 70,
+    x: analytics.daily.length <= 1 ? 0.6 : 0.6 + (index / (analytics.daily.length - 1)) * 98.8,
+    y: 98 - (day[field] / chartMax) * 94,
   }));
   const incomingPoints = chartPoints('incoming');
   const outgoingPoints = chartPoints('outgoing');
   const incomingPath = smoothPath(incomingPoints);
   const outgoingPath = smoothPath(outgoingPoints);
   const incomingAreaPath = incomingPoints.length
-    ? incomingPath + ` L ${incomingPoints[incomingPoints.length - 1].x} 92 L ${incomingPoints[0].x} 92 Z`
+    ? incomingPath + ` L ${incomingPoints[incomingPoints.length - 1].x} 98 L ${incomingPoints[0].x} 98 Z`
     : '';
   const outgoingAreaPath = outgoingPoints.length
-    ? outgoingPath + ` L ${outgoingPoints[outgoingPoints.length - 1].x} 92 L ${outgoingPoints[0].x} 92 Z`
+    ? outgoingPath + ` L ${outgoingPoints[outgoingPoints.length - 1].x} 98 L ${outgoingPoints[0].x} 98 Z`
     : '';
+  const chartLabelIndexes = analytics.daily.length
+    ? Array.from(new Set(Array.from({ length: 6 }, (_, index) => Math.round((index / 5) * (analytics.daily.length - 1)))))
+    : [];
 
   const aiHandleRate = analytics.current.outgoing.length
     ? Math.round((analytics.current.ai.length / analytics.current.outgoing.length) * 100)
@@ -547,58 +561,93 @@ export const AnalyticsPage: React.FC = () => {
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[1.55fr_.85fr]">
-          <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-violet-700" />
+          <article className="rounded-[22px] border border-slate-200/80 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,.055)] sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-500">
+                  <Activity className="h-6 w-6 stroke-[2.4]" />
+                </span>
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">Message activity</h2>
-                  <p className="text-xs text-slate-500">Incoming DMs compared with replies sent.</p>
+                  <h2 className="text-lg font-bold tracking-tight text-slate-950">Message activity</h2>
+                  <p className="mt-0.5 text-sm text-slate-500">Incoming DMs compared with replies sent.</p>
                 </div>
               </div>
-              <div className="flex gap-4 text-xs font-semibold text-slate-500">
-                <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-violet-700" /> Incoming</span>
-                <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-orange-500" /> Replies</span>
+              <div className="flex items-center gap-5 text-sm font-medium text-slate-500">
+                <span className="inline-flex items-center gap-2"><i className="h-3 w-3 rounded-full bg-[#12B6B8]" /> Incoming</span>
+                <span className="inline-flex items-center gap-2"><i className="h-3 w-3 rounded-full bg-[#10C981]" /> Replies</span>
               </div>
             </div>
 
             {analytics.current.incoming.length || analytics.current.outgoing.length ? (
-              <>
-                <div className="mt-5 h-[260px] w-full overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50/70 p-3 sm:h-[300px]">
-                  <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full" role="img" aria-label="Incoming and outgoing message trend">
-                    <defs>
-                      <linearGradient id="incoming-area" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#6D28D9" stopOpacity="0.18" />
-                        <stop offset="100%" stopColor="#6D28D9" stopOpacity="0.01" />
-                      </linearGradient>
-                      <linearGradient id="reply-area" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#F97316" stopOpacity="0.12" />
-                        <stop offset="100%" stopColor="#F97316" stopOpacity="0.01" />
-                      </linearGradient>
-                    </defs>
-                    {[18, 36, 54, 72, 90].map((y) => (
-                      <line key={y} x1="0" x2="100" y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.35" vectorEffect="non-scaling-stroke" />
-                    ))}
-                    <path d={outgoingAreaPath} fill="url(#reply-area)" />
-                    <path d={incomingAreaPath} fill="url(#incoming-area)" />
-                    <path d={outgoingPath} fill="none" stroke="#F97316" strokeWidth="2.2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
-                    <path d={incomingPath} fill="none" stroke="#6D28D9" strokeWidth="2.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
-                    {analytics.daily.map((day, index) => {
-                      const point = incomingPoints[index];
-                      if (!point) return null;
-                      return <circle key={day.label + index} cx={point.x} cy={point.y} r="2.2" fill="transparent"><title>{day.label + ': ' + day.incoming + ' incoming, ' + day.outgoing + ' replies'}</title></circle>;
-                    })}
-                  </svg>
+              <div className="mt-7">
+                <div className="grid grid-cols-[34px_minmax(0,1fr)] gap-3">
+                  <div className="flex h-[235px] flex-col justify-between pb-[1px] text-right text-xs font-medium text-slate-400 sm:h-[285px]">
+                    {chartTicks.map((tick) => <span key={tick}>{Number.isInteger(tick) ? tick : tick.toFixed(1)}</span>)}
+                  </div>
+                  <div>
+                    <div className="relative h-[235px] w-full sm:h-[285px]">
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img" aria-label="Incoming and outgoing message activity">
+                        <defs>
+                          <linearGradient id="message-incoming-fill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#12B6B8" stopOpacity="0.22" />
+                            <stop offset="72%" stopColor="#12B6B8" stopOpacity="0.08" />
+                            <stop offset="100%" stopColor="#12B6B8" stopOpacity="0.015" />
+                          </linearGradient>
+                          <linearGradient id="message-replies-fill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#10C981" stopOpacity="0.19" />
+                            <stop offset="78%" stopColor="#10C981" stopOpacity="0.06" />
+                            <stop offset="100%" stopColor="#10C981" stopOpacity="0.01" />
+                          </linearGradient>
+                        </defs>
+
+                        {[4, 27.5, 51, 74.5, 98].map((y) => (
+                          <line key={'h-' + y} x1="0" x2="100" y1={y} y2={y} stroke="#dfe5ea" strokeWidth="0.8" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+                        ))}
+                        {[0, 20, 40, 60, 80, 100].map((x) => (
+                          <line key={'v-' + x} x1={x} x2={x} y1="4" y2="98" stroke="#e4e9ee" strokeWidth="0.7" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+                        ))}
+
+                        <path d={incomingAreaPath} fill="url(#message-incoming-fill)" />
+                        <path d={outgoingAreaPath} fill="url(#message-replies-fill)" />
+                        <path d={incomingPath} fill="none" stroke="#12B6B8" strokeWidth="3" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+                        <path d={outgoingPath} fill="none" stroke="#10C981" strokeWidth="3" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+
+                        {analytics.daily.map((day, index) => {
+                          const incomingPoint = incomingPoints[index];
+                          const outgoingPoint = outgoingPoints[index];
+                          if (!incomingPoint || !outgoingPoint) return null;
+                          return (
+                            <React.Fragment key={day.label + index}>
+                              <circle cx={incomingPoint.x} cy={incomingPoint.y} r="3.4" fill="transparent">
+                                <title>{day.label + ': ' + day.incoming + ' incoming DMs'}</title>
+                              </circle>
+                              <circle cx={outgoingPoint.x} cy={outgoingPoint.y} r="3.4" fill="transparent">
+                                <title>{day.label + ': ' + day.outgoing + ' replies'}</title>
+                              </circle>
+                            </React.Fragment>
+                          );
+                        })}
+                      </svg>
+                    </div>
+
+                    <div className="mt-3 grid text-xs font-medium text-slate-400" style={{ gridTemplateColumns: `repeat(${chartLabelIndexes.length || 1}, minmax(0, 1fr))` }}>
+                      {chartLabelIndexes.map((dayIndex, index) => (
+                        <span
+                          key={dayIndex}
+                          className={index === 0 ? 'text-left' : index === chartLabelIndexes.length - 1 ? 'text-right' : 'text-center'}
+                        >
+                          {analytics.daily[dayIndex]?.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-                  <span>{analytics.daily[0]?.label}</span>
-                  <span className="hidden sm:inline">{Math.max(...analytics.daily.map((day) => day.incoming)).toLocaleString()} peak incoming/day</span>
-                  <span>{analytics.daily[analytics.daily.length - 1]?.label}</span>
-                </div>
-              </>
+              </div>
             ) : (
-              <div className="mt-5 flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center">
-                <MessageCircle className="h-9 w-9 text-violet-300" />
+              <div className="mt-7 flex min-h-[300px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-6 text-center">
+                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-500">
+                  <Activity className="h-6 w-6" />
+                </span>
                 <h3 className="mt-3 text-sm font-bold text-slate-800">No message activity in this period</h3>
                 <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">Incoming Instagram DMs and replies will appear here automatically as conversations are recorded.</p>
               </div>
