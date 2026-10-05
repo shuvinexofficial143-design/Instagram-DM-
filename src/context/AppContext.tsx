@@ -78,6 +78,12 @@ interface AppContextType {
   isRenewModalOpen: boolean;
   setIsRenewModalOpen: (open: boolean) => void;
 
+  // Automation Builder State
+  isBuilderOpen: boolean;
+  setIsBuilderOpen: (open: boolean) => void;
+  editingAutomation: Automation | null;
+  setEditingAutomation: (auto: Automation | null) => void;
+
   // AI Conversion Toggle (Human Takeover)
   isAiPausedForUser: (username: string) => boolean;
   toggleAiForUser: (username: string) => void;
@@ -290,6 +296,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState<boolean>(false);
   const [isRenewModalOpen, setIsRenewModalOpen] = useState<boolean>(false);
+
+  const [isBuilderOpen, setIsBuilderOpen] = useState<boolean>(false);
+  const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
 
   // 1. Listen for Supabase Auth State Changes & Silent Background Init
   useEffect(() => {
@@ -1515,6 +1524,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAdmin,
         activeTab,
         setActiveTab,
+        isBuilderOpen,
+        setIsBuilderOpen,
+        editingAutomation,
+        setEditingAutomation,
         isConnectModalOpen,
         setIsConnectModalOpen,
         isRenewModalOpen,
