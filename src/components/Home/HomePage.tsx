@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Zap, ChevronRight, ArrowRight, MessageCircle, Send, Plus, Instagram,
-  Users, Activity, CheckCircle2, AlertTriangle, Bot, Webhook, Trash2, Settings, MoreHorizontal,
+  Zap, ChevronRight, ArrowRight, Send, Plus, Instagram,
+  Users, Activity, CheckCircle2, AlertTriangle, Bot, Settings,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
@@ -61,11 +61,6 @@ export const HomePage: React.FC = () => {
   };
 
   const unread = inboxMessages.filter(m=>m.direction==='in'&&!m.is_read).length;
-  const setupSteps = [
-    {title:'Connect Instagram',detail:'Authorize your professional account.',done:isConnected&&!accountExpired,action:()=>setIsConnectModalOpen(true)},
-    {title:'Add business knowledge',detail:'Give AI your FAQs, products and policies.',done:false,action:()=>setActiveTab('knowledge')},
-    {title:'Test & publish an automation',detail:'Preview a reply before going live.',done:activeAutomations.length>0,action:()=>setIsBuilderOpen(true)},
-  ];
   const kpis = [
     { label:'Active Automations', value:activeAutomations.length, icon:Zap, tone:'text-violet-600 bg-violet-50' },
     { label:'DMs Sent', value:totalDmsSent, icon:Send, tone:'text-blue-600 bg-blue-50' },
@@ -88,9 +83,6 @@ export const HomePage: React.FC = () => {
           </div>
         </header>
 
-        {(!isConnected || accountExpired || automations.length===0) && <section className="getting-started" aria-label="Getting started">
-          <div className="getting-started-steps">{setupSteps.map((item,i)=><button key={item.title} onClick={item.action}><span>{item.done?<CheckCircle2/>:i+1}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight/></button>)}</div>
-        </section>}
         {isConnected && !accountExpired && automations.length>0 && <div className="dashboard-next-action"><div><strong>{unread>0?`${unread} unread messages`:'Your workspace is ready'}</strong><p>{unread>0?'Check conversations that may need your attention.':'Review your inbox or create another automation.'}</p></div><button onClick={()=>setActiveTab('inbox')}>Open inbox <ArrowRight/></button></div>}
 
         <section className="relative overflow-hidden rounded-[18px] border border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 p-4 shadow-[0_8px_28px_rgba(76,88,160,.08)] sm:p-5">
