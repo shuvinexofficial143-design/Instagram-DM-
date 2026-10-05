@@ -12,7 +12,6 @@ import {
   BookOpen,
   Package,
   ClipboardList,
-  GitBranch,
   KanbanSquare,
   LogOut,
   ChevronRight,
@@ -140,7 +139,7 @@ export const Sidebar: React.FC = () => {
   }, [isCollapsed]);
 
   interface NavItem {
-    id: 'home' | 'analytics' | 'automations' | 'flow-builder' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'crm' | 'inbox' | 'integrations' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
+    id: 'home' | 'analytics' | 'automations' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'crm' | 'inbox' | 'integrations' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: number;
@@ -151,7 +150,6 @@ export const Sidebar: React.FC = () => {
     { id: 'home', label: 'Home', icon: LayoutDashboard },
     { id: 'analytics', label: 'Analytics', icon: ChartNoAxesCombined },
     { id: 'automations', label: 'Automations', icon: Zap },
-    { id: 'flow-builder', label: 'Flow Builder', icon: GitBranch },
     { id: 'activity', label: 'Activity Logs', icon: Activity },
     { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
     { id: 'catalog', label: 'Catalog', icon: Package },
