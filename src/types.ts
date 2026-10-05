@@ -209,6 +209,8 @@ export interface PromptAnalysisResult {
   quality_score: number; // 0 - 100
   analysis_summary: string;
   suggestions: string[];
+  missing_information: string[];
+  customer_data_fields: string[];
   enhanced_structured_prompt: string;
 }
 
