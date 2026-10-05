@@ -1,4 +1,4 @@
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './supabaseConfig.js';
+import { normalizeAppUrl, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './supabaseConfig.js';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 export type StoredInstagramAccount = {
@@ -15,7 +15,7 @@ export type StoredInstagramAccount = {
 
 const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const GUEST_COOKIE = 'autoreply_guest_workspace';
-const PROD_ORIGIN = String(process.env.APP_URL || 'https://autoreplys.vercel.app').replace(/\/+$/, '');
+const PROD_ORIGIN = normalizeAppUrl(process.env.APP_URL || 'https://autoreplys.vercel.app');
 const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
 
 export const metaAppId = String(process.env.INSTAGRAM_APP_ID || '').trim();
@@ -44,7 +44,7 @@ export function getInstagramRedirectUri(req: any): string {
   }
 
   if (configured && !configured.includes('localhost')) {
-    return configured;
+    return normalizeAppUrl(configured);
   }
 
   const proto = String(req?.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();

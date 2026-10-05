@@ -5,6 +5,16 @@ export function cleanEnvironment(value: unknown): string {
     ? text.slice(1, -1).trim() : text;
 }
 
+/** OAuth providers require an absolute URL, including the scheme. */
+export function normalizeAppUrl(value: unknown): string {
+  const raw = cleanEnvironment(value);
+  const url = new URL(/^[a-z][a-z\d+.-]*:/i.test(raw) ? raw : `https://${raw}`);
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new Error('App and OAuth callback URLs must be absolute HTTP(S) URLs.');
+  }
+  return url.toString().replace(/\/+$/, '');
+}
+
 export function normalizeSupabaseUrl(value: unknown): string {
   const raw = cleanEnvironment(value);
   const url = new URL(raw);
