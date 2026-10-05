@@ -26,9 +26,10 @@ globalThis.window = {location:{pathname:'/',search:'',origin:'https://example.te
 globalThis.fetch = () => {throw Error('UI render tests must not call a live API');};
 const streamRender = (element) => new Promise((resolve,reject)=>{
   let html='';
+  let piped=false;
   const sink=new Writable({write(chunk,encoding,next){html+=chunk.toString();next();}});
   sink.on('finish',()=>resolve(html));sink.on('error',reject);
-  const stream=renderToPipeableStream(element,{onAllReady(){stream.pipe(sink);},onError:reject});
+  const stream=renderToPipeableStream(element,{onAllReady(){if(!piped){piped=true;stream.pipe(sink);}},onError:reject});
 });
 let checks=0;
 try {
