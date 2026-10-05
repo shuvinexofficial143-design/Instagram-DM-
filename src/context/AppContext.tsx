@@ -23,13 +23,12 @@ import {
   isSupabaseInitialized,
 } from '../lib/supabase';
 
-export type ActiveTab = 'home' | 'analytics' | 'automations' | 'flow-builder' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'crm' | 'inbox' | 'integrations' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
+export type ActiveTab = 'home' | 'analytics' | 'automations' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'crm' | 'inbox' | 'integrations' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
 
 const TAB_PATHS: Record<ActiveTab, string> = {
   home: '/',
   analytics: '/analytics',
   automations: '/automations',
-  'flow-builder': '/flow-builder',
   activity: '/activity',
   knowledge: '/knowledge',
   catalog: '/catalog',
@@ -74,11 +73,6 @@ interface AppContextType {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   
-  // Modals & Builder States
-  isBuilderOpen: boolean;
-  setIsBuilderOpen: (open: boolean) => void;
-  editingAutomation: Automation | null;
-  setEditingAutomation: (auto: Automation | null) => void;
   isConnectModalOpen: boolean;
   setIsConnectModalOpen: (open: boolean) => void;
   isRenewModalOpen: boolean;
@@ -294,8 +288,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     onPopState();
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
-  const [isBuilderOpen, setIsBuilderOpen] = useState<boolean>(false);
-  const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState<boolean>(false);
   const [isRenewModalOpen, setIsRenewModalOpen] = useState<boolean>(false);
 
@@ -775,7 +767,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setContacts([]);
     setInboxMessages([]);
     setLogs([]);
-    setActiveTab('home');
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({}, document.title, '/');
+    }
+    setActiveTabState('home');
   };
 
   // Automation CRUD. Authenticated users use Supabase RLS directly;
@@ -1520,10 +1515,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAdmin,
         activeTab,
         setActiveTab,
-        isBuilderOpen,
-        setIsBuilderOpen,
-        editingAutomation,
-        setEditingAutomation,
         isConnectModalOpen,
         setIsConnectModalOpen,
         isRenewModalOpen,
