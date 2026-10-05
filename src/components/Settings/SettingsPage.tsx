@@ -1,25 +1,30 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  CheckCircle2,
+  Download,
+  Globe2,
   Instagram,
-  RefreshCw,
-  Trash2,
   LogOut,
   Mail,
-  ShieldCheck,
+  RefreshCw,
   Settings2,
-  Sparkles,
-  CheckCircle2,
-  ArrowRight,
-  MessageSquareText,
-  WandSparkles,
-  ChevronDown,
-  MessageCircle,
-  Bot,
-  BadgeCheck,
-  Download,
+  ShieldCheck,
+  SlidersHorizontal,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
+
+const LANGUAGE_KEY = 'autoreply_default_ai_language';
+const TONE_KEY = 'autoreply_default_ai_tone';
+
+const readPreference = (key: string, fallback: string) => {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+};
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -32,12 +37,25 @@ export const SettingsPage: React.FC = () => {
     inboxMessages,
     disconnectChannel,
     setIsConnectModalOpen,
-    setActiveTab,
   } = useApp();
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [openGuide, setOpenGuide] = useState<string | null>(null);
+  const [defaultLanguage, setDefaultLanguage] = useState(() => readPreference(LANGUAGE_KEY, 'Auto detect'));
+  const [defaultTone, setDefaultTone] = useState(() => readPreference(TONE_KEY, 'Friendly'));
+  const [savedPreference, setSavedPreference] = useState('');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LANGUAGE_KEY, defaultLanguage);
+      localStorage.setItem(TONE_KEY, defaultTone);
+    } catch {}
+  }, [defaultLanguage, defaultTone]);
+
+  const flashSaved = (label: string) => {
+    setSavedPreference(label);
+    window.setTimeout(() => setSavedPreference(''), 1600);
+  };
 
   const handleExportData = () => {
     const exportData = {
@@ -60,8 +78,7 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    if (!window.confirm('Are you sure you want to sign out?')) return;
-
+    if (!window.confirm('Sign out of Auto Replies?')) return;
     setIsLoggingOut(true);
     try {
       await logout();
@@ -71,8 +88,8 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleDisconnect = async () => {
-    if (!window.confirm('Remove this Instagram account from Auto Replies?')) return;
-
+    if (!instagramAccount) return;
+    if (!window.confirm(`Disconnect @${instagramAccount.username} from Auto Replies? Active Instagram automations may stop working until an account is connected again.`)) return;
     setIsDisconnecting(true);
     try {
       await disconnectChannel();
@@ -81,228 +98,217 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const accountName = firebaseUser?.displayName || user.name || 'Account owner';
+  const accountEmail = firebaseUser?.email || user.email || 'Signed-in account';
+
   return (
-    <div className="mx-auto min-h-screen max-w-6xl space-y-6 bg-[#F7FAFF] p-4 sm:p-6 lg:p-8">
-      <section className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white/90 via-blue-50/75 to-violet-50/80 p-5 shadow-[0_14px_45px_rgba(72,95,145,0.08)] sm:p-7">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-violet-200/35 blur-3xl" />
-        <div className="relative flex items-start gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-500/20">
+    <div className="mx-auto min-h-full max-w-5xl space-y-5 bg-[#F7FAFF] p-4 sm:p-6 lg:p-8">
+      <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex items-start gap-4">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white">
             <Settings2 className="h-5 w-5" />
-          </div>
+          </span>
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-indigo-500"><Sparkles className="h-3.5 w-3.5" />Workspace settings</div>
+            <p className="text-xs font-bold uppercase tracking-[.14em] text-indigo-600">Workspace settings</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Settings</h1>
-            <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-600">Manage your secure session and the Instagram profile that powers your automations.</p>
+            <p className="mt-1 max-w-2xl text-sm text-slate-500">Manage your account, connected Instagram profile, AI defaults and workspace data.</p>
           </div>
         </div>
-      </section>
-      <div className="rounded-3xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm sm:p-6">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+      </header>
+
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5 sm:p-6">
           <div>
-            <h3 className="text-base font-bold text-slate-950">Account & Security</h3>
-            <p className="text-xs font-semibold text-slate-600">
-              Manage your account and signed-in session.
-            </p>
+            <h2 className="text-lg font-bold text-slate-950">Account</h2>
+            <p className="mt-1 text-sm text-slate-500">Your signed-in Auto Replies account.</p>
           </div>
-          <span className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-800">
-            <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" />
-            Secure Session
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700">
+            <ShieldCheck className="h-4 w-4" /> Secure session
           </span>
         </div>
 
-        <div className="mt-5 flex flex-col items-start justify-between gap-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-blue-50/65 to-violet-50/45 p-4 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-3.5">
-            <div className="relative">
-              <UserAvatar
-                src={firebaseUser?.photoURL || user.avatar_url}
-                username={firebaseUser?.displayName || user.name}
-                size="lg"
-              />
-              <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-white text-xs font-bold text-blue-600 shadow-sm">G</span>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-bold text-slate-950">{firebaseUser?.displayName || user.name}</h4>
-                <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-emerald-800">
-                  {user.plan} Plan
-                </span>
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div className="flex min-w-0 items-center gap-4">
+            <UserAvatar
+              src={firebaseUser?.photoURL || user.avatar_url}
+              username={accountName}
+              size="lg"
+            />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-base font-bold text-slate-900">{accountName}</h3>
+                <span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-bold capitalize text-indigo-700">{user.plan} plan</span>
               </div>
-              <div className="mt-0.5 flex items-center gap-1.5 text-xs font-bold text-slate-600">
-                <Mail className="h-3.5 w-3.5 text-slate-400" />
-                <span>{firebaseUser?.email || user.email || 'Account session'}</span>
-                {firebaseUser?.uid && <span className="hidden sm:inline text-slate-400">• ID {firebaseUser.uid.slice(0, 8)}</span>}
-              </div>
+              <p className="mt-1 flex min-w-0 items-center gap-2 text-sm text-slate-500">
+                <Mail className="h-4 w-4 shrink-0" />
+                <span className="truncate">{accountEmail}</span>
+              </p>
+              <p className="mt-1 text-xs text-slate-400">Signed in with your connected authentication account.</p>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50 sm:w-auto"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 sm:w-auto"
           >
             <LogOut className="h-4 w-4" />
-            {isLoggingOut ? 'Signing out...' : 'Sign Out'}
+            {isLoggingOut ? 'Signing out…' : 'Sign out'}
           </button>
         </div>
-      </div>
+      </section>
 
-      <div className="rounded-3xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm sm:p-6">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-          <div>
-            <h3 className="text-base font-bold text-slate-950">Instagram Account</h3>
-            <p className="text-xs font-semibold text-slate-600">
-              Connect, switch, or remove the Instagram account used by automations.
-            </p>
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 p-5 sm:p-6">
+          <div className="flex items-center gap-2">
+            <Instagram className="h-5 w-5 text-indigo-600" />
+            <h2 className="text-lg font-bold text-slate-950">Instagram account</h2>
           </div>
-          {instagramAccount && (
-            <span className="flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Connected
-            </span>
-          )}
+          <p className="mt-1 text-sm text-slate-500">The Instagram profile used for DMs, comments, stories and automations.</p>
         </div>
 
         {instagramAccount ? (
-          <div className="mt-5 flex flex-col items-start justify-between gap-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-blue-50/65 to-violet-50/45 p-4 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-3">
-              <UserAvatar
-                src={instagramAccount.profile_pic_url}
-                username={instagramAccount.username}
-                showInstagramBadge
-                size="lg"
-              />
-              <div>
-                <h4 className="text-sm font-bold text-slate-950">
-                  @{instagramAccount.username}
-                </h4>
-                <p className="mt-0.5 text-xs font-bold text-slate-600">
-                  {(instagramAccount.followers_count || 0).toLocaleString()} Followers
-                </p>
+          <div className="p-5 sm:p-6">
+            <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-4">
+                <UserAvatar
+                  src={instagramAccount.profile_pic_url}
+                  username={instagramAccount.username}
+                  showInstagramBadge
+                  size="lg"
+                />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="truncate text-base font-bold text-slate-900">@{instagramAccount.username}</h3>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">{(instagramAccount.followers_count || 0).toLocaleString()} followers</p>
+                </div>
               </div>
-            </div>
 
-            <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               <button
+                type="button"
                 onClick={() => setIsConnectModalOpen(true)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-100 sm:flex-none"
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-bold text-indigo-700 hover:bg-indigo-100 sm:w-auto"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Switch / Update
-              </button>
-
-              <button
-                onClick={handleDisconnect}
-                disabled={isDisconnecting}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50 sm:flex-none"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                {isDisconnecting ? 'Removing...' : 'Remove Profile'}
+                <RefreshCw className="h-4 w-4" />
+                Switch / reconnect
               </button>
             </div>
           </div>
         ) : (
-          <div className="mt-5 space-y-4 rounded-2xl border border-dashed border-indigo-200 bg-gradient-to-br from-blue-50/70 to-violet-50/60 p-6 text-center sm:p-8">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 text-white shadow-md">
-              <Instagram className="h-6 w-6" />
+          <div className="p-5 sm:p-6">
+            <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/40 p-6 text-center">
+              <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-indigo-600 text-white">
+                <Instagram className="h-6 w-6" />
+              </span>
+              <h3 className="mt-3 text-base font-bold text-slate-900">No Instagram account connected</h3>
+              <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">Connect the Instagram business or creator profile that should receive and automate customer messages.</p>
+              <button
+                type="button"
+                onClick={() => setIsConnectModalOpen(true)}
+                className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white hover:bg-indigo-700"
+              >
+                <Instagram className="h-4 w-4" />
+                Connect Instagram
+              </button>
             </div>
-            <div>
-              <h4 className="text-base font-bold text-slate-900">
-                No Instagram Account Linked
-              </h4>
-              <p className="mx-auto mt-1 max-w-sm text-xs font-semibold text-slate-600">
-                Connect Instagram to enable live DM automations.
-              </p>
-            </div>
-            <button
-              onClick={() => setIsConnectModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold text-white shadow-md transition duration-200 hover:-translate-y-px hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D62976] focus-visible:ring-offset-2"
-              style={{ backgroundImage: 'linear-gradient(100deg, #FEDA75 0%, #FA7E1E 20%, #D62976 48%, #962FBF 72%, #4F5BD5 100%)' }}
-            >
-              <Instagram className="h-4 w-4" />
-              Connect Instagram
-            </button>
           </div>
         )}
-      </div>
+      </section>
 
-      <details className="rounded-2xl border border-slate-200 bg-white p-5"><summary className="text-sm font-semibold text-slate-700">Need help setting up an automation?</summary><div className="mt-4">      <section id="automation-setup" className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-blue-50/85 via-white/80 to-violet-50/90 p-5 shadow-[0_14px_42px_rgba(72,95,145,0.08)] sm:p-7">
-        <div className="text-center">
-          <div className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-500">Simple Setup</div>
-          <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-bold text-transparent sm:text-3xl">How to Set Up Automation</h2>
-          <p className="mx-auto mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">Connect Instagram, create your workflow, then turn it live. Your existing automation and account data stay unchanged.</p>
-        </div>
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-blue-100 bg-white/80 p-4 shadow-sm">
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-600"><Instagram className="h-4 w-4" /></div>
-            <div className="text-sm font-bold text-slate-900">1. Connect Instagram</div>
-            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Use the official Meta connection below and confirm the correct Instagram profile is connected.</p>
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 p-5 sm:p-6">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="h-5 w-5 text-indigo-600" />
+            <h2 className="text-lg font-bold text-slate-950">Default AI preferences</h2>
           </div>
-          <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-sm">
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600"><MessageSquareText className="h-4 w-4" /></div>
-            <div className="text-sm font-bold text-slate-900">2. Build Your Workflow</div>
-            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Open Automations, choose Comment, Story, DM or AI Conversation, then add triggers and replies.</p>
-          </div>
-          <div className="rounded-2xl border border-violet-100 bg-white/80 p-4 shadow-sm">
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><WandSparkles className="h-4 w-4" /></div>
-            <div className="text-sm font-bold text-slate-900">3. Activate & Monitor</div>
-            <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Save the automation, switch it live and monitor conversations and activity from your workspace.</p>
-          </div>
+          <p className="mt-1 text-sm text-slate-500">Used as the starting defaults when you create a new AI DM Conversation.</p>
         </div>
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-slate-600">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Official Meta OAuth</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-indigo-700"><ArrowRight className="h-3.5 w-3.5" />Connect → Build → Go Live</span>
-        </div>
-      </section></div></details>
 
+        <div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6">
+          <label className="block">
+            <span className="flex items-center gap-2 text-sm font-bold text-slate-700"><Globe2 className="h-4 w-4 text-slate-400" /> Reply language</span>
+            <select
+              value={defaultLanguage}
+              onChange={(event) => { setDefaultLanguage(event.target.value); flashSaved('Language saved'); }}
+              className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-indigo-400"
+            >
+              <option>Auto detect</option>
+              <option>English</option>
+              <option>Hindi</option>
+              <option>Hinglish</option>
+            </select>
+          </label>
 
-      <section className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white/90 via-blue-50/70 to-violet-50/85 p-5 shadow-[0_14px_42px_rgba(72,95,145,0.08)] sm:p-7">
-        <div className="text-center">
-          <div className="text-xs font-bold uppercase tracking-[0.2em] text-violet-500">Step-by-step Guides</div>
-          <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-bold text-transparent sm:text-3xl">How to Create Automation</h2>
-          <p className="mx-auto mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">जिस automation को बनाना है, उस पर tap करें। नीचे Hindi + English में उसका setup खुल जाएगा।</p>
-        </div>
-        <div className="mt-6 space-y-3">
-          {[
-            { id: 'comment', icon: MessageSquareText, title: 'Comment Reply', sub: 'Comment आने पर automatic DM / reply', en: 'Create Automation → Comment Reply चुनें → All Messaging या Keywords चुनें → जरूरत हो तो Instagram post/reel select करें → Next: Configure Message में reply लिखें → Save करके automation Live करें।', hi: 'Create Automation खोलें → Comment Reply चुनें → सभी comments के लिए All Messaging या खास शब्दों के लिए Keywords चुनें → जरूरत हो तो Post/Reel चुनें → अगले step में भेजा जाने वाला reply लिखें → Save करके Live करें।' },
-            { id: 'story', icon: Instagram, title: 'Story Reply', sub: 'Story reply/mention पर automatic response', en: 'Create Automation → Story Reply चुनें → trigger condition set करें → Response step में message configure करें → Save and activate the workflow.', hi: 'Create Automation में Story Reply चुनें → किस story interaction पर trigger होना है वह सेट करें → Response में अपना message लिखें → Save करके automation चालू करें।' },
-            { id: 'dm', icon: MessageCircle, title: 'DM Reply', sub: 'Incoming DM या keyword का automatic reply', en: 'Create Automation → DM Reply चुनें → All Messaging or Messages with Keywords चुनें → keyword जोड़ें if needed → configure the reply → Save and go Live.', hi: 'DM Reply चुनें → हर DM के लिए All Messaging या खास शब्दों के लिए Messages with Keywords चुनें → जरूरत के keywords जोड़ें → reply message सेट करें → Save करके Live करें।' },
-            { id: 'ai', icon: Bot, title: 'AI Conversation', sub: 'AI से multi-turn Instagram conversation', en: 'Create Automation → DM AI Conversation चुनें → AI instructions/prompt और response behavior configure करें → review the settings → Save and activate.', hi: 'DM AI Conversation चुनें → AI को क्या काम करना है उसकी instructions/prompt दें → response behavior सेट करें → settings check करें → Save करके Live करें।' },
-          ].map((guide) => {
-            const Icon = guide.icon;
-            const isOpen = openGuide === guide.id;
-            return (
-              <div key={guide.id} className="overflow-hidden rounded-2xl border border-indigo-100 bg-white/80 shadow-sm">
-                <button type="button" onClick={() => setOpenGuide(isOpen ? null : guide.id)} className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-indigo-50/50">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-100 to-violet-100 text-indigo-600"><Icon className="h-4.5 w-4.5" /></div>
-                  <div className="min-w-0 flex-1"><div className="text-sm font-bold text-slate-900">{guide.title}</div><div className="mt-0.5 text-xs font-medium text-slate-600">{guide.sub}</div></div>
-                  <ChevronDown className={`h-4 w-4 shrink-0 text-indigo-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {isOpen && (
-                  <div className="grid gap-3 border-t border-indigo-100 bg-gradient-to-br from-blue-50/45 to-violet-50/40 p-4 md:grid-cols-2">
-                    <div className="rounded-xl border border-blue-100 bg-white/80 p-3"><div className="mb-1 text-xs font-bold uppercase tracking-wider text-blue-600">English</div><p className="text-xs font-medium leading-5 text-slate-700">{guide.en}</p></div>
-                    <div className="rounded-xl border border-violet-100 bg-white/80 p-3"><div className="mb-1 text-xs font-bold uppercase tracking-wider text-violet-600">हिंदी</div><p className="text-xs font-medium leading-5 text-slate-700">{guide.hi}</p></div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <label className="block">
+            <span className="text-sm font-bold text-slate-700">Reply tone</span>
+            <select
+              value={defaultTone}
+              onChange={(event) => { setDefaultTone(event.target.value); flashSaved('Tone saved'); }}
+              className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-indigo-400"
+            >
+              <option>Friendly</option>
+              <option>Professional</option>
+              <option>Sales Expert</option>
+              <option>Customer Support</option>
+            </select>
+          </label>
+
+          <div className="sm:col-span-2 min-h-5">
+            {savedPreference && <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />{savedPreference}</span>}
+          </div>
         </div>
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div><p className="text-xs font-bold uppercase tracking-[0.15em] text-indigo-500">Data Controls</p><h2 className="mt-1 text-lg font-bold text-slate-950">Export workspace data</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">Download a JSON copy of the profile, Instagram account metadata, automations, contacts and inbox messages currently loaded in this workspace. Access tokens are excluded.</p></div>
-          <button onClick={handleExportData} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white hover:bg-slate-800"><Download className="h-4 w-4"/>Export data</button>
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 p-5 sm:p-6">
+          <h2 className="text-lg font-bold text-slate-950">Data & privacy</h2>
+          <p className="mt-1 text-sm text-slate-500">Download a copy of the workspace data currently available to Auto Replies.</p>
+        </div>
+
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Export workspace data</h3>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Includes your profile metadata, connected Instagram account metadata, automations, contacts and inbox messages. Instagram access tokens are excluded.</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleExportData}
+            className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white hover:bg-slate-800 sm:w-auto"
+          >
+            <Download className="h-4 w-4" />
+            Export data
+          </button>
         </div>
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div><p className="text-xs font-bold uppercase tracking-[0.15em] text-indigo-500">Support & Legal</p><h2 className="mt-1 text-lg font-bold text-slate-950">Help, billing and policies</h2><p className="mt-1 text-xs text-slate-500">Product guides and important account information.</p></div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          {[['help','Help Center'],['faq','FAQ'],['billing-help','Billing Help'],['privacy','Privacy'],['terms','Terms']].map(([id,label])=><button key={id} onClick={()=>setActiveTab(id as any)} className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">{label}</button>)}
-        </div>
-      </section>
-
+      {instagramAccount && (
+        <section className="rounded-2xl border border-rose-200 bg-white shadow-sm">
+          <div className="border-b border-rose-100 p-5 sm:p-6">
+            <h2 className="text-lg font-bold text-rose-700">Danger zone</h2>
+            <p className="mt-1 text-sm text-slate-500">Actions here can stop live Instagram automations.</p>
+          </div>
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Disconnect Instagram</h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Remove @{instagramAccount.username} from this workspace. You can reconnect an account later.</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDisconnect}
+              disabled={isDisconnecting}
+              className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-700 hover:bg-rose-100 disabled:opacity-50 sm:w-auto"
+            >
+              <Trash2 className="h-4 w-4" />
+              {isDisconnecting ? 'Disconnecting…' : 'Disconnect Instagram'}
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 };
