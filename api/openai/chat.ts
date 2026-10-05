@@ -1,4 +1,4 @@
-import { enforceRateLimit, resolveAiIdentity } from '../_auth';
+import { enforceRateLimit, resolveAiIdentity } from '../_auth.js';
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = 'gpt-4o-mini';
 function cleanHistory(value: any): Array<{ role: 'user' | 'assistant'; content: string }> {

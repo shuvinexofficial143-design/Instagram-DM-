@@ -1,4 +1,4 @@
-import { SUPABASE_URL, authenticatedUser } from '../src/server/supabaseConfig';
+import { SUPABASE_URL, authenticatedUser } from '../src/server/supabaseConfig.js';
 
 const ACCOUNT_STORE_URL = SUPABASE_URL + '/functions/v1/instagram-account-store';
 

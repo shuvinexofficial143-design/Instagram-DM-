@@ -1,4 +1,4 @@
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './supabaseConfig';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './supabaseConfig.js';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 export type StoredInstagramAccount = {

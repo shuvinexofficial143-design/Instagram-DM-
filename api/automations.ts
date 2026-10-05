@@ -1,4 +1,4 @@
-import { SUPABASE_URL, authenticatedUser, UpstreamError } from '../src/server/supabaseConfig';
+import { SUPABASE_URL, authenticatedUser, UpstreamError } from '../src/server/supabaseConfig.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
