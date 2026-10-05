@@ -87,7 +87,7 @@ try {
   }
   globalThis.__uiFixture=fixture();
   html=renderToStaticMarkup(React.createElement(ui.HomePage));
-  assert.ok(!html.includes('Set up your Instagram assistant'));assert.ok(!html.includes('Webhook Connection'));assert.ok(!html.includes('Disconnect account'));checks++;
+  for(const removed of ['Set up your Instagram assistant','Connect Instagram</strong>','Add business knowledge','Test &amp; publish an automation']) assert.ok(!html.includes(removed),`dashboard does not render removed setup box: ${removed}`);assert.ok(!html.includes('Webhook Connection'));assert.ok(!html.includes('Disconnect account'));checks++;
   globalThis.__uiFixture=fixture({isBuilderOpen:true});
   html=renderToStaticMarkup(React.createElement(ui.AutomationBuilder));
   assert.ok(html.includes('What should start this automation?'));assert.ok(!html.includes('Name your automation'));assert.ok(html.includes('aria-label="Close automation builder"'));checks++;
