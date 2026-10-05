@@ -6,7 +6,8 @@ import{SmartPromptAnalyzer}from'./SmartPromptAnalyzer';
 import{ActionItem,Automation,TriggerConfig,TriggerType}from'../../types';
 
 type Media={id:string;content_type?:string;media_type?:string;caption?:string;media_url?:string;thumbnail_url?:string;permalink?:string};
-const readBuilderPreference=(key:string,fallback:string)=>{try{return localStorage.getItem(key)||fallback}catch{return fallback}};\nconst kinds:{id:TriggerType;title:string;desc:string;icon:any}[]=[
+const readBuilderPreference=(key:string,fallback:string)=>{try{return localStorage.getItem(key)||fallback}catch{return fallback}};
+const kinds:{id:TriggerType;title:string;desc:string;icon:any}[]=[
  {id:'comment',title:'Comment Automation',desc:'Reply to comments on a selected post or reel.',icon:MessageSquare},
  {id:'story_reply',title:'Story Reply',desc:'Reply when someone responds to a selected active story.',icon:Instagram},
  {id:'dm',title:'DM Reply',desc:'Send a fixed reply for all DMs or selected keywords.',icon:MessageCircle},
