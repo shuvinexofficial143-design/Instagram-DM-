@@ -1,4 +1,5 @@
-const SUPABASE_URL = String(process.env.SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../src/server/supabaseConfig';
+
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
 function getCookie(req: any, name: string): string {

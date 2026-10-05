@@ -1,6 +1,6 @@
+import { SUPABASE_URL } from '../src/server/supabaseConfig';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-const SUPABASE_URL = 'https://dwgxmmftybxwpurgsxkx.supabase.co';
 const RELAY_VERSION = '2026-09-21-fast-webhook-v1';
 
 export const config = {

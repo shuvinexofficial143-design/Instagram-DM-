@@ -1,8 +1,9 @@
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../../src/server/supabaseConfig';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const PROD_ORIGIN = String(process.env.APP_URL || 'https://autoreplys.vercel.app').replace(/\/+$/, '');
 const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
-const SUPABASE_URL = String(process.env.SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
+
 const META_APP_ID = String(process.env.INSTAGRAM_APP_ID || '').trim();
 const META_APP_SECRET = String(process.env.INSTAGRAM_APP_SECRET || '').trim();
 const OAUTH_STATE_SECRET = String(

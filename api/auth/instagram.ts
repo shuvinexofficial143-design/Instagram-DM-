@@ -1,13 +1,12 @@
 import { createHmac, randomUUID } from 'node:crypto';
+import { authenticatedUser, cleanEnvironment, UpstreamError } from '../../src/server/supabaseConfig';
 
 const PROD_ORIGIN = String(process.env.APP_URL || 'https://autoreplys.vercel.app').replace(/\/+$/, '');
 const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
-const SUPABASE_URL = String(process.env.SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
-const SUPABASE_PUBLISHABLE_KEY = String(process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08');
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
 function cleanEnv(name: string): string {
-  return String(process.env[name] || '').trim();
+  return cleanEnvironment(process.env[name]);
 }
 
 function getRedirectUri(req: any): string {
@@ -50,22 +49,6 @@ function getCookie(req: any, name: string): string {
 function isWorkspaceId(value: string): boolean {
   return /^guest_[a-f0-9-]{16,}$/i.test(value) ||
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-async function getAuthenticatedUserId(req: any): Promise<string> {
-  const authHeader = String(req?.headers?.authorization || '').trim();
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-  if (!token) return '';
-
-  const response = await fetch(SUPABASE_URL + '/auth/v1/user', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      apikey: SUPABASE_PUBLISHABLE_KEY,
-    },
-  });
-  if (!response.ok) return '';
-  const user: any = await response.json().catch(() => null);
-  return isWorkspaceId(String(user?.id || '')) ? String(user.id) : '';
 }
 
 function getOrCreateWorkspaceId(req: any, res: any): string {
@@ -134,7 +117,10 @@ export default async function handler(req: any, res: any) {
 
     // Signed-in users are bound to their Supabase UID, so each Google account
     // gets its own Instagram account/tokens. Guest cookie remains only as legacy fallback.
-    const authenticatedUid = await getAuthenticatedUserId(req);
+    const authenticatedUid = (await authenticatedUser(req))?.id || "";
+    if (req.headers?.authorization && !authenticatedUid) {
+      return res.status(401).json({ ok: false, code: "SESSION_EXPIRED", error: "Your login session expired. Sign in again before connecting Instagram." });
+    }
     const workspaceId = authenticatedUid || getOrCreateWorkspaceId(req, res);
     const redirectUri = getRedirectUri(req);
     const state = createState(workspaceId, stateSecret);
@@ -161,9 +147,9 @@ export default async function handler(req: any, res: any) {
     });
   } catch (error: any) {
     console.error('[INSTAGRAM_OAUTH_START_FAILED]', error);
-    return res.status(500).json({
+    return res.status(error instanceof UpstreamError ? 503 : 500).json({
       ok: false,
-      code: 'OAUTH_START_FAILED',
+      code: error instanceof UpstreamError ? 'AUTH_SERVICE_UNAVAILABLE' : 'OAUTH_START_FAILED',
       error: error?.message || String(error) || 'Instagram OAuth could not start.',
     });
   }

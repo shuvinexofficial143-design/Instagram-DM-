@@ -1,5 +1,5 @@
-const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
-const SUPABASE_PUBLISHABLE_KEY = String(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08');
+import { SUPABASE_URL, authenticatedUser } from '../src/server/supabaseConfig';
+
 const ACCOUNT_STORE_URL = SUPABASE_URL + '/functions/v1/instagram-account-store';
 
 type Identity = { key: string; userId?: string; workspaceId?: string };
@@ -38,14 +38,7 @@ async function verifyBearer(req: any): Promise<Identity | null> {
   const auth = String(req?.headers?.authorization || '');
   const token = auth.replace(/^Bearer\s+/i, '').trim();
   if (!token) return null;
-  const response = await fetch(SUPABASE_URL + '/auth/v1/user', {
-    headers: {
-      apikey: SUPABASE_PUBLISHABLE_KEY,
-      Authorization: 'Bearer ' + token,
-    },
-  });
-  if (!response.ok) return null;
-  const user: any = await response.json().catch(() => null);
+  const user = await authenticatedUser(req);
   if (!user?.id) return null;
   return { key: 'user:' + user.id, userId: String(user.id) };
 }

@@ -1,3 +1,4 @@
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './supabaseConfig';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 export type StoredInstagramAccount = {
@@ -12,7 +13,6 @@ export type StoredInstagramAccount = {
   status: 'connected';
 };
 
-const SUPABASE_URL = String(process.env.SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
 const SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 const PROD_ORIGIN = String(process.env.APP_URL || 'https://autoreplys.vercel.app').replace(/\/+$/, '');

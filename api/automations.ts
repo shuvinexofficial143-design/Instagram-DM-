@@ -1,9 +1,5 @@
-const SUPABASE_URL = String(process.env.SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
-const SUPABASE_PUBLISHABLE_KEY = String(
-  process.env.SUPABASE_ANON_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
-  'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08'
-).trim();
+import { SUPABASE_URL, authenticatedUser, UpstreamError } from '../src/server/supabaseConfig';
+
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
 function getCookie(req: any, name: string): string {
@@ -25,24 +21,6 @@ function getCookie(req: any, name: string): string {
 function isWorkspaceId(value: string): boolean {
   return /^guest_[a-f0-9-]{16,}$/i.test(value) ||
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-async function getAuthenticatedUserId(req: any): Promise<string> {
-  const authHeader = String(req?.headers?.authorization || '').trim();
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-  if (!token) return '';
-
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      apikey: SUPABASE_PUBLISHABLE_KEY,
-    },
-  });
-  if (!response.ok) return '';
-
-  const user: any = await response.json().catch(() => null);
-  const id = String(user?.id || '');
-  return isWorkspaceId(id) ? id : '';
 }
 
 async function callStore(body: Record<string, unknown>, timeoutMs = 18000) {
@@ -67,7 +45,8 @@ async function callStore(body: Record<string, unknown>, timeoutMs = 18000) {
 
 export default async function handler(req: any, res: any) {
   try {
-    const authenticatedUid = await getAuthenticatedUserId(req);
+    const authenticatedUid = (await authenticatedUser(req))?.id || "";
+    if (req.headers?.authorization && !authenticatedUid) return res.status(401).json({ ok: false, error: "Your login session expired. Please sign in again." });
     const workspaceId = authenticatedUid || getCookie(req, GUEST_COOKIE);
 
     if (!isWorkspaceId(workspaceId)) {
@@ -152,7 +131,7 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   } catch (err: any) {
     console.error('[AUTOMATIONS_API_FATAL]', err);
-    return res.status(500).json({
+    return res.status(err instanceof UpstreamError ? 503 : 500).json({
       ok: false,
       error:
         err?.name === 'AbortError'

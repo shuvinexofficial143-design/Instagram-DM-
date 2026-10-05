@@ -64,7 +64,6 @@ function toCompatUser(user: SupabaseUser | null, session?: Session | null): User
       lastSignInTime: user.last_sign_in_at || undefined,
     },
     getIdToken: async () => {
-      if (session?.access_token) return session.access_token;
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
       if (!data.session?.access_token) throw new Error('No active Supabase session');
