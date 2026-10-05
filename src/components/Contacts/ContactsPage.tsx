@@ -137,26 +137,26 @@ export const ContactsPage: React.FC = () => {
           <div className="flex items-start gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-500/20"><Users className="h-6 w-6" /></div>
             <div>
-              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-indigo-500"><Sparkles className="h-3.5 w-3.5" />Audience workspace</div>
-              <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Contacts</h1>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-indigo-500"><Sparkles className="h-3.5 w-3.5" />Audience workspace</div>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Contact list</h1>
               <p className="mt-1 text-sm font-medium leading-6 text-slate-600">Search, review and manage people captured from real Instagram interactions.</p>
             </div>
           </div>
           <div className="rounded-2xl border border-indigo-100 bg-white/80 px-4 py-3 text-center shadow-sm">
-            <div className="text-2xl font-black text-slate-950">{filteredContacts.length}</div>
-            <div className="text-[11px] font-black uppercase tracking-wider text-slate-500">Visible contacts</div>
+            <div className="text-2xl font-bold text-slate-950">{filteredContacts.length}</div>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Visible contacts</div>
           </div>
         </div>
       </section>
-      <section className="rounded-3xl border border-indigo-100 bg-gradient-to-br from-white/90 via-blue-50/65 to-violet-50/80 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.07)] sm:p-6">
+      <details className="rounded-2xl border border-slate-200 bg-white p-4"><summary className="text-sm font-semibold text-slate-700">Send a message to selected contacts</summary><div className="mt-4"><section className="rounded-3xl border border-indigo-100 bg-gradient-to-br from-white/90 via-blue-50/65 to-violet-50/80 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.07)] sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-md shadow-indigo-500/20"><Send className="h-4 w-4" /></div>
-            <div><div className="text-xs font-black uppercase tracking-[0.16em] text-indigo-500">Bulk Messages</div><h2 className="mt-1 text-xl font-black text-slate-950">Send to your contacts</h2><p className="mt-1 max-w-2xl text-xs font-medium leading-5 text-slate-600">Send only to people who have already interacted with your account and are eligible for messaging. Bulk sending stops automatically if Instagram returns a rate-limit or permission error.</p></div>
+            <div><div className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-500">Bulk Messages</div><h2 className="mt-1 text-xl font-bold text-slate-950">Send to your contacts</h2><p className="mt-1 max-w-2xl text-xs font-medium leading-5 text-slate-600">Send only to people who have already interacted with your account and are eligible for messaging. Bulk sending stops automatically if Instagram returns a rate-limit or permission error.</p></div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setBulkAudience('selected')} className={`rounded-xl border px-3 py-2 text-xs font-black transition-all ${bulkAudience === 'selected' ? 'border-indigo-200 bg-indigo-600 text-white' : 'border-indigo-100 bg-white/80 text-slate-700'}`}>Selected ({selectedContactIds.length})</button>
-            <button type="button" onClick={() => setBulkAudience('all')} className={`rounded-xl border px-3 py-2 text-xs font-black transition-all ${bulkAudience === 'all' ? 'border-indigo-200 bg-indigo-600 text-white' : 'border-indigo-100 bg-white/80 text-slate-700'}`}>All Visible ({filteredContacts.length})</button>
+            <button type="button" onClick={() => setBulkAudience('selected')} className={`rounded-xl border px-3 py-2 text-xs font-bold transition-all ${bulkAudience === 'selected' ? 'border-indigo-200 bg-indigo-600 text-white' : 'border-indigo-100 bg-white/80 text-slate-700'}`}>Selected ({selectedContactIds.length})</button>
+            <button type="button" onClick={() => setBulkAudience('all')} className={`rounded-xl border px-3 py-2 text-xs font-bold transition-all ${bulkAudience === 'all' ? 'border-indigo-200 bg-indigo-600 text-white' : 'border-indigo-100 bg-white/80 text-slate-700'}`}>All Visible ({filteredContacts.length})</button>
           </div>
         </div>
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5">
@@ -167,14 +167,14 @@ export const ContactsPage: React.FC = () => {
         </div>
         <div className="mt-5 grid gap-4 lg:grid-cols-[180px_1fr_auto] lg:items-end">
           <div>
-            <label className="mb-2 block text-[11px] font-black uppercase tracking-wider text-slate-500">Message Mode</label>
+            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Message Mode</label>
             <div className="flex rounded-xl border border-indigo-100 bg-white/80 p-1">
-              <button type="button" onClick={() => setBulkMode('normal')} className={`flex-1 rounded-lg px-2 py-2 text-xs font-black ${bulkMode === 'normal' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500'}`}>Normal</button>
-              <button type="button" onClick={() => setBulkMode('ai')} className={`flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-black ${bulkMode === 'ai' ? 'bg-violet-50 text-violet-700' : 'text-slate-500'}`}><Bot className="h-3.5 w-3.5" />AI</button>
+              <button type="button" onClick={() => setBulkMode('normal')} className={`flex-1 rounded-lg px-2 py-2 text-xs font-bold ${bulkMode === 'normal' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500'}`}>Normal</button>
+              <button type="button" onClick={() => setBulkMode('ai')} className={`flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-bold ${bulkMode === 'ai' ? 'bg-violet-50 text-violet-700' : 'text-slate-500'}`}><Bot className="h-3.5 w-3.5" />AI</button>
             </div>
           </div>
           <div>
-            <label className="mb-2 block text-[11px] font-black uppercase tracking-wider text-slate-500">{bulkMode === 'ai' ? 'AI instruction / base message' : 'Message'}</label>
+            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">{bulkMode === 'ai' ? 'AI instruction / base message' : 'Message'}</label>
             <textarea value={bulkMessage} onChange={(e) => setBulkMessage(e.target.value)} rows={2} placeholder={bulkMode === 'ai' ? 'Write the intent for a personalized message…' : 'Write the message to send…'} className="w-full resize-none rounded-xl border border-indigo-100 bg-white/90 px-3.5 py-2.5 text-sm font-medium text-slate-900 outline-none focus:ring-2 focus:ring-indigo-200" />
           </div>
           <button type="button" disabled={bulkSending || !bulkConsentConfirmed || !bulkMessage.trim() || (bulkAudience === 'selected' && selectedContactIds.length === 0)} onClick={async () => {
@@ -231,11 +231,11 @@ export const ContactsPage: React.FC = () => {
               if (sent > 0) setBulkMessage('');
               setBulkConsentConfirmed(false);
             } finally { setBulkSending(false); }
-          }} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 text-xs font-black text-white shadow-md disabled:cursor-not-allowed disabled:opacity-40"><WandSparkles className="h-4 w-4" />{bulkSending ? 'Sending…' : 'Send Message'}</button>
+          }} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 text-xs font-bold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-40"><WandSparkles className="h-4 w-4" />{bulkSending ? 'Sending…' : 'Send Message'}</button>
         </div>
         {bulkMode === 'ai' && <p className="mt-3 rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2 text-xs font-semibold leading-5 text-violet-800">AI mode uses the same OpenAI integration as AI Conversation to create a personalized DM for each chosen contact before sending.</p>}
         {bulkStatus && <p className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs font-bold text-emerald-800">{bulkStatus}</p>}
-      </section>
+      </section></div></details>
 
       {/* Filter & Action Toolbar */}
       <div className="flex flex-col items-stretch justify-between gap-4 rounded-3xl border border-white/90 bg-white/85 p-4 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm md:flex-row md:items-center">
@@ -255,7 +255,7 @@ export const ContactsPage: React.FC = () => {
           {selectedContactIds.length > 0 && (
             <button
               onClick={handleBulkDelete}
-              className="bg-red-600 hover:bg-red-700 text-white font-black text-xs py-2 px-3.5 rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+              className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Delete Selected ({selectedContactIds.length})</span>
@@ -265,7 +265,7 @@ export const ContactsPage: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setSelectedTag(null)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 selectedTag === null ? 'bg-[#3B5BFF] text-white shadow-xs' : 'bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-200'
               }`}
             >
@@ -275,7 +275,7 @@ export const ContactsPage: React.FC = () => {
               <button
                 key={tag}
                 onClick={() => setSelectedTag(tag === selectedTag ? null : tag)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   selectedTag === tag ? 'bg-[#3B5BFF] text-white shadow-xs' : 'bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-200'
                 }`}
               >
@@ -286,7 +286,7 @@ export const ContactsPage: React.FC = () => {
 
           <button
             onClick={exportCsv}
-            className="bg-slate-900 hover:bg-slate-800 text-white font-black text-xs py-2 px-3.5 rounded-xl btn-primary-elevated flex items-center gap-2 shrink-0 cursor-pointer"
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2 px-3.5 rounded-xl btn-primary-elevated flex items-center gap-2 shrink-0 cursor-pointer"
           >
             <Download className="w-4 h-4 stroke-[2.2]" />
             <span>Export CSV</span>
@@ -298,7 +298,7 @@ export const ContactsPage: React.FC = () => {
       <div className="overflow-hidden rounded-3xl border border-white/90 bg-white/85 shadow-[0_12px_36px_rgba(72,95,145,0.07)] backdrop-blur-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="border-b border-indigo-100 bg-gradient-to-r from-blue-50/90 to-violet-50/80 text-[11px] font-black uppercase tracking-wider text-slate-800">
+            <thead className="border-b border-indigo-100 bg-gradient-to-r from-blue-50/90 to-violet-50/80 text-xs font-bold uppercase tracking-wider text-slate-800">
               <tr>
                 <th className="p-4 w-10 text-center">
                   <button
@@ -359,19 +359,19 @@ export const ContactsPage: React.FC = () => {
                             size="md"
                           />
                           <div>
-                            <div className="font-black text-slate-950">@{contact.ig_username}</div>
-                            <div className="text-[10px] font-semibold text-slate-500">Instagram contact</div>
+                            <div className="font-bold text-slate-950">@{contact.ig_username}</div>
+                            <div className="text-xs font-semibold text-slate-500">Instagram contact</div>
                           </div>
                         </div>
                       </td>
 
                       {/* First Captured */}
-                      <td className="p-4 text-slate-800 font-bold text-[11px]">
+                      <td className="p-4 text-slate-800 font-bold text-xs">
                         {new Date(contact.first_interaction_at).toLocaleDateString()}
                       </td>
 
                       {/* Last Active */}
-                      <td className="p-4 text-slate-800 font-bold text-[11px]">
+                      <td className="p-4 text-slate-800 font-bold text-xs">
                         {new Date(contact.last_interaction_at).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -383,14 +383,14 @@ export const ContactsPage: React.FC = () => {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => setActiveContact(contact)}
-                            className="whitespace-nowrap rounded-lg border border-indigo-100 bg-indigo-50/70 px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 transition-colors hover:bg-indigo-100 cursor-pointer"
+                            className="whitespace-nowrap rounded-lg border border-indigo-100 bg-indigo-50/70 px-2.5 py-1.5 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-100 cursor-pointer"
                           >
                             View History
                           </button>
                           <button
                             onClick={() => handleRemoveSingle(contact)}
                             title="Remove contact from database permanently"
-                            className="flex items-center gap-1 whitespace-nowrap rounded-lg border border-rose-100 bg-rose-50/70 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 transition-colors hover:bg-rose-100 cursor-pointer"
+                            className="flex items-center gap-1 whitespace-nowrap rounded-lg border border-rose-100 bg-rose-50/70 px-2.5 py-1.5 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-100 cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>Remove</span>
@@ -429,7 +429,7 @@ export const ContactsPage: React.FC = () => {
                     size="2xl"
                   />
                 </div>
-                <h4 className="font-extrabold text-slate-900 text-lg">@{activeContact.ig_username}</h4>
+                <h4 className="font-bold text-slate-900 text-lg">@{activeContact.ig_username}</h4>
                 <p className="text-xs text-slate-500">Instagram User • Captured Contact</p>
               </div>
 
@@ -437,16 +437,16 @@ export const ContactsPage: React.FC = () => {
                 <div className="text-xs font-bold text-slate-800">Engagement Breakdown:</div>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <div className="font-black text-purple-600">{activeContact.interactions.comments}</div>
-                    <div className="text-[10px] text-slate-500">Comments</div>
+                    <div className="font-bold text-purple-600">{activeContact.interactions.comments}</div>
+                    <div className="text-xs text-slate-500">Comments</div>
                   </div>
                   <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <div className="font-black text-blue-600">{activeContact.interactions.dms}</div>
-                    <div className="text-[10px] text-slate-500">DMs</div>
+                    <div className="font-bold text-blue-600">{activeContact.interactions.dms}</div>
+                    <div className="text-xs text-slate-500">DMs</div>
                   </div>
                   <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <div className="font-black text-amber-600">{activeContact.interactions.stories}</div>
-                    <div className="text-[10px] text-slate-500">Stories</div>
+                    <div className="font-bold text-amber-600">{activeContact.interactions.stories}</div>
+                    <div className="text-xs text-slate-500">Stories</div>
                   </div>
                 </div>
               </div>

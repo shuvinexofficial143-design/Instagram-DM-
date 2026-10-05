@@ -1,12 +1,13 @@
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense } from 'react';
 // Deployment refresh: 2026-09-20T08:59Z
+import { publicSupportPage } from './lib/navigation';
 import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { PlanBanner } from './components/Common/PlanBanner';
 import { PlanRenewModal } from './components/Common/PlanRenewModal';
 import { ConnectChannelModal } from './components/Common/ConnectChannelModal';
-import { IntroSplash } from './components/Common/IntroSplash';
+import { WorkspaceTabs } from './components/WorkspaceNavigation';
 import { ErrorBoundary } from './components/Common/ErrorBoundary';
 import { HomePage } from './components/Home/HomePage';
 import { LoginPage } from './components/Auth/LoginPage';
@@ -47,8 +48,9 @@ const MainContent: React.FC = () => {
   const { activeTab } = useApp();
 
   return (
-    <main className="app-unified-theme min-w-0 flex-1 bg-[#F7FAFF] pb-24 md:pb-0 md:overflow-y-auto md:overscroll-contain">
+    <main className="app-unified-theme min-w-0 flex-1 bg-[#F8FAFC] pb-6 md:pb-0 md:overflow-y-auto md:overscroll-contain">
       <PlanBanner />
+      <WorkspaceTabs />
 
       <ErrorBoundary>
         <Suspense fallback={<PageLoadingFallback />}>
@@ -86,15 +88,14 @@ const MainContent: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const { authLoading, firebaseUser, isAdmin } = useApp();
-  const [showSplash, setShowSplash] = useState<boolean>(true);
+  const { authLoading, firebaseUser, activeTab } = useApp();
   const isAdminRoute =
     typeof window !== 'undefined' && window.location.pathname === '/admin';
 
   if (authLoading) {
     return (
       <ErrorBoundary>
-        <IntroSplash onComplete={() => {}} />
+        <div role="status" className="flex min-h-[100dvh] items-center justify-center gap-3 bg-slate-50 text-slate-600"><span className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />Loading your workspace…</div>
       </ErrorBoundary>
     );
   }
@@ -102,25 +103,18 @@ const AppShell: React.FC = () => {
 
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
   const isResetPasswordRoute = pathname === '/reset-password';
-  const isPublicLegalRoute = pathname === '/privacy' || pathname === '/terms';
+  const supportPage = publicSupportPage(pathname);
   const isPublicLandingRoute = pathname === '/';
 
-  if (isResetPasswordRoute) {
-    return (
-      <ErrorBoundary>
-        <ResetPasswordPage />
-      </ErrorBoundary>
-    );
-  }
+  if (isResetPasswordRoute) return <ErrorBoundary><ResetPasswordPage /></ErrorBoundary>;
 
-  if (isPublicLegalRoute && !firebaseUser) {
-    return (
-      <ErrorBoundary>
-        <div className="min-h-[100dvh] bg-[#F7FAFF]">
-          <SupportPage page={pathname === '/privacy' ? 'privacy' : 'terms'} />
-        </div>
-      </ErrorBoundary>
-    );
+  if (!firebaseUser && (supportPage || pathname === '/about')) {
+    return <ErrorBoundary><div className="min-h-[100dvh] bg-slate-50">
+      <header className="public-page-header"><a href="/" className="brand">Auto Replies</a><a href="/login" className="button-secondary">Log in</a></header>
+      <Suspense fallback={<PageLoadingFallback />}>
+        {pathname === '/about' ? <AboutUsPage /> : <SupportPage page={supportPage} />}
+      </Suspense>
+    </div></ErrorBoundary>;
   }
 
   if (!firebaseUser) {
@@ -143,7 +137,6 @@ const AppShell: React.FC = () => {
 
   return (
     <ErrorBoundary>
-      {showSplash && <IntroSplash onComplete={() => setShowSplash(false)} />}
       <div className="flex min-h-[100dvh] w-full overflow-x-clip bg-[#F7FAFF] font-sans text-slate-900 md:h-[100dvh] md:overflow-hidden">
         <div className="hidden shrink-0 md:block"><Sidebar /></div>
         <div className="flex min-w-0 flex-1 flex-col md:h-[100dvh] md:min-h-0">

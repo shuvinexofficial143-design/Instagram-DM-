@@ -60,12 +60,12 @@ interface UserAvatarProps {
 }
 
 const SIZE_MAP: Record<AvatarSize, { container: string; text: string; badge: string; badgeIcon: string }> = {
-  xs: { container: 'w-6 h-6', text: 'text-[10px] font-black', badge: 'w-3 h-3 -bottom-0.5 -right-0.5', badgeIcon: 'w-1.5 h-1.5' },
-  sm: { container: 'w-8 h-8', text: 'text-xs font-black', badge: 'w-3.5 h-3.5 -bottom-0.5 -right-0.5', badgeIcon: 'w-2 h-2' },
-  md: { container: 'w-9 h-9', text: 'text-xs font-black', badge: 'w-4 h-4 -bottom-0.5 -right-0.5', badgeIcon: 'w-2.5 h-2.5' },
-  lg: { container: 'w-12 h-12', text: 'text-sm font-black', badge: 'w-4.5 h-4.5 -bottom-0.5 -right-0.5', badgeIcon: 'w-2.5 h-2.5' },
-  xl: { container: 'w-14 h-14', text: 'text-base font-black', badge: 'w-5 h-5 -bottom-1 -right-1', badgeIcon: 'w-3 h-3' },
-  '2xl': { container: 'w-16 h-16', text: 'text-xl font-black', badge: 'w-6 h-6 -bottom-1 -right-1', badgeIcon: 'w-3.5 h-3.5' },
+  xs: { container: 'w-6 h-6', text: 'text-xs font-bold', badge: 'w-3 h-3 -bottom-0.5 -right-0.5', badgeIcon: 'w-1.5 h-1.5' },
+  sm: { container: 'w-8 h-8', text: 'text-xs font-bold', badge: 'w-3.5 h-3.5 -bottom-0.5 -right-0.5', badgeIcon: 'w-2 h-2' },
+  md: { container: 'w-9 h-9', text: 'text-xs font-bold', badge: 'w-4 h-4 -bottom-0.5 -right-0.5', badgeIcon: 'w-2.5 h-2.5' },
+  lg: { container: 'w-12 h-12', text: 'text-sm font-bold', badge: 'w-4.5 h-4.5 -bottom-0.5 -right-0.5', badgeIcon: 'w-2.5 h-2.5' },
+  xl: { container: 'w-14 h-14', text: 'text-base font-bold', badge: 'w-5 h-5 -bottom-1 -right-1', badgeIcon: 'w-3 h-3' },
+  '2xl': { container: 'w-16 h-16', text: 'text-xl font-bold', badge: 'w-6 h-6 -bottom-1 -right-1', badgeIcon: 'w-3.5 h-3.5' },
 };
 
 export const UserAvatar: React.FC<UserAvatarProps> = ({
@@ -142,7 +142,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
       {/* Human Takeover Active Badge */}
       {isAiPaused && !showInstagramBadge && (
         <div
-          className={`absolute ${sizeConfig.badge} rounded-full bg-amber-500 border-2 border-white flex items-center justify-center text-white font-black shadow-xs`}
+          className={`absolute ${sizeConfig.badge} rounded-full bg-amber-500 border-2 border-white flex items-center justify-center text-white font-bold shadow-xs`}
           title="Human Takeover Active (AI Paused)"
         >
           <User className={`${sizeConfig.badgeIcon} stroke-[2.5]`} />

@@ -59,7 +59,7 @@ export const AnalyticsPage: React.FC = () => {
       <div className="mx-auto max-w-[1380px] space-y-6">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[.16em] text-indigo-600">Workspace insights</p>
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-indigo-600">Workspace insights</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Analytics</h1>
             <p className="mt-1 text-sm text-slate-500">Real message and lead activity from the selected period.</p>
           </div>
@@ -110,7 +110,7 @@ export const AnalyticsPage: React.FC = () => {
                 );
               })}
             </div>
-            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
               <span>{data.days[0]?.label}</span><span>{data.days[data.days.length - 1]?.label}</span>
             </div>
           </article>
@@ -123,9 +123,9 @@ export const AnalyticsPage: React.FC = () => {
                 <div key={auto.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-xs font-bold text-slate-800">{index + 1}. {auto.name}</p>
-                    <p className="mt-0.5 text-[11px] text-slate-500">{auto.trigger_type.replaceAll('_', ' ')}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">{auto.trigger_type.replaceAll('_', ' ')}</p>
                   </div>
-                  <span className="shrink-0 text-xs font-black text-indigo-700">{(auto.stats?.runs || 0).toLocaleString()} runs</span>
+                  <span className="shrink-0 text-xs font-bold text-indigo-700">{(auto.stats?.runs || 0).toLocaleString()} runs</span>
                 </div>
               )) : <p className="rounded-xl bg-slate-50 p-4 text-xs text-slate-500">No automation activity yet.</p>}
             </div>

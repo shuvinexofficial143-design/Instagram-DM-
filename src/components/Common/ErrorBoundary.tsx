@@ -50,8 +50,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-2xl font-black text-slate-950 tracking-tight">
-                AutoReply.io Dashboard
+              <h2 className="text-2xl font-bold text-slate-950 tracking-tight">
+                Auto Replies Dashboard
               </h2>
               <p className="text-sm font-semibold text-slate-600">
                 A rendering issue was detected. Click reload to refresh the dashboard instantly.
@@ -67,14 +67,14 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             <div className="flex items-center gap-3 justify-center">
               <button
                 onClick={this.handleReset}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs px-5 py-3 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-5 py-3 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
               >
                 <Home className="w-4 h-4" />
                 <span>Try Again</span>
               </button>
               <button
                 onClick={this.handleReload}
-                className="bg-[#3B5BFF] hover:bg-indigo-700 text-white font-black text-xs px-5 py-3 rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                className="bg-[#3B5BFF] hover:bg-indigo-700 text-white font-bold text-xs px-5 py-3 rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>Reload App</span>

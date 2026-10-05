@@ -141,8 +141,8 @@ export const ConnectChannelModal: React.FC = () => {
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[17px] bg-gradient-to-tr from-[#FEDA75] via-[#D62976] to-[#4F5BD5] text-white shadow-[0_10px_25px_rgba(214,41,118,0.18)]">
               <Instagram className="h-7 w-7 stroke-[2.2]" />
             </div>
-            <p className="mt-4 text-[11px] font-extrabold uppercase tracking-[0.18em] text-violet-600">Connect Instagram</p>
-            <h2 className="mt-1.5 text-[22px] font-extrabold tracking-tight text-slate-950 sm:text-[24px]">
+            <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-violet-600">Connect Instagram</p>
+            <h2 className="mt-1.5 text-[22px] font-bold tracking-tight text-slate-950 sm:text-[24px]">
               {instagramAccount ? 'Instagram connected' : 'Connect your Instagram'}
             </h2>
             <p className="mx-auto mt-1.5 max-w-sm text-[13px] font-medium leading-5 text-slate-500 sm:text-[14px]">
@@ -168,10 +168,10 @@ export const ConnectChannelModal: React.FC = () => {
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-violet-600 shadow-sm ring-1 ring-indigo-100"><ShieldCheck className="h-5 w-5" /></div>
                   <div className="min-w-0">
                     <h3 className="text-[14px] font-bold text-slate-900">Secure connection through Meta</h3>
-                    <p className="mt-1 text-[12px] font-medium leading-[18px] text-slate-600 sm:text-[13px]">You’ll continue to Instagram/Meta authorization and choose the account to connect. Your Instagram password is not entered or stored on AutoReply.</p>
+                    <p className="mt-1 text-xs font-medium leading-[18px] text-slate-600 sm:text-[13px]">You’ll continue to Instagram/Meta authorization and choose the account to connect. Your Instagram password is not entered or stored on AutoReply.</p>
                   </div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-[11px] font-semibold text-slate-600 sm:text-[12px]">
+                <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-xs font-semibold text-slate-600 sm:text-xs">
                   <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />Secure OAuth</span>
                   <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />Official Meta authorization</span>
                   <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />No password stored</span>
@@ -181,7 +181,7 @@ export const ConnectChannelModal: React.FC = () => {
               <div className="mt-4 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2 text-center">
                 {['Sign in','Choose account','Connect'].map((label, i) => (
                   <React.Fragment key={label}>
-                    <div className="min-w-0"><span className="mx-auto flex h-7 w-7 items-center justify-center rounded-full bg-violet-50 text-[12px] font-bold text-violet-700 ring-1 ring-violet-200">{i + 1}</span><span className="mt-1 block truncate text-[11px] font-semibold text-slate-600 sm:text-[12px]">{label}</span></div>
+                    <div className="min-w-0"><span className="mx-auto flex h-7 w-7 items-center justify-center rounded-full bg-violet-50 text-xs font-bold text-violet-700 ring-1 ring-violet-200">{i + 1}</span><span className="mt-1 block truncate text-xs font-semibold text-slate-600 sm:text-xs">{label}</span></div>
                     {i < 2 && <span className="h-px w-4 bg-indigo-200 sm:w-8" aria-hidden="true" />}
                   </React.Fragment>
                 ))}
@@ -190,7 +190,7 @@ export const ConnectChannelModal: React.FC = () => {
           )}
 
           {feedback && (
-            <div className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-[12px] font-semibold ${feedback.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>
+            <div className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs font-semibold ${feedback.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>
               {feedback.type === 'success' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />}
               <span className="leading-5">{feedback.message}</span>
             </div>
@@ -207,7 +207,7 @@ export const ConnectChannelModal: React.FC = () => {
             <ExternalLink className="h-4 w-4 opacity-85" />
           </button>
 
-          <p className="mt-3 text-center text-[11px] font-medium text-slate-500 sm:text-[12px]">Business or Creator Instagram account required</p>
+          <p className="mt-3 text-center text-xs font-medium text-slate-500 sm:text-xs">Business or Creator Instagram account required</p>
         </div>
       </div>
     </div>

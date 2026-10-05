@@ -71,7 +71,7 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleDisconnect = async () => {
-    if (!window.confirm('Remove this Instagram account from AutoReply.io?')) return;
+    if (!window.confirm('Remove this Instagram account from Auto Replies?')) return;
 
     setIsDisconnecting(true);
     try {
@@ -90,8 +90,8 @@ export const SettingsPage: React.FC = () => {
             <Settings2 className="h-5 w-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-indigo-500"><Sparkles className="h-3.5 w-3.5" />Workspace settings</div>
-            <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Settings</h1>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-indigo-500"><Sparkles className="h-3.5 w-3.5" />Workspace settings</div>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Settings</h1>
             <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-600">Manage your secure session and the Instagram profile that powers your automations.</p>
           </div>
         </div>
@@ -99,12 +99,12 @@ export const SettingsPage: React.FC = () => {
       <div className="rounded-3xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm sm:p-6">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
-            <h3 className="text-base font-black text-slate-950">Account & Security</h3>
+            <h3 className="text-base font-bold text-slate-950">Account & Security</h3>
             <p className="text-xs font-semibold text-slate-600">
               Manage your account and signed-in session.
             </p>
           </div>
-          <span className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-800">
+          <span className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-800">
             <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" />
             Secure Session
           </span>
@@ -118,12 +118,12 @@ export const SettingsPage: React.FC = () => {
                 username={firebaseUser?.displayName || user.name}
                 size="lg"
               />
-              <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-white text-[11px] font-black text-blue-600 shadow-sm">G</span>
+              <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-white text-xs font-bold text-blue-600 shadow-sm">G</span>
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="text-sm font-black text-slate-950">{firebaseUser?.displayName || user.name}</h4>
-                <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                <h4 className="text-sm font-bold text-slate-950">{firebaseUser?.displayName || user.name}</h4>
+                <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-emerald-800">
                   {user.plan} Plan
                 </span>
               </div>
@@ -138,7 +138,7 @@ export const SettingsPage: React.FC = () => {
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-black text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50 sm:w-auto"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50 sm:w-auto"
           >
             <LogOut className="h-4 w-4" />
             {isLoggingOut ? 'Signing out...' : 'Sign Out'}
@@ -149,13 +149,13 @@ export const SettingsPage: React.FC = () => {
       <div className="rounded-3xl border border-white/90 bg-white/85 p-5 shadow-[0_12px_36px_rgba(72,95,145,0.08)] backdrop-blur-sm sm:p-6">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
-            <h3 className="text-base font-black text-slate-950">Instagram Account</h3>
+            <h3 className="text-base font-bold text-slate-950">Instagram Account</h3>
             <p className="text-xs font-semibold text-slate-600">
               Connect, switch, or remove the Instagram account used by automations.
             </p>
           </div>
           {instagramAccount && (
-            <span className="flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-800">
+            <span className="flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
               Connected
             </span>
@@ -172,7 +172,7 @@ export const SettingsPage: React.FC = () => {
                 size="lg"
               />
               <div>
-                <h4 className="text-sm font-black text-slate-950">
+                <h4 className="text-sm font-bold text-slate-950">
                   @{instagramAccount.username}
                 </h4>
                 <p className="mt-0.5 text-xs font-bold text-slate-600">
@@ -184,7 +184,7 @@ export const SettingsPage: React.FC = () => {
             <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               <button
                 onClick={() => setIsConnectModalOpen(true)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-black text-indigo-700 transition-colors hover:bg-indigo-100 sm:flex-none"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-100 sm:flex-none"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Switch / Update
@@ -193,7 +193,7 @@ export const SettingsPage: React.FC = () => {
               <button
                 onClick={handleDisconnect}
                 disabled={isDisconnecting}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-black text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50 sm:flex-none"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50 sm:flex-none"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 {isDisconnecting ? 'Removing...' : 'Remove Profile'}
@@ -206,7 +206,7 @@ export const SettingsPage: React.FC = () => {
               <Instagram className="h-6 w-6" />
             </div>
             <div>
-              <h4 className="text-base font-black text-slate-900">
+              <h4 className="text-base font-bold text-slate-900">
                 No Instagram Account Linked
               </h4>
               <p className="mx-auto mt-1 max-w-sm text-xs font-semibold text-slate-600">
@@ -215,7 +215,7 @@ export const SettingsPage: React.FC = () => {
             </div>
             <button
               onClick={() => setIsConnectModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black text-white shadow-md transition duration-200 hover:-translate-y-px hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D62976] focus-visible:ring-offset-2"
+              className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold text-white shadow-md transition duration-200 hover:-translate-y-px hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D62976] focus-visible:ring-offset-2"
               style={{ backgroundImage: 'linear-gradient(100deg, #FEDA75 0%, #FA7E1E 20%, #D62976 48%, #962FBF 72%, #4F5BD5 100%)' }}
             >
               <Instagram className="h-4 w-4" />
@@ -225,26 +225,26 @@ export const SettingsPage: React.FC = () => {
         )}
       </div>
 
-      <section id="automation-setup" className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-blue-50/85 via-white/80 to-violet-50/90 p-5 shadow-[0_14px_42px_rgba(72,95,145,0.08)] sm:p-7">
+      <details className="rounded-2xl border border-slate-200 bg-white p-5"><summary className="text-sm font-semibold text-slate-700">Need help setting up an automation?</summary><div className="mt-4">      <section id="automation-setup" className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-blue-50/85 via-white/80 to-violet-50/90 p-5 shadow-[0_14px_42px_rgba(72,95,145,0.08)] sm:p-7">
         <div className="text-center">
-          <div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">Simple Setup</div>
-          <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-black text-transparent sm:text-3xl">How to Set Up Automation</h2>
+          <div className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-500">Simple Setup</div>
+          <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-bold text-transparent sm:text-3xl">How to Set Up Automation</h2>
           <p className="mx-auto mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">Connect Instagram, create your workflow, then turn it live. Your existing automation and account data stay unchanged.</p>
         </div>
         <div className="mt-6 grid gap-3 md:grid-cols-3">
           <div className="rounded-2xl border border-blue-100 bg-white/80 p-4 shadow-sm">
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-600"><Instagram className="h-4 w-4" /></div>
-            <div className="text-sm font-black text-slate-900">1. Connect Instagram</div>
+            <div className="text-sm font-bold text-slate-900">1. Connect Instagram</div>
             <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Use the official Meta connection below and confirm the correct Instagram profile is connected.</p>
           </div>
           <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-sm">
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600"><MessageSquareText className="h-4 w-4" /></div>
-            <div className="text-sm font-black text-slate-900">2. Build Your Workflow</div>
+            <div className="text-sm font-bold text-slate-900">2. Build Your Workflow</div>
             <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Open Automations, choose Comment, Story, DM or AI Conversation, then add triggers and replies.</p>
           </div>
           <div className="rounded-2xl border border-violet-100 bg-white/80 p-4 shadow-sm">
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><WandSparkles className="h-4 w-4" /></div>
-            <div className="text-sm font-black text-slate-900">3. Activate & Monitor</div>
+            <div className="text-sm font-bold text-slate-900">3. Activate & Monitor</div>
             <p className="mt-1 text-xs font-medium leading-5 text-slate-600">Save the automation, switch it live and monitor conversations and activity from your workspace.</p>
           </div>
         </div>
@@ -252,13 +252,13 @@ export const SettingsPage: React.FC = () => {
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Official Meta OAuth</span>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-indigo-700"><ArrowRight className="h-3.5 w-3.5" />Connect → Build → Go Live</span>
         </div>
-      </section>
+      </section></div></details>
 
 
       <section className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-white/90 via-blue-50/70 to-violet-50/85 p-5 shadow-[0_14px_42px_rgba(72,95,145,0.08)] sm:p-7">
         <div className="text-center">
-          <div className="text-xs font-black uppercase tracking-[0.2em] text-violet-500">Step-by-step Guides</div>
-          <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-black text-transparent sm:text-3xl">How to Create Automation</h2>
+          <div className="text-xs font-bold uppercase tracking-[0.2em] text-violet-500">Step-by-step Guides</div>
+          <h2 className="mt-1 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-bold text-transparent sm:text-3xl">How to Create Automation</h2>
           <p className="mx-auto mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">जिस automation को बनाना है, उस पर tap करें। नीचे Hindi + English में उसका setup खुल जाएगा।</p>
         </div>
         <div className="mt-6 space-y-3">
@@ -274,13 +274,13 @@ export const SettingsPage: React.FC = () => {
               <div key={guide.id} className="overflow-hidden rounded-2xl border border-indigo-100 bg-white/80 shadow-sm">
                 <button type="button" onClick={() => setOpenGuide(isOpen ? null : guide.id)} className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-indigo-50/50">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-100 to-violet-100 text-indigo-600"><Icon className="h-4.5 w-4.5" /></div>
-                  <div className="min-w-0 flex-1"><div className="text-sm font-black text-slate-900">{guide.title}</div><div className="mt-0.5 text-xs font-medium text-slate-600">{guide.sub}</div></div>
+                  <div className="min-w-0 flex-1"><div className="text-sm font-bold text-slate-900">{guide.title}</div><div className="mt-0.5 text-xs font-medium text-slate-600">{guide.sub}</div></div>
                   <ChevronDown className={`h-4 w-4 shrink-0 text-indigo-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isOpen && (
                   <div className="grid gap-3 border-t border-indigo-100 bg-gradient-to-br from-blue-50/45 to-violet-50/40 p-4 md:grid-cols-2">
-                    <div className="rounded-xl border border-blue-100 bg-white/80 p-3"><div className="mb-1 text-[11px] font-black uppercase tracking-wider text-blue-600">English</div><p className="text-xs font-medium leading-5 text-slate-700">{guide.en}</p></div>
-                    <div className="rounded-xl border border-violet-100 bg-white/80 p-3"><div className="mb-1 text-[11px] font-black uppercase tracking-wider text-violet-600">हिंदी</div><p className="text-xs font-medium leading-5 text-slate-700">{guide.hi}</p></div>
+                    <div className="rounded-xl border border-blue-100 bg-white/80 p-3"><div className="mb-1 text-xs font-bold uppercase tracking-wider text-blue-600">English</div><p className="text-xs font-medium leading-5 text-slate-700">{guide.en}</p></div>
+                    <div className="rounded-xl border border-violet-100 bg-white/80 p-3"><div className="mb-1 text-xs font-bold uppercase tracking-wider text-violet-600">हिंदी</div><p className="text-xs font-medium leading-5 text-slate-700">{guide.hi}</p></div>
                   </div>
                 )}
               </div>
@@ -291,13 +291,13 @@ export const SettingsPage: React.FC = () => {
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div><p className="text-[11px] font-black uppercase tracking-[0.15em] text-indigo-500">Data Controls</p><h2 className="mt-1 text-lg font-black text-slate-950">Export workspace data</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">Download a JSON copy of the profile, Instagram account metadata, automations, contacts and inbox messages currently loaded in this workspace. Access tokens are excluded.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-[0.15em] text-indigo-500">Data Controls</p><h2 className="mt-1 text-lg font-bold text-slate-950">Export workspace data</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">Download a JSON copy of the profile, Instagram account metadata, automations, contacts and inbox messages currently loaded in this workspace. Access tokens are excluded.</p></div>
           <button onClick={handleExportData} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white hover:bg-slate-800"><Download className="h-4 w-4"/>Export data</button>
         </div>
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div><p className="text-[11px] font-black uppercase tracking-[0.15em] text-indigo-500">Support & Legal</p><h2 className="mt-1 text-lg font-black text-slate-950">Help, billing and policies</h2><p className="mt-1 text-xs text-slate-500">Product guides and important account information.</p></div>
+        <div><p className="text-xs font-bold uppercase tracking-[0.15em] text-indigo-500">Support & Legal</p><h2 className="mt-1 text-lg font-bold text-slate-950">Help, billing and policies</h2><p className="mt-1 text-xs text-slate-500">Product guides and important account information.</p></div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {[['help','Help Center'],['faq','FAQ'],['billing-help','Billing Help'],['privacy','Privacy'],['terms','Terms']].map(([id,label])=><button key={id} onClick={()=>setActiveTab(id as any)} className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">{label}</button>)}
         </div>

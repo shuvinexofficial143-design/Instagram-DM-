@@ -125,14 +125,14 @@ export const CrmPage: React.FC = () => {
       <div className="mx-auto max-w-[1500px] space-y-5">
         <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[.16em] text-indigo-600">Sales workspace</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">CRM Pipeline</h1>
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-indigo-600">Sales workspace</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Sales pipeline</h1>
             <p className="mt-1 text-sm text-slate-500">Turn Instagram contacts into trackable leads, follow-ups and won deals.</p>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:min-w-[520px]">
-            <div className="rounded-2xl border border-slate-200 bg-white p-3"><p className="text-[10px] font-bold uppercase text-slate-400">Pipeline</p><p className="mt-1 text-lg font-bold text-slate-900">₹{totalPipeline.toLocaleString('en-IN')}</p></div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-3"><p className="text-[10px] font-bold uppercase text-slate-400">Won</p><p className="mt-1 text-lg font-bold text-emerald-700">₹{wonValue.toLocaleString('en-IN')}</p></div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-3"><p className="text-[10px] font-bold uppercase text-slate-400">Follow-ups</p><p className="mt-1 text-lg font-bold text-indigo-700">{followUps}</p></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3"><p className="text-xs font-bold uppercase text-slate-400">Pipeline</p><p className="mt-1 text-lg font-bold text-slate-900">₹{totalPipeline.toLocaleString('en-IN')}</p></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3"><p className="text-xs font-bold uppercase text-slate-400">Won</p><p className="mt-1 text-lg font-bold text-emerald-700">₹{wonValue.toLocaleString('en-IN')}</p></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3"><p className="text-xs font-bold uppercase text-slate-400">Follow-ups</p><p className="mt-1 text-lg font-bold text-indigo-700">{followUps}</p></div>
           </div>
         </header>
 
@@ -148,8 +148,8 @@ export const CrmPage: React.FC = () => {
             return (
               <div key={stage.id} className="min-w-0 rounded-2xl border border-slate-200 bg-slate-100/60 p-3">
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <div><h2 className="text-xs font-black text-slate-800">{stage.label}</h2><p className="mt-0.5 text-[10px] font-semibold text-slate-400">{cards.length} leads · ₹{value.toLocaleString('en-IN')}</p></div>
-                  <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-slate-500">{cards.length}</span>
+                  <div><h2 className="text-xs font-bold text-slate-800">{stage.label}</h2><p className="mt-0.5 text-xs font-semibold text-slate-400">{cards.length} leads · ₹{value.toLocaleString('en-IN')}</p></div>
+                  <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-slate-500">{cards.length}</span>
                 </div>
                 <div className="space-y-2">
                   {cards.map(({ contact, record }) => {
@@ -159,15 +159,15 @@ export const CrmPage: React.FC = () => {
                         <div className="flex items-start gap-2.5">
                           <UserAvatar src={contact.avatar_url} username={contact.ig_username || contact.ig_user_id} size="sm" />
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2"><p className="truncate text-xs font-bold text-slate-900">@{contact.ig_username || contact.ig_user_id}</p>{record.priority === 'high' && <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">HIGH</span>}</div>
-                            <p className="mt-1 truncate text-[10px] text-slate-500">{record.company || record.phone || last?.message_text || 'No CRM details yet'}</p>
-                            <div className="mt-2 flex items-center justify-between"><span className="text-[10px] font-bold text-indigo-600">₹{Number(record.deal_value || 0).toLocaleString('en-IN')}</span><ChevronRight className="h-3.5 w-3.5 text-slate-300" /></div>
+                            <div className="flex items-center justify-between gap-2"><p className="truncate text-xs font-bold text-slate-900">@{contact.ig_username || contact.ig_user_id}</p>{record.priority === 'high' && <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-xs font-bold text-rose-600">HIGH</span>}</div>
+                            <p className="mt-1 truncate text-xs text-slate-500">{record.company || record.phone || last?.message_text || 'No CRM details yet'}</p>
+                            <div className="mt-2 flex items-center justify-between"><span className="text-xs font-bold text-indigo-600">₹{Number(record.deal_value || 0).toLocaleString('en-IN')}</span><ChevronRight className="h-3.5 w-3.5 text-slate-300" /></div>
                           </div>
                         </div>
                       </button>
                     );
                   })}
-                  {!cards.length && <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 px-3 py-6 text-center text-[11px] text-slate-400">No leads</div>}
+                  {!cards.length && <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 px-3 py-6 text-center text-xs text-slate-400">No leads</div>}
                 </div>
               </div>
             );

@@ -11,7 +11,7 @@ type Period = 'today' | '7d' | '30d';
 export const HomePage: React.FC = () => {
   const {
     user, instagramAccount, automations, inboxMessages, contacts,
-    setActiveTab, setIsConnectModalOpen, setIsBuilderOpen, disconnectChannel,
+    setActiveTab, setIsConnectModalOpen, setIsBuilderOpen,
   } = useApp();
   const [period, setPeriod] = useState<Period>('today');
 
@@ -35,7 +35,8 @@ export const HomePage: React.FC = () => {
     [inboxMessages, periodStart]
   );
   const totalDmsSent = periodMessages.filter((m) => m.direction === 'out').length;
-  const aiReplies = periodMessages.filter((m) => m.direction === 'out' && m.is_automated).length;
+  const aiIds = new Set(automations.filter(a=>a.trigger_type==='dm_ai_conversation').map(a=>a.id));
+  const aiReplies = periodMessages.filter(m=>m.direction==='out'&&m.is_automated&&m.automation_id&&aiIds.has(m.automation_id)).length;
   const newLeads = (contacts || []).filter((c) => new Date(c.first_interaction_at || 0).getTime() >= periodStart).length;
 
   const topAutomations = useMemo(
@@ -59,6 +60,12 @@ export const HomePage: React.FC = () => {
     return `${Math.floor(hr / 24)}d ago`;
   };
 
+  const unread = inboxMessages.filter(m=>m.direction==='in'&&!m.is_read).length;
+  const setupSteps = [
+    {title:'Connect Instagram',detail:'Authorize your professional account.',done:isConnected&&!accountExpired,action:()=>setIsConnectModalOpen(true)},
+    {title:'Add business knowledge',detail:'Give AI your FAQs, products and policies.',done:false,action:()=>setActiveTab('knowledge')},
+    {title:'Test & publish an automation',detail:'Preview a reply before going live.',done:activeAutomations.length>0,action:()=>setIsBuilderOpen(true)},
+  ];
   const kpis = [
     { label:'Active Automations', value:activeAutomations.length, icon:Zap, tone:'text-violet-600 bg-violet-50' },
     { label:'DMs Sent', value:totalDmsSent, icon:Send, tone:'text-blue-600 bg-blue-50' },
@@ -71,7 +78,7 @@ export const HomePage: React.FC = () => {
       <div className="mx-auto max-w-[1400px] space-y-5">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-[22px] font-bold tracking-tight text-slate-950 sm:text-[26px]">Good evening, {user.name || 'Creator'} 👋</h1>
+            <h1 className="text-[22px] font-bold tracking-tight text-slate-950 sm:text-[26px]">Dashboard</h1>
             <p className="mt-1 text-sm font-medium text-slate-500">Here’s what’s happening with your Instagram automation in the selected period.</p>
           </div>
           <div className="inline-flex self-start rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -80,6 +87,12 @@ export const HomePage: React.FC = () => {
             ))}
           </div>
         </header>
+
+        {(!isConnected || accountExpired || automations.length===0) && <section className="getting-started" aria-label="Getting started">
+          <div><span className="eyebrow">Your next step</span><h2>{accountExpired?'Reconnect to keep replies running':'Set up your Instagram assistant'}</h2><p>Follow these steps, then test a customer message before publishing.</p></div>
+          <div className="getting-started-steps">{setupSteps.map((item,i)=><button key={item.title} onClick={item.action}><span>{item.done?<CheckCircle2/>:i+1}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div><ChevronRight/></button>)}</div>
+        </section>}
+        {isConnected && !accountExpired && automations.length>0 && <div className="dashboard-next-action"><div><strong>{unread>0?`${unread} unread messages`:'Your workspace is ready'}</strong><p>{unread>0?'Check conversations that may need your attention.':'Review your inbox or create another automation.'}</p></div><button onClick={()=>setActiveTab('inbox')}>Open inbox <ArrowRight/></button></div>}
 
         <section className="relative overflow-hidden rounded-[18px] border border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 p-4 shadow-[0_8px_28px_rgba(76,88,160,.08)] sm:p-5">
           <><div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(129,140,248,0.16),transparent_30%),radial-gradient(circle_at_10%_85%,rgba(56,189,248,0.12),transparent_34%)]" aria-hidden="true" /><div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-violet-300/20 blur-3xl" aria-hidden="true" /><div className="pointer-events-none absolute -left-12 bottom-0 h-44 w-44 rounded-full bg-cyan-200/20 blur-3xl" aria-hidden="true" /></>
@@ -92,16 +105,16 @@ export const HomePage: React.FC = () => {
                   <div className="min-w-0">
                     <div className="flex min-w-0 items-center gap-2">
                       <p className="max-w-[220px] truncate whitespace-nowrap text-[14px] font-semibold text-slate-900 sm:max-w-[320px]">@{instagramAccount?.username}</p>
-                      <span className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold ${accountExpired?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'}`}><span className={`h-1.5 w-1.5 rounded-full ${accountExpired?'bg-amber-500':'bg-emerald-500'}`} />{accountExpired?'Action required':'Connected'}</span>
+                      <span className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-bold ${accountExpired?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'}`}><span className={`h-1.5 w-1.5 rounded-full ${accountExpired?'bg-amber-500':'bg-emerald-500'}`} />{accountExpired?'Action required':'Connected'}</span>
                     </div>
-                    <p className="mt-0.5 whitespace-nowrap text-[11px] font-medium text-slate-500">{accountType ? `${accountType.charAt(0).toUpperCase() + accountType.slice(1).toLowerCase()} Account` : 'Instagram account'}</p>
-                    <p className="mt-0.5 whitespace-nowrap text-[10px] font-medium text-slate-400">{accountExpired ? 'Connection needs attention' : instagramAccount?.connected_at ? `Connected ${relativeTime(instagramAccount.connected_at)}` : 'Connected'}</p>
+                    <p className="mt-0.5 whitespace-nowrap text-xs font-medium text-slate-500">{accountType ? `${accountType.charAt(0).toUpperCase() + accountType.slice(1).toLowerCase()} Account` : 'Instagram account'}</p>
+                    <p className="mt-0.5 whitespace-nowrap text-xs font-medium text-slate-400">{accountExpired ? 'Connection needs attention' : instagramAccount?.connected_at ? `Connected ${relativeTime(instagramAccount.connected_at)}` : 'Connected'}</p>
                   </div>
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
-                  <button onClick={() => setActiveTab('settings')} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Settings className="h-3.5 w-3.5" />Manage Account</button>
-                  <button title="Disconnect account" aria-label="Disconnect Instagram account" onClick={() => { if (window.confirm('Disconnect this Instagram account?')) disconnectChannel(); }} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"><MoreHorizontal className="h-4 w-4" /></button>
+                  <button onClick={() => setActiveTab('settings')} className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Settings className="h-3.5 w-3.5" />Manage Account</button>
+
                 </div>
               </div>
 
@@ -116,10 +129,10 @@ export const HomePage: React.FC = () => {
               <div className="flex min-w-0 items-start gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-[#FA7E1E] via-[#D62976] to-[#962FBF] text-white shadow-sm"><Instagram className="h-5 w-5" /></div>
                 <div>
-                  <div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-bold text-slate-950">Instagram Account</h2><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">Not Connected</span></div>
+                  <div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-bold text-slate-950">Instagram Account</h2><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">Not Connected</span></div>
                   <p className="mt-1 text-xs font-semibold text-slate-700">No Instagram account connected</p>
-                  <p className="mt-1 max-w-xl text-[11px] leading-4 text-slate-500 sm:text-xs">Connect your Instagram account to enable automatic DM & comment replies and start growing your audience.</p>
-                  <div className="mt-2 hidden flex-wrap gap-x-3 gap-y-1 text-[10px] font-medium text-slate-500 sm:flex"><span>✓ Auto reply to DMs</span><span>✓ Reply to comments</span><span>✓ Capture leads</span><span>✓ 24/7 automation</span></div>
+                  <p className="mt-1 max-w-xl text-xs leading-4 text-slate-500 sm:text-xs">Connect your Instagram account to enable automatic DM & comment replies and start growing your audience.</p>
+                  <div className="mt-2 hidden flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate-500 sm:flex"><span>✓ Auto reply to DMs</span><span>✓ Reply to comments</span><span>✓ Capture leads</span><span>✓ 24/7 automation</span></div>
                 </div>
               </div>
               <button onClick={() => setIsConnectModalOpen(true)} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 self-start rounded-xl px-4 text-xs font-bold text-white shadow-md transition hover:-translate-y-px hover:brightness-105 sm:self-auto" style={{backgroundImage:'linear-gradient(100deg,#FA7E1E 0%,#D62976 48%,#962FBF 100%)'}}><Instagram className="h-4 w-4" />Connect Instagram <ArrowRight className="h-3.5 w-3.5" /></button>
@@ -159,7 +172,7 @@ export const HomePage: React.FC = () => {
                 const pct=runs > 0 ? Math.min(100,Math.round((sent/runs)*100)) : 0;
                 return <div key={auto.id} className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2"><p className="truncate text-sm font-bold text-slate-900">{auto.name}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${auto.status==='active'?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-500'}`}>{auto.status==='active'?'Active':'Paused'}</span></div>
+                    <div className="flex items-center gap-2"><p className="truncate text-sm font-bold text-slate-900">{auto.name}</p><span className={`rounded-full px-2 py-0.5 text-xs font-bold ${auto.status==='active'?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-500'}`}>{auto.status==='active'?'Active':'Paused'}</span></div>
                     <p className="mt-1 text-xs capitalize text-slate-500">{auto.trigger_type.replaceAll('_',' ')} automation</p>
                     <div className="mt-2 h-1.5 max-w-md overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-500" style={{width:`${pct}%`}} /></div>
                   </div>
@@ -172,20 +185,19 @@ export const HomePage: React.FC = () => {
           <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4"><h2 className="text-base font-bold text-slate-950">Recent Activity</h2><button onClick={() => setActiveTab('inbox')} className="inline-flex min-h-10 items-center gap-1 text-xs font-bold text-indigo-600">View All <ChevronRight className="h-4 w-4" /></button></div>
             {recentActivity.length === 0 ? <div className="py-8 text-center"><Activity className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-700">No recent activity yet</p><p className="mt-1 text-xs text-slate-500">New Instagram conversations will appear here.</p></div> :
-              <div className="divide-y divide-slate-100">{recentActivity.map(msg => <div key={msg.id} className="flex items-center gap-3 py-3.5"><UserAvatar src={msg.from_avatar} username={msg.from_username} size="sm" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{msg.direction==='out' ? `DM sent to @${msg.from_username}` : `@${msg.from_username} sent a DM`}</p><p className="truncate text-xs text-slate-500">{msg.message_text}</p></div><span className="shrink-0 text-[11px] text-slate-400">{relativeTime(msg.timestamp)}</span></div>)}</div>}
+              <div className="divide-y divide-slate-100">{recentActivity.map(msg => <div key={msg.id} className="flex items-center gap-3 py-3.5"><UserAvatar src={msg.from_avatar} username={msg.from_username} size="sm" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{msg.direction==='out' ? `DM sent to @${msg.from_username}` : `@${msg.from_username} sent a DM`}</p><p className="truncate text-xs text-slate-500">{msg.message_text}</p></div><span className="shrink-0 text-xs text-slate-400">{relativeTime(msg.timestamp)}</span></div>)}</div>}
           </section>
           <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">
-            <h2 className="border-b border-slate-100 pb-4 text-base font-bold text-slate-950">System Status</h2>
+            <h2 className="border-b border-slate-100 pb-4 text-lg font-semibold text-slate-950">Workspace status</h2>
             <div className="mt-2 divide-y divide-slate-100">
               <StatusRow icon={Instagram} ok={isConnected && !accountExpired} label={accountExpired?'Instagram Connection Expired':'Instagram Connected'} detail={isConnected ? (accountExpired?'Reconnect Instagram':'Account is connected') : 'No account connected'} />
               <StatusRow icon={Zap} ok={activeAutomations.length > 0} label="Automations Running" detail={activeAutomations.length > 0 ? `${activeAutomations.length} active workflow${activeAutomations.length===1?'':'s'}` : 'No active workflows'} />
               <StatusRow icon={Bot} ok={activeAutomations.some(a=>a.trigger_type==='dm_ai_conversation')} label="AI Replies Active" detail={activeAutomations.some(a=>a.trigger_type==='dm_ai_conversation') ? 'AI conversation automation active' : 'No active AI conversation automation'} />
-              <StatusRow icon={Webhook} ok={null} label="Webhook Connection" detail={isConnected ? "Live webhook health is not exposed here" : "Waiting for Instagram connection"} />
             </div>
           </section>
         </div>
 
-        <footer className="pb-2 pt-1 text-center text-[11px] font-medium text-slate-400">© 2026 AutoReply.io</footer>
+        <footer className="pb-2 pt-1 text-center text-xs font-medium text-slate-400">© 2026 Auto Replies</footer>
       </div>
     </div>
   );
@@ -194,10 +206,10 @@ export const HomePage: React.FC = () => {
 const StatusRow: React.FC<{icon:React.ComponentType<{className?:string}>;ok:boolean|null;label:string;detail:string}> = ({icon:Icon,ok,label,detail}) => (
   <div className="flex items-start gap-3 py-3.5">
     <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${ok===true?'bg-emerald-50 text-emerald-600':ok===false?'bg-amber-50 text-amber-600':'bg-slate-100 text-slate-500'}`}>{ok===false?<AlertTriangle className="h-4 w-4" />:ok===true?<CheckCircle2 className="h-4 w-4" />:<Icon className="h-4 w-4" />}</div>
-    <div><p className="text-xs font-bold text-slate-800">{label}</p><p className="mt-0.5 text-[11px] leading-4 text-slate-500">{detail}</p></div>
+    <div><p className="text-xs font-bold text-slate-800">{label}</p><p className="mt-0.5 text-xs leading-4 text-slate-500">{detail}</p></div>
   </div>
 );
 
 const Metric: React.FC<{label:string;value:number|undefined}> = ({label,value}) => (
-  <div className="min-w-0 text-center lg:text-left"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-base font-bold text-slate-900">{typeof value === 'number' ? value.toLocaleString() : '—'}</p></div>
+  <div className="min-w-0 text-center lg:text-left"><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-base font-bold text-slate-900">{typeof value === 'number' ? value.toLocaleString() : '—'}</p></div>
 );

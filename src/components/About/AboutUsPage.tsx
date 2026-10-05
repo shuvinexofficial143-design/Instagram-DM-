@@ -19,7 +19,10 @@ import {
 import { useApp } from '../../context/AppContext';
 
 export const AboutUsPage: React.FC = () => {
-  const { setActiveTab, setIsBuilderOpen, setIsConnectModalOpen } = useApp();
+  const { setActiveTab, setIsBuilderOpen, setIsConnectModalOpen, firebaseUser } = useApp();
+  const go = (tab: 'home'|'automations'|'inbox'|'contacts'|'settings'|'about') => { if(firebaseUser) setActiveTab(tab); else window.location.assign(tab==='home'?'/':tab==='about'?'/about':'/login'); };
+  const openBuilder = () => firebaseUser ? setIsBuilderOpen(true) : window.location.assign('/login?mode=signup');
+  const connect = () => firebaseUser ? setIsConnectModalOpen(true) : window.location.assign('/login?mode=signup');
 
   const features = [
     {
@@ -88,7 +91,7 @@ export const AboutUsPage: React.FC = () => {
     {
       number: '3',
       title: 'Watch It Work',
-      description: 'Let AutoReply.io handle repetitive engagement while you monitor everything from one dashboard.',
+      description: 'Let Auto Replies handle repetitive engagement while you monitor everything from one dashboard.',
     },
   ];
 
@@ -137,10 +140,10 @@ export const AboutUsPage: React.FC = () => {
             Automate • Engage • Grow
           </div>
 
-          <h1 className="mt-5 text-4xl font-black tracking-[-0.045em] text-slate-950 sm:text-5xl lg:text-6xl">
+          <h1 className="mt-5 text-4xl font-bold tracking-[-0.045em] text-slate-950 sm:text-5xl lg:text-6xl">
             About{' '}
             <span className="bg-gradient-to-r from-blue-600 via-indigo-500 to-violet-600 bg-clip-text text-transparent">
-              AutoReply.io
+              Auto Replies
             </span>
           </h1>
 
@@ -151,8 +154,8 @@ export const AboutUsPage: React.FC = () => {
 
         {/* Mission */}
         <section className="mx-auto mt-10 max-w-4xl text-center sm:mt-12">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-500">Our Mission</p>
-          <h2 className="mt-3 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-black tracking-tight text-transparent sm:text-3xl">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-500">Our Mission</p>
+          <h2 className="mt-3 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
             Make Instagram engagement easier to manage.
           </h2>
           <p className="mx-auto mt-4 max-w-3xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
@@ -163,8 +166,8 @@ export const AboutUsPage: React.FC = () => {
         {/* What we offer */}
         <section className="mt-12 sm:mt-16">
           <div className="text-center">
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-500">Platform</p>
-            <h2 className="mt-2 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-black tracking-tight text-transparent sm:text-3xl">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-500">Platform</p>
+            <h2 className="mt-2 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
               What We Offer
             </h2>
           </div>
@@ -182,7 +185,7 @@ export const AboutUsPage: React.FC = () => {
                       <Icon className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-sm font-black text-blue-900 sm:text-[15px]">{feature.title}</h3>
+                      <h3 className="text-sm font-bold text-blue-900 sm:text-[15px]">{feature.title}</h3>
                       <p className="mt-1 text-sm leading-5 text-slate-600">{feature.description}</p>
                     </div>
                   </div>
@@ -195,8 +198,8 @@ export const AboutUsPage: React.FC = () => {
         {/* How it works */}
         <section className="mt-14 sm:mt-20">
           <div className="text-center">
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-500">Simple Setup</p>
-            <h2 className="mt-2 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-black tracking-tight text-transparent sm:text-3xl">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-500">Simple Setup</p>
+            <h2 className="mt-2 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
               How It Works
             </h2>
           </div>
@@ -207,10 +210,10 @@ export const AboutUsPage: React.FC = () => {
                 key={step.number}
                 className="rounded-2xl border border-slate-200/80 bg-white/90 p-6 text-center shadow-[0_12px_35px_rgba(74,93,139,0.08)]"
               >
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500 text-sm font-black text-white shadow-lg shadow-indigo-500/20">
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500 text-sm font-bold text-white shadow-lg shadow-indigo-500/20">
                   {step.number}
                 </div>
-                <h3 className="mt-4 text-base font-black text-slate-900">{step.title}</h3>
+                <h3 className="mt-4 text-base font-bold text-slate-900">{step.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{step.description}</p>
               </article>
             ))}
@@ -220,9 +223,9 @@ export const AboutUsPage: React.FC = () => {
         {/* Why choose */}
         <section className="mt-14 sm:mt-20">
           <div className="text-center">
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-500">Built for practical workflows</p>
-            <h2 className="mt-2 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-black tracking-tight text-transparent sm:text-3xl">
-              Why Choose AutoReply.io?
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-500">Built for practical workflows</p>
+            <h2 className="mt-2 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
+              Why Choose Auto Replies?
             </h2>
           </div>
 
@@ -231,7 +234,7 @@ export const AboutUsPage: React.FC = () => {
               <div key={benefit.title} className="flex gap-3">
                 <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-violet-500" />
                 <div>
-                  <h3 className="text-sm font-black text-blue-700">{benefit.title}</h3>
+                  <h3 className="text-sm font-bold text-blue-700">{benefit.title}</h3>
                   <p className="mt-1 text-sm leading-5 text-slate-600">{benefit.description}</p>
                 </div>
               </div>
@@ -243,17 +246,17 @@ export const AboutUsPage: React.FC = () => {
         <section className="mt-14 grid gap-4 sm:grid-cols-3 sm:mt-18">
           <div className="rounded-2xl border border-blue-100 bg-blue-50/65 p-5">
             <ShieldCheck className="h-6 w-6 text-blue-600" />
-            <h3 className="mt-3 text-sm font-black text-slate-900">Official connection flow</h3>
+            <h3 className="mt-3 text-sm font-bold text-slate-900">Official connection flow</h3>
             <p className="mt-1 text-sm leading-5 text-slate-600">Instagram connects through Meta OAuth rather than password sharing.</p>
           </div>
           <div className="rounded-2xl border border-violet-100 bg-violet-50/65 p-5">
             <Users className="h-6 w-6 text-violet-600" />
-            <h3 className="mt-3 text-sm font-black text-slate-900">Separate user workspaces</h3>
+            <h3 className="mt-3 text-sm font-bold text-slate-900">Separate user workspaces</h3>
             <p className="mt-1 text-sm leading-5 text-slate-600">Each signed-in account keeps its own workspace data and Instagram connection.</p>
           </div>
           <div className="rounded-2xl border border-cyan-100 bg-cyan-50/65 p-5">
             <Clock3 className="h-6 w-6 text-cyan-700" />
-            <h3 className="mt-3 text-sm font-black text-slate-900">Built for faster responses</h3>
+            <h3 className="mt-3 text-sm font-bold text-slate-900">Built for faster responses</h3>
             <p className="mt-1 text-sm leading-5 text-slate-600">Automation handles repetitive work so important conversations get more attention.</p>
           </div>
         </section>
@@ -262,11 +265,11 @@ export const AboutUsPage: React.FC = () => {
         <section className="relative mt-14 overflow-hidden rounded-3xl border border-violet-200/70 bg-gradient-to-r from-blue-50 via-indigo-50 to-violet-100/80 p-6 shadow-[0_18px_55px_rgba(91,81,180,0.10)] sm:mt-20 sm:p-8 lg:flex lg:items-center lg:justify-between lg:gap-8">
           <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-violet-300/25 blur-3xl" />
           <div className="relative max-w-2xl">
-            <div className="inline-flex items-center gap-2 text-sm font-black text-indigo-600">
+            <div className="inline-flex items-center gap-2 text-sm font-bold text-indigo-600">
               <Sparkles className="h-4 w-4" />
               Get Started Today
             </div>
-            <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+            <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
               Turn repetitive Instagram replies into a smarter workflow.
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
@@ -276,14 +279,14 @@ export const AboutUsPage: React.FC = () => {
 
           <div className="relative mt-6 flex flex-col gap-3 sm:flex-row lg:mt-0 lg:shrink-0">
             <button
-              onClick={() => setIsConnectModalOpen(true)}
+              onClick={connect}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition-transform hover:-translate-y-0.5"
             >
               <Instagram className="h-4 w-4" />
               Connect Instagram
             </button>
             <button
-              onClick={() => setIsBuilderOpen(true)}
+              onClick={openBuilder}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white/90 px-5 py-3 text-sm font-bold text-indigo-700 transition-colors hover:bg-white"
             >
               Create Automation
@@ -300,7 +303,7 @@ export const AboutUsPage: React.FC = () => {
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-violet-500 text-white shadow-md shadow-indigo-500/20">
                   <Zap className="h-4 w-4 fill-white" />
                 </div>
-                <span className="text-base font-black tracking-tight text-slate-950">AutoReply.io</span>
+                <span className="text-base font-bold tracking-tight text-slate-950">Auto Replies</span>
               </div>
               <p className="mt-3 max-w-xs text-xs leading-5 text-slate-500">
                 Instagram messaging automation for faster replies, organized conversations and practical engagement workflows.
@@ -308,38 +311,38 @@ export const AboutUsPage: React.FC = () => {
             </div>
 
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">Product</p>
+              <p className="text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Product</p>
               <div className="mt-3 space-y-2 text-sm">
-                <button onClick={() => setActiveTab('automations')} className="block font-medium text-slate-600 hover:text-indigo-600">
+                <button onClick={() => go('automations')} className="block font-medium text-slate-600 hover:text-indigo-600">
                   Automations
                 </button>
-                <button onClick={() => setActiveTab('inbox')} className="block font-medium text-slate-600 hover:text-indigo-600">
+                <button onClick={() => go('inbox')} className="block font-medium text-slate-600 hover:text-indigo-600">
                   Inbox
                 </button>
-                <button onClick={() => setActiveTab('contacts')} className="block font-medium text-slate-600 hover:text-indigo-600">
+                <button onClick={() => go('contacts')} className="block font-medium text-slate-600 hover:text-indigo-600">
                   Contacts
                 </button>
               </div>
             </div>
 
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">Workspace</p>
+              <p className="text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Workspace</p>
               <div className="mt-3 space-y-2 text-sm">
-                <button onClick={() => setActiveTab('home')} className="block font-medium text-slate-600 hover:text-indigo-600">
+                <button onClick={() => go('home')} className="block font-medium text-slate-600 hover:text-indigo-600">
                   Home
                 </button>
-                <button onClick={() => setActiveTab('settings')} className="block font-medium text-slate-600 hover:text-indigo-600">
+                <button onClick={() => go('settings')} className="block font-medium text-slate-600 hover:text-indigo-600">
                   Settings
                 </button>
-                <button onClick={() => setActiveTab('about')} className="block font-medium text-slate-600 hover:text-indigo-600">
+                <button onClick={() => go('about')} className="block font-medium text-slate-600 hover:text-indigo-600">
                   About Us
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="mt-8 flex flex-col gap-2 border-t border-slate-200/70 pt-5 text-[11px] text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-            <p>© 2026 AutoReply.io. All rights reserved.</p>
+          <div className="mt-8 flex flex-col gap-2 border-t border-slate-200/70 pt-5 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+            <p>© 2026 Auto Replies. All rights reserved.</p>
             <p>Built for creators, businesses and growing teams.</p>
           </div>
         </footer>

@@ -107,7 +107,7 @@ export const KnowledgeBasePage: React.FC = () => {
       <div className="mx-auto max-w-5xl space-y-6">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[.16em] text-indigo-600">AI knowledge</p>
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-indigo-600">AI knowledge</p>
             <h1 className="mt-1 text-2xl font-bold text-slate-950 sm:text-3xl">Knowledge Base</h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Your single source of truth for the business. AI uses these facts to answer correctly; catalogs stay separate for product collections.</p>
           </div>
@@ -120,9 +120,9 @@ export const KnowledgeBasePage: React.FC = () => {
         {saved && <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />Knowledge base saved.</div>}
 
         <section className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4"><Building2 className="h-5 w-5 text-indigo-600"/><p className="mt-3 text-xs font-black text-slate-900">1. Add business facts</p><p className="mt-1 text-[11px] leading-5 text-slate-500">Name, description, hours, location and services the AI is allowed to use.</p></div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4"><HelpCircle className="h-5 w-5 text-indigo-600"/><p className="mt-3 text-xs font-black text-slate-900">2. Add FAQs & policies</p><p className="mt-1 text-[11px] leading-5 text-slate-500">Give approved answers for delivery, returns, booking, payment and common questions.</p></div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4"><ShieldCheck className="h-5 w-5 text-indigo-600"/><p className="mt-3 text-xs font-black text-slate-900">3. Use in AI</p><p className="mt-1 text-[11px] leading-5 text-slate-500">Click “Use in AI Automation”. The builder receives this context and you can still edit it there.</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4"><Building2 className="h-5 w-5 text-indigo-600"/><p className="mt-3 text-xs font-bold text-slate-900">1. Add business facts</p><p className="mt-1 text-xs leading-5 text-slate-500">Name, description, hours, location and services the AI is allowed to use.</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4"><HelpCircle className="h-5 w-5 text-indigo-600"/><p className="mt-3 text-xs font-bold text-slate-900">2. Add FAQs & policies</p><p className="mt-1 text-xs leading-5 text-slate-500">Give approved answers for delivery, returns, booking, payment and common questions.</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4"><ShieldCheck className="h-5 w-5 text-indigo-600"/><p className="mt-3 text-xs font-bold text-slate-900">3. Use in AI</p><p className="mt-1 text-xs leading-5 text-slate-500">Click “Use in AI Automation”. The builder receives this context and you can still edit it there.</p></div>
         </section>
 
         <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-xs leading-5 text-blue-900"><strong>Knowledge Base vs Catalog:</strong> Keep one Knowledge Base for business-wide facts and policies. Create multiple Catalogs for separate product groups, brands or campaigns.</div>

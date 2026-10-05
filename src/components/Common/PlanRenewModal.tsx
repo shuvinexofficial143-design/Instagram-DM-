@@ -22,7 +22,7 @@ export const PlanRenewModal: React.FC = () => {
         <button aria-label="Close" onClick={() => setIsRenewModalOpen(false)} className="absolute right-4 top-4 rounded-xl p-2 text-slate-500 hover:bg-white"><X className="h-5 w-5" /></button>
         <header className="mx-auto mb-6 max-w-2xl text-center">
           <span className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700"><Sparkles className="h-5 w-5" /></span>
-          <h2 className="text-2xl font-black text-slate-950 sm:text-3xl">Choose your plan</h2>
+          <h2 className="text-2xl font-bold text-slate-950 sm:text-3xl">Choose your plan</h2>
           <p className="mt-2 text-sm font-semibold text-slate-600">Upgrade your Instagram automation with clear monthly limits.</p>
         </header>
 
@@ -34,16 +34,16 @@ export const PlanRenewModal: React.FC = () => {
           {PLANS.map(plan => {
             const active = current === plan.id;
             return <article key={plan.id} className={`relative flex min-h-[330px] flex-col rounded-3xl border bg-white/80 p-5 shadow-sm ${('popular' in plan && plan.popular) ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
-              {'popular' in plan && plan.popular && <span className="absolute right-4 top-4 rounded-full bg-indigo-600 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">Most Popular</span>}
-              <h3 className="text-lg font-black text-slate-950">{plan.name}</h3>
-              <div className="mt-2"><span className="text-3xl font-black text-slate-950">{plan.price}</span><span className="text-xs font-bold text-slate-500"> / month</span></div>
+              {'popular' in plan && plan.popular && <span className="absolute right-4 top-4 rounded-full bg-indigo-600 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-white">Most Popular</span>}
+              <h3 className="text-lg font-bold text-slate-950">{plan.name}</h3>
+              <div className="mt-2"><span className="text-3xl font-bold text-slate-950">{plan.price}</span><span className="text-xs font-bold text-slate-500"> / month</span></div>
               <div className="my-5 h-px bg-slate-200" />
               <div className="flex-1 space-y-3 text-sm font-semibold text-slate-700">
                 {[plan.messages + ' total messages', plan.ai + ' max AI replies', plan.automations + ' automations', plan.accounts + ' Instagram account' + (plan.accounts === '1' ? '' : 's')].map(item =>
                   <div key={item} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><span>{item}</span></div>
                 )}
               </div>
-              <button disabled={active} onClick={() => renewPlan(plan.id)} className={`mt-6 w-full rounded-xl px-4 py-3 text-sm font-black transition ${active ? 'cursor-default bg-slate-100 text-slate-500' : 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-500/15 hover:opacity-95'}`}>
+              <button disabled={active} onClick={() => renewPlan(plan.id)} className={`mt-6 w-full rounded-xl px-4 py-3 text-sm font-bold transition ${active ? 'cursor-default bg-slate-100 text-slate-500' : 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-500/15 hover:opacity-95'}`}>
                 {active ? 'Current Plan' : plan.id === 'free' ? 'Use Free Plan' : `Choose ${plan.name}`}
               </button>
             </article>;

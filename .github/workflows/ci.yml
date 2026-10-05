@@ -18,6 +18,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -28,6 +33,9 @@ jobs:
 
       - name: TypeScript check
         run: bun run lint
+
+      - name: UI regressions
+        run: bun run test:ui
 
       - name: Production build
         run: bun run build

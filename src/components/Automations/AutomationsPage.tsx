@@ -77,7 +77,7 @@ export const AutomationsPage: React.FC = () => {
       description: 'Auto-reply to Instagram comments containing keywords like "LINK", "GUIDE", or "PDF" with an instant download link in DM.',
       trigger_type: 'comment' as TriggerType,
       keywords: ['LINK', 'GUIDE', 'PDF', 'INFO'],
-      badge: 'Most Popular',
+      badge: 'Link requests',
       badgeColor: 'bg-indigo-50 text-[#3B5BFF] border-indigo-200/80',
       category: 'comment',
       icon: MessageCircle,
@@ -90,7 +90,7 @@ export const AutomationsPage: React.FC = () => {
       description: 'Automatically answer DM inquiries asking about pricing or rates with an interactive price sheet and booking link.',
       trigger_type: 'dm' as TriggerType,
       keywords: ['PRICE', 'RATES', 'COST', 'QUOTE'],
-      badge: 'High Conversion',
+      badge: 'Price enquiries',
       badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
       category: 'dm',
       icon: Send,
@@ -103,7 +103,7 @@ export const AutomationsPage: React.FC = () => {
       description: 'Send secret discount coupon codes to anyone who replies to your Instagram stories with keywords like "VIP" or "DEAL".',
       trigger_type: 'story_reply' as TriggerType,
       keywords: ['VIP', 'DEAL', 'CODE', 'PROMO'],
-      badge: 'Engagement Booster',
+      badge: 'Story replies',
       badgeColor: 'bg-amber-50 text-amber-700 border-amber-200/80',
       category: 'story_reply',
       icon: Sparkles,
@@ -112,11 +112,11 @@ export const AutomationsPage: React.FC = () => {
     },
     {
       id: 'tpl_4',
-      title: 'Auto Welcome DM for New Followers',
-      description: 'Greet new followers or initial DM senders with a warm welcome message and instant links menu.',
+      title: 'Welcome reply for incoming DMs',
+      description: 'Welcome people who message HI, HELLO or START. Customize the reply before publishing.',
       trigger_type: 'dm' as TriggerType,
       keywords: ['HI', 'HELLO', 'START', 'INFO'],
-      badge: 'Audience Growth',
+      badge: 'Welcome messages',
       badgeColor: 'bg-purple-50 text-purple-700 border-purple-200/80',
       category: 'dm',
       icon: Instagram,
@@ -125,16 +125,16 @@ export const AutomationsPage: React.FC = () => {
     },
     {
       id: 'tpl_5',
-      title: 'Custom Blank Canvas',
-      description: 'Build a completely custom multi-step trigger and automated response sequence from scratch with custom logic.',
+      title: 'Start from scratch',
+      description: 'Choose a supported trigger and build your reply with the guided setup.',
       trigger_type: 'dm' as TriggerType,
       keywords: [],
-      badge: 'Custom Flow',
+      badge: 'Guided setup',
       badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
       category: 'custom',
       icon: Wand2,
       iconBg: 'bg-slate-100 text-slate-800',
-      flowPreview: { trigger: 'Custom Trigger', action: 'Custom Actions' },
+      flowPreview: { trigger: 'Choose a trigger', action: 'Set up a reply' },
     },
   ];
 
@@ -160,10 +160,10 @@ export const AutomationsPage: React.FC = () => {
           {
             id: `act_${Date.now()}_1`,
             type: 'send_dm',
-            message_text: `Thanks for reaching out! Here is your requested information: https://autoreply.io/info`,
+            message_text: '',
           },
         ],
-        status: 'active',
+        status: 'paused',
         stats: {
           runs: 0,
           dms_sent: 0,
@@ -200,12 +200,12 @@ export const AutomationsPage: React.FC = () => {
               <Zap className="w-5 h-5 text-emerald-700 stroke-[2.2]" />
             </div>
             <div>
-              <h3 className="font-black text-slate-900 text-base">Active Automations</h3>
+              <h3 className="font-bold text-slate-900 text-base">Active Automations</h3>
               <p className="text-xs text-slate-600 font-semibold">Real-time comment & DM auto-responders running</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-300/90 px-3.5 py-1.5 rounded-full text-xs font-black text-emerald-800 shrink-0 self-start sm:self-auto shadow-2xs">
+          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-300/90 px-3.5 py-1.5 rounded-full text-xs font-bold text-emerald-800 shrink-0 self-start sm:self-auto shadow-2xs">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -221,25 +221,25 @@ export const AutomationsPage: React.FC = () => {
             {/* Total Runs */}
             <div className="p-4 rounded-xl bg-slate-50/90 border border-slate-200 space-y-2 hover:border-indigo-300 shadow-2xs transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-600 uppercase tracking-wider">Total Runs</span>
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Total Runs</span>
                 <div className="w-8 h-8 rounded-lg bg-indigo-100 text-[#3B5BFF] flex items-center justify-center font-bold">
                   <Zap className="w-4 h-4 stroke-[2.5]" />
                 </div>
               </div>
-              <div className="text-2xl md:text-3xl font-black text-slate-950 tracking-tight">{totalRuns.toLocaleString()}</div>
-              <p className="text-[11px] text-slate-600 font-semibold">Total automated trigger executions</p>
+              <div className="text-2xl md:text-3xl font-bold text-slate-950 tracking-tight">{totalRuns.toLocaleString()}</div>
+              <p className="text-xs text-slate-600 font-semibold">Total automated trigger executions</p>
             </div>
 
             {/* DMs Sent */}
             <div className="p-4 rounded-xl bg-slate-50/90 border border-slate-200 space-y-2 hover:border-emerald-300 shadow-2xs transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-600 uppercase tracking-wider">DMs Sent</span>
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">DMs Sent</span>
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
                   <Send className="w-4 h-4 stroke-[2.5]" />
                 </div>
               </div>
-              <div className="text-2xl md:text-3xl font-black text-slate-950 tracking-tight">{totalDmsSent.toLocaleString()}</div>
-              <p className="text-[11px] text-slate-600 font-semibold">Direct messages delivered automatically</p>
+              <div className="text-2xl md:text-3xl font-bold text-slate-950 tracking-tight">{totalDmsSent.toLocaleString()}</div>
+              <p className="text-xs text-slate-600 font-semibold">Direct messages delivered automatically</p>
             </div>
           </div>
 
@@ -248,25 +248,25 @@ export const AutomationsPage: React.FC = () => {
             {/* Unique Users */}
             <div className="p-4 rounded-xl bg-slate-50/90 border border-slate-200 space-y-2 hover:border-amber-300 shadow-2xs transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-600 uppercase tracking-wider">Unique Users</span>
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Unique Users</span>
                 <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
                   <Users className="w-4 h-4 stroke-[2.5]" />
                 </div>
               </div>
-              <div className="text-2xl md:text-3xl font-black text-slate-950 tracking-tight">{totalUniqueUsers.toLocaleString()}</div>
-              <p className="text-[11px] text-slate-600 font-semibold">Unique Instagram accounts engaged</p>
+              <div className="text-2xl md:text-3xl font-bold text-slate-950 tracking-tight">{totalUniqueUsers.toLocaleString()}</div>
+              <p className="text-xs text-slate-600 font-semibold">Unique Instagram accounts engaged</p>
             </div>
 
             {/* Comment Replies */}
             <div className="p-4 rounded-xl bg-slate-50/90 border border-slate-200 space-y-2 hover:border-purple-300 shadow-2xs transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-600 uppercase tracking-wider">Comment Replies</span>
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Comment Replies</span>
                 <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
                   <MessageCircle className="w-4 h-4 stroke-[2.5]" />
                 </div>
               </div>
-              <div className="text-2xl md:text-3xl font-black text-slate-950 tracking-tight">{totalRuns.toLocaleString()}</div>
-              <p className="text-[11px] text-slate-600 font-semibold">Automated public post & Reel comment replies</p>
+              <div className="text-2xl md:text-3xl font-bold text-slate-950 tracking-tight">{totalRuns.toLocaleString()}</div>
+              <p className="text-xs text-slate-600 font-semibold">Automated public post & Reel comment replies</p>
             </div>
           </div>
         </div>
@@ -293,7 +293,7 @@ export const AutomationsPage: React.FC = () => {
                 setEditingAutomation(null);
                 setIsBuilderOpen(true);
               }}
-              className="w-full sm:w-auto bg-[#3B5BFF] hover:bg-indigo-700 text-white font-black text-xs py-2.5 px-5 rounded-xl btn-primary-elevated flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+              className="w-full sm:w-auto bg-[#3B5BFF] hover:bg-indigo-700 text-white font-bold text-xs py-2.5 px-5 rounded-xl btn-primary-elevated flex items-center justify-center gap-2 shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>Create Automation</span>
@@ -397,10 +397,10 @@ export const AutomationsPage: React.FC = () => {
                     ></span>
 
                     {/* Name */}
-                    <h3 className="text-base font-black text-slate-950 tracking-tight">{auto.name}</h3>
+                    <h3 className="text-base font-bold text-slate-950 tracking-tight">{auto.name}</h3>
 
                     {/* Pill Tag */}
-                    <span className="bg-emerald-100/80 text-emerald-800 border border-emerald-300 text-[10px] md:text-[11px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                    <span className="bg-emerald-100/80 text-emerald-800 border border-emerald-300 text-xs md:text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                       {triggerLabel}
                     </span>
 
@@ -482,7 +482,7 @@ export const AutomationsPage: React.FC = () => {
 
                   <ArrowRight className="w-4 h-4 text-slate-600 shrink-0 stroke-[2.5]" />
 
-                  <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl text-xs font-black text-[#3B5BFF]">
+                  <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl text-xs font-bold text-[#3B5BFF]">
                     <Zap className="w-3.5 h-3.5 fill-[#3B5BFF]" />
                     <span>[ ⚡ {Array.isArray(auto.actions) ? auto.actions.length : 1} action ]</span>
                   </div>
@@ -490,7 +490,7 @@ export const AutomationsPage: React.FC = () => {
 
                 {/* 3. Bottom Stats Bar (Metrics Bar) */}
                 <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center gap-3 md:gap-5 text-xs font-bold text-slate-600">
-                  <span className="flex items-center gap-1 font-black text-slate-950">
+                  <span className="flex items-center gap-1 font-bold text-slate-950">
                     <Zap className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
                     {auto.stats?.runs ?? 0} runs
                   </span>
@@ -533,10 +533,10 @@ export const AutomationsPage: React.FC = () => {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                       Select Automation Template
                     </h2>
-                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                       PRO FUNNELS
                     </span>
                   </div>
@@ -554,7 +554,7 @@ export const AutomationsPage: React.FC = () => {
                 { id: 'comment', label: 'Reel Comments', count: templates.filter((t) => t.category === 'comment').length },
                 { id: 'dm', label: 'Direct Messages', count: templates.filter((t) => t.category === 'dm').length },
                 { id: 'story_reply', label: 'Story Replies', count: templates.filter((t) => t.category === 'story_reply').length },
-                { id: 'custom', label: 'Custom Canvas', count: 1 },
+                { id: 'custom', label: 'From scratch', count: 1 },
               ].map((cat) => (
                 <button
                   key={cat.id}
@@ -567,7 +567,7 @@ export const AutomationsPage: React.FC = () => {
                 >
                   <span>{cat.label}</span>
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    className={`text-xs px-1.5 py-0.2 rounded-full ${
                       templateCategory === cat.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
                     }`}
                   >
@@ -593,14 +593,14 @@ export const AutomationsPage: React.FC = () => {
                         <div className={`w-10 h-10 rounded-xl ${tpl.iconBg} flex items-center justify-center border border-slate-200/60 shadow-2xs`}>
                           <IconComponent className="w-5 h-5" />
                         </div>
-                        <span className={`text-[10px] font-extrabold border px-2.5 py-0.5 rounded-full uppercase tracking-wider ${tpl.badgeColor}`}>
+                        <span className={`text-xs font-bold border px-2.5 py-0.5 rounded-full uppercase tracking-wider ${tpl.badgeColor}`}>
                           {tpl.badge}
                         </span>
                       </div>
 
                       {/* Title & Description */}
                       <div>
-                        <h3 className="font-extrabold text-sm text-slate-900 group-hover:text-[#3B5BFF] transition-colors leading-snug">
+                        <h3 className="font-bold text-sm text-slate-900 group-hover:text-[#3B5BFF] transition-colors leading-snug">
                           {tpl.title}
                         </h3>
                         <p className="text-xs text-slate-500 mt-1 leading-relaxed">
@@ -609,7 +609,7 @@ export const AutomationsPage: React.FC = () => {
                       </div>
 
                       {/* Flow Mini Preview */}
-                      <div className="bg-slate-50 border border-slate-200/60 p-2.5 rounded-xl flex items-center justify-between text-[11px] font-semibold text-slate-600 gap-2">
+                      <div className="bg-slate-50 border border-slate-200/60 p-2.5 rounded-xl flex items-center justify-between text-xs font-semibold text-slate-600 gap-2">
                         <span className="truncate bg-white px-2 py-0.5 rounded border border-slate-200/80 text-slate-700 font-bold">
                           {tpl.flowPreview.trigger}
                         </span>

@@ -27,7 +27,7 @@ type AuthMode = 'signin' | 'signup';
 export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   const { setIsGuestMode, firebaseUser, setFirebaseUser } = useApp();
 
-  const [authMode, setAuthMode] = useState<AuthMode>('signin');
+  const [authMode, setAuthMode] = useState<AuthMode>(() => new URLSearchParams(window.location.search).get('mode') === 'signup' ? 'signup' : 'signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -160,15 +160,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#F7FAFF] flex flex-col justify-center items-center px-4 py-10 sm:py-12 select-none">
-      <div className="flex items-center justify-center gap-3 mb-7">
+    <div className="min-h-screen w-full bg-[#F7FAFF] flex flex-col justify-center items-center px-4 py-10 sm:py-12 ">
+      <a href="/" className="flex items-center justify-center gap-3 mb-7" aria-label="Auto Replies home">
         <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-600 via-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
           <Zap className="w-5 h-5 fill-white stroke-[2.2]" />
         </div>
-        <span className="text-[26px] font-bold text-[#172554] tracking-tight">autoreply.io</span>
-      </div>
+        <span className="text-[26px] font-bold text-[#172554] tracking-tight">Auto Replies</span>
+      </a>
+      <a href="/" className="mb-5 text-sm text-indigo-700 hover:underline">← Back to home</a>
 
-      <div className="w-full max-w-[520px] bg-[#FCFDFF] rounded-[28px] shadow-[0_24px_60px_rgba(30,64,175,0.12)] border border-blue-100/90 p-7 sm:p-10 md:p-11">
+      <div className="w-full max-w-[520px] bg-[#FCFDFF] rounded-2xl shadow-sm border border-blue-100/90 p-7 sm:p-10 md:p-11">
         <div className="grid grid-cols-2 gap-1 p-1.5 bg-[#EEF4FF] rounded-2xl mb-7">
           <button
             type="button"
@@ -200,14 +201,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
         </p>
 
         {errorMsg && (
-          <div className="mb-5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-medium flex items-start gap-2.5">
+          <div role="alert" className="mb-5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-medium flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
             <span className="leading-snug">{errorMsg}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="mb-5 p-3 rounded-2xl bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-xs font-medium flex items-start gap-2.5">
+          <div role="status" className="mb-5 p-3 rounded-2xl bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-xs font-medium flex items-start gap-2.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
             <span className="leading-snug">{successMsg}</span>
           </div>
@@ -219,7 +220,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           disabled={isLoading}
           className="w-full mb-6 py-3.5 px-4 bg-[#F8FAFF] hover:bg-[#EEF4FF] text-[#172554] font-bold text-[15px] rounded-2xl border border-blue-200 transition-all shadow-sm flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60"
         >
-          <span className="w-6 h-6 rounded-full bg-white border border-blue-100 flex items-center justify-center text-[11px] font-black text-blue-600">
+          <span className="w-6 h-6 rounded-full bg-white border border-blue-100 flex items-center justify-center text-xs font-bold text-blue-600">
             G
           </span>
           <span>Continue with Google</span>
@@ -227,14 +228,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
 
         <div className="flex items-center gap-3 mb-5">
           <div className="h-px flex-1 bg-slate-200" />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">or</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">or</span>
           <div className="h-px flex-1 bg-slate-200" />
         </div>
 
         <form onSubmit={handleEmailPasswordSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-800 mb-1.5">Email</label>
+            <label htmlFor="auth-email" className="block text-sm font-semibold text-slate-800 mb-1.5">Email</label>
             <input
+              id="auth-email"
               type="email"
               required
               autoComplete="email"
@@ -247,7 +249,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-slate-800">Password</label>
+              <label htmlFor="auth-password" className="text-sm font-semibold text-slate-800">Password</label>
               {authMode === 'signin' && (
                 <button
                   type="button"
@@ -260,6 +262,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
             </div>
             <div className="relative flex items-center">
               <input
+                id="auth-password"
                 type={showPassword ? 'text' : 'password'}
                 required
                 minLength={6}
@@ -273,7 +276,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-3 p-1 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                title={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'} aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -282,8 +285,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
 
           {authMode === 'signup' && (
             <div>
-              <label className="block text-xs font-bold text-slate-800 mb-1.5">Confirm password</label>
+              <label htmlFor="auth-confirm" className="block text-sm font-semibold text-slate-800 mb-1.5">Confirm password</label>
               <input
+                id="auth-confirm"
                 type="password"
                 required
                 minLength={6}
@@ -299,7 +303,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full mt-2 py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-[15px] rounded-2xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            className="w-full mt-2 py-3.5 px-4 bg-indigo-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-[15px] rounded-2xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
           >
             {isLoading ? (
               <>

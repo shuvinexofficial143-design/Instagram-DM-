@@ -23,7 +23,7 @@ export const TermsModal: React.FC<TermsModalProps> = ({ isOpen, onClose, type })
               <h3 className="text-base font-bold text-slate-900">
                 {type === 'terms' ? 'Terms of Service' : 'Privacy Policy'}
               </h3>
-              <p className="text-xs text-slate-500">AutoReply.io • Last updated: September 2026</p>
+              <p className="text-xs text-slate-500">Auto Replies • Last updated: September 2026</p>
             </div>
           </div>
           <button
@@ -41,7 +41,7 @@ export const TermsModal: React.FC<TermsModalProps> = ({ isOpen, onClose, type })
               <div className="space-y-1">
                 <h4 className="font-bold text-slate-900 text-sm">1. Acceptance of Terms</h4>
                 <p>
-                  By accessing and using AutoReply.io, you agree to comply with and be bound by these
+                  By accessing and using Auto Replies, you agree to comply with and be bound by these
                   Terms of Service and all applicable Meta Platform Terms & Graph API policies.
                 </p>
               </div>
@@ -49,7 +49,7 @@ export const TermsModal: React.FC<TermsModalProps> = ({ isOpen, onClose, type })
               <div className="space-y-1">
                 <h4 className="font-bold text-slate-900 text-sm">2. Instagram Automation & Compliance</h4>
                 <p>
-                  AutoReply.io connects to Instagram Business and Creator accounts via official Meta Graph
+                  Auto Replies connects to Instagram Business and Creator accounts via official Meta Graph
                   Webhooks and messaging APIs. Users must maintain ownership or authorization for all
                   connected social profiles.
                 </p>
@@ -110,7 +110,7 @@ export const TermsModal: React.FC<TermsModalProps> = ({ isOpen, onClose, type })
 
           <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-2.5 text-slate-700">
             <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-            <span className="text-[11px] font-medium">
+            <span className="text-xs font-medium">
               Your account data is handled through the configured Meta Graph API and Supabase-backed application services.
             </span>
           </div>

@@ -55,7 +55,7 @@ export const LeadFormsPage: React.FC = () => {
   return (
     <div className="min-h-full bg-[#F7FAFF] px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header><p className="text-[11px] font-bold uppercase tracking-[.16em] text-indigo-600">Lead capture</p><h1 className="mt-1 text-2xl font-bold text-slate-950 sm:text-3xl">Lead & Address Forms</h1><p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Define the customer fields your AI should collect in Instagram DMs, including full address details.</p></header>
+        <header><p className="text-xs font-bold uppercase tracking-[.16em] text-indigo-600">Lead capture</p><h1 className="mt-1 text-2xl font-bold text-slate-950 sm:text-3xl">Lead & Address Forms</h1><p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Define the customer fields your AI should collect in Instagram DMs, including full address details.</p></header>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-bold text-slate-900">Create form</h2>
@@ -76,7 +76,7 @@ export const LeadFormsPage: React.FC = () => {
               <div className="flex items-start justify-between gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><ClipboardList className="h-4.5 w-4.5" /></span><button onClick={() => void remove(form)} className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button></div>
               <h2 className="mt-4 text-base font-bold text-slate-900">{form.name}</h2>
               <p className="mt-1 text-xs leading-5 text-slate-500">{form.fields.join(' · ')}</p>
-              <p className="mt-2 text-[11px] font-semibold text-indigo-600">Required: {form.required.join(', ') || 'None'}</p>
+              <p className="mt-2 text-xs font-semibold text-indigo-600">Required: {form.required.join(', ') || 'None'}</p>
               <button onClick={() => useInAi(form)} className="mt-4 flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 text-xs font-bold text-white"><Sparkles className="h-4 w-4" />Use in AI Automation</button>
             </article>
           )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500 md:col-span-2">No lead forms saved yet.</div>}
