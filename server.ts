@@ -2810,6 +2810,16 @@ async function startServer() {
     }
   });
 
+  for (const action of ['connect', 'callback', 'status', 'create-sheet', 'append-lead']) {
+    app.all(`/api/google-sheets/${action}`, async (req, res, next) => {
+      try {
+        const { default: handler } = await import('./api/google-sheets');
+        req.query.action = action;
+        await handler(req, res);
+      } catch (error) { next(error); }
+    });
+  }
+
   // Vite Middleware or Static Production File Serving
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

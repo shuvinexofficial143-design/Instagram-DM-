@@ -1,4 +1,5 @@
-const SUPABASE_URL = 'https://dwgxmmftybxwpurgsxkx.supabase.co';
+import { SUPABASE_URL } from '../../src/server/supabaseConfig';
+
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
 function getCookie(req: any, name: string): string {

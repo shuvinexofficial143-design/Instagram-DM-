@@ -91,7 +91,7 @@ const MainContent: React.FC = () => {
 const AppShell: React.FC = () => {
   const { authLoading, firebaseUser, activeTab } = useApp();
   const splashStartedAt = useRef(Date.now());
-  const [splashPhase, setSplashPhase] = useState<'show' | 'exit' | 'done'>('show');
+  const [splashPhase, setSplashPhase] = useState<'show' | 'exit' | 'done'>(() => typeof document === 'undefined' ? 'done' : 'show');
   const isAdminRoute =
     typeof window !== 'undefined' && window.location.pathname === '/admin';
 

@@ -93,7 +93,7 @@ try {
   assert.ok(html.includes('What should start this automation?'));assert.ok(!html.includes('Name your automation'));assert.ok(html.includes('aria-label="Close automation builder"'));checks++;
   const setupProps={prompt:'Reply only using approved business facts.',onPromptChange:noop,testInput:'',onTestInputChange:noop,testMessage:'',testReply:'',testError:'',testing:false,onTest:noop,sheetsConnected:false,sheetsEmail:'',sheetsLoading:false,onConnectSheets:noop,promptTools:null,sheetControls:null,replySettings:null};
   html=renderToStaticMarkup(React.createElement(ui.AiAssistantSetup,setupProps));
-  assert.ok(html.includes('System prompt'));assert.ok(html.includes('id="ai-system-prompt"'));assert.ok(html.includes('for="ai-system-prompt"'));assert.ok(html.includes('Connect Google Sheets'));assert.ok(html.includes('data:image/png;base64,'));assert.ok(html.includes('Test messages are not sent to Instagram'));checks++;
+  assert.ok(html.includes('System prompt'));assert.ok(html.includes('id="ai-system-prompt"'));assert.ok(html.includes('for="ai-system-prompt"'));assert.ok(html.includes('Connect Google Sheets'));assert.ok(html.includes('data:image/png;base64,'));assert.ok(html.includes('Test messages stay inside this preview'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.AiAssistantSetup,{...setupProps,testMessage:'Question',testError:'Could not test',sheetsConnected:true,sheetsEmail:'test@example.test'}));
   assert.ok(html.includes('role="alert"'));assert.ok(html.includes('Could not test'));assert.ok(!html.includes('Test reply received'));assert.ok(html.includes('Connected'));assert.ok(html.includes('Change account'));checks++;
   const allTabs=ui.workspaceNavigation.flatMap(item=>item.tabs);
