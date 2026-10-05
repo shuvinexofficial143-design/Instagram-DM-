@@ -362,6 +362,9 @@ export const AnalyticsPage: React.FC = () => {
   const aiHandleRate = analytics.current.outgoing.length
     ? Math.round((analytics.current.ai.length / analytics.current.outgoing.length) * 100)
     : 0;
+  const aiPerformanceHue = Math.round(Math.max(0, Math.min(100, aiHandleRate)) * 1.35);
+  const aiPerformanceColor = `hsl(${aiPerformanceHue} 78% 46%)`;
+  const aiPerformanceSoft = `hsl(${aiPerformanceHue} 85% 95%)`;
   const topIntent = analytics.intents.find((item) => item.value > 0);
   const maxIntent = Math.max(1, ...analytics.intents.map((item) => item.value));
   const maxSource = Math.max(1, ...analytics.sources.map((item) => item.value));
@@ -589,15 +592,20 @@ export const AnalyticsPage: React.FC = () => {
                       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img" aria-label="Incoming and outgoing message activity">
                         <defs>
                           <linearGradient id="message-incoming-fill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#12B6B8" stopOpacity="0.22" />
-                            <stop offset="72%" stopColor="#12B6B8" stopOpacity="0.08" />
-                            <stop offset="100%" stopColor="#12B6B8" stopOpacity="0.015" />
+                            <stop offset="0%" stopColor="#12B6B8" stopOpacity="0.30" />
+                            <stop offset="42%" stopColor="#12B6B8" stopOpacity="0.17" />
+                            <stop offset="78%" stopColor="#12B6B8" stopOpacity="0.08" />
+                            <stop offset="100%" stopColor="#12B6B8" stopOpacity="0.025" />
                           </linearGradient>
                           <linearGradient id="message-replies-fill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#10C981" stopOpacity="0.19" />
-                            <stop offset="78%" stopColor="#10C981" stopOpacity="0.06" />
-                            <stop offset="100%" stopColor="#10C981" stopOpacity="0.01" />
+                            <stop offset="0%" stopColor="#10C981" stopOpacity="0.27" />
+                            <stop offset="45%" stopColor="#10C981" stopOpacity="0.14" />
+                            <stop offset="82%" stopColor="#10C981" stopOpacity="0.06" />
+                            <stop offset="100%" stopColor="#10C981" stopOpacity="0.02" />
                           </linearGradient>
+                          <filter id="message-soft-shadow" x="-10%" y="-10%" width="120%" height="130%">
+                            <feGaussianBlur stdDeviation="1.8" />
+                          </filter>
                         </defs>
 
                         {[4, 27.5, 51, 74.5, 98].map((y) => (
@@ -607,6 +615,8 @@ export const AnalyticsPage: React.FC = () => {
                           <line key={'v-' + x} x1={x} x2={x} y1="4" y2="98" stroke="#e4e9ee" strokeWidth="0.7" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
                         ))}
 
+                        <path d={incomingAreaPath} fill="#12B6B8" opacity="0.07" filter="url(#message-soft-shadow)" />
+                        <path d={outgoingAreaPath} fill="#10C981" opacity="0.055" filter="url(#message-soft-shadow)" />
                         <path d={incomingAreaPath} fill="url(#message-incoming-fill)" />
                         <path d={outgoingAreaPath} fill="url(#message-replies-fill)" />
                         <path d={incomingPath} fill="none" stroke="#12B6B8" strokeWidth="3" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
@@ -660,7 +670,7 @@ export const AnalyticsPage: React.FC = () => {
                 <h2 className="text-base font-bold text-slate-900">Lead funnel</h2>
                 <p className="mt-1 text-xs text-slate-500">From conversation to conversion.</p>
               </div>
-              <span className="rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-bold text-violet-800">{analytics.converted} converted</span>
+              <span className="rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-700">{analytics.converted} converted</span>
             </div>
             <div className="mt-5 space-y-3">
               {funnel.map((stage, index) => (
@@ -674,7 +684,7 @@ export const AnalyticsPage: React.FC = () => {
                   </div>
                   <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-violet-700 to-fuchsia-400"
+                      className="h-full rounded-full bg-gradient-to-r from-orange-400 to-amber-300"
                       style={{ width: Math.max(stage.value ? 6 : 0, Math.min(100, (stage.value / funnelMax) * 100)) + '%' }}
                     />
                   </div>
@@ -743,10 +753,14 @@ export const AnalyticsPage: React.FC = () => {
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h2 className="text-base font-bold text-slate-900">AI performance</h2>
             <p className="mt-1 text-xs text-slate-500">How much of the conversation workload AI is handling.</p>
-            <div className="mt-5 flex items-center gap-4 rounded-2xl bg-violet-50 p-4">
-              <div className="relative grid h-20 w-20 shrink-0 place-items-center rounded-full" style={{ background: 'conic-gradient(#6D28D9 ' + aiHandleRate + '%, #ede9fe 0)' }}>
-                <div className="grid h-14 w-14 place-items-center rounded-full bg-white text-center">
-                  <span className="text-lg font-bold text-slate-950">{aiHandleRate}%</span>
+            <div className="mt-5 flex items-center gap-4 rounded-2xl border border-slate-100 p-4" style={{ backgroundColor: aiPerformanceSoft }}>
+              <div
+                className="relative grid h-20 w-20 shrink-0 place-items-center rounded-full shadow-sm"
+                style={{ background: `conic-gradient(${aiPerformanceColor} ${aiHandleRate}%, #e5e7eb ${aiHandleRate}% 100%)` }}
+                title={`AI handled ${aiHandleRate}% of replies`}
+              >
+                <div className="grid h-14 w-14 place-items-center rounded-full bg-white text-center shadow-inner">
+                  <span className="text-lg font-bold" style={{ color: aiPerformanceColor }}>{aiHandleRate}%</span>
                 </div>
               </div>
               <div>
@@ -787,7 +801,7 @@ export const AnalyticsPage: React.FC = () => {
                     <span className="font-bold text-slate-800">{intent.value.toLocaleString()}</span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-violet-500" style={{ width: (intent.value / maxIntent) * 100 + '%' }} />
+                    <div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-amber-300" style={{ width: (intent.value / maxIntent) * 100 + '%' }} />
                   </div>
                 </div>
               ))}
@@ -805,7 +819,7 @@ export const AnalyticsPage: React.FC = () => {
                     <span className="text-sm font-bold text-slate-900">{source.value.toLocaleString()}</span>
                   </div>
                   <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-violet-400" style={{ width: (source.value / maxSource) * 100 + '%' }} />
+                    <div className="h-full rounded-full bg-gradient-to-r from-orange-300 to-amber-300" style={{ width: (source.value / maxSource) * 100 + '%' }} />
                   </div>
                 </div>
               ))}
