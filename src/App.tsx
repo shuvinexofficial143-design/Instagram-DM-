@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 // Deployment refresh: 2026-09-20T08:59Z
 import { publicSupportPage } from './lib/navigation';
 import { AppProvider, useApp } from './context/AppContext';
@@ -9,6 +9,7 @@ import { PlanRenewModal } from './components/Common/PlanRenewModal';
 import { ConnectChannelModal } from './components/Common/ConnectChannelModal';
 import { WorkspaceTabs } from './components/WorkspaceNavigation';
 import { ErrorBoundary } from './components/Common/ErrorBoundary';
+import { AppSplashScreen } from './components/Common/AppSplashScreen';
 import { HomePage } from './components/Home/HomePage';
 import { LoginPage } from './components/Auth/LoginPage';
 import { PublicLandingPage } from './components/Public/PublicLandingPage';
@@ -89,17 +90,34 @@ const MainContent: React.FC = () => {
 
 const AppShell: React.FC = () => {
   const { authLoading, firebaseUser, activeTab } = useApp();
+  const splashStartedAt = useRef(Date.now());
+  const [splashPhase, setSplashPhase] = useState<'show' | 'exit' | 'done'>('show');
   const isAdminRoute =
     typeof window !== 'undefined' && window.location.pathname === '/admin';
 
-  if (authLoading) {
+  useEffect(() => {
+    if (authLoading || splashPhase !== 'show') return;
+
+    const elapsed = Date.now() - splashStartedAt.current;
+    const remaining = Math.max(0, 1050 - elapsed);
+    const timer = window.setTimeout(() => setSplashPhase('exit'), remaining);
+
+    return () => window.clearTimeout(timer);
+  }, [authLoading, splashPhase]);
+
+  useEffect(() => {
+    if (splashPhase !== 'exit') return;
+    const timer = window.setTimeout(() => setSplashPhase('done'), 420);
+    return () => window.clearTimeout(timer);
+  }, [splashPhase]);
+
+  if (splashPhase !== 'done') {
     return (
       <ErrorBoundary>
-        <div role="status" className="flex min-h-[100dvh] items-center justify-center gap-3 bg-slate-50 text-slate-600"><span className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />Loading your workspace…</div>
+        <AppSplashScreen exiting={splashPhase === 'exit'} />
       </ErrorBoundary>
     );
   }
-
 
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
   const isResetPasswordRoute = pathname === '/reset-password';
@@ -151,7 +169,7 @@ const AppShell: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#F7FAFF] text-sm font-semibold text-slate-500">Loading workspace…</div>}>
+      <Suspense fallback={<AppSplashScreen />}>
         <AppShell />
       </Suspense>
     </AppProvider>
