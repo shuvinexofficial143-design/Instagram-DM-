@@ -1,9 +1,9 @@
 import crypto from 'node:crypto';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, authenticatedUser, cleanEnvironment, upstreamFetch, UpstreamError } from '../src/server/supabaseConfig.js';
+import { normalizeAppUrl, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, authenticatedUser, cleanEnvironment, upstreamFetch, UpstreamError } from '../src/server/supabaseConfig.js';
 
 const env = (key: string) => cleanEnvironment(process.env[key]);
-const site = () => (env('APP_URL') || 'https://autoreplys.vercel.app').replace(/\/+$/, '');
-const redirectUri = () => env('GOOGLE_SHEETS_REDIRECT_URI') || site() + '/api/google-sheets/callback';
+const site = () => normalizeAppUrl(env('APP_URL') || 'https://autoreplys.vercel.app');
+const redirectUri = () => normalizeAppUrl(env('GOOGLE_SHEETS_REDIRECT_URI') || site() + '/api/google-sheets/callback');
 const secret = () => env('GOOGLE_SHEETS_STATE_SECRET') || env('AUTH_SESSION_SECRET') || env('INSTAGRAM_APP_SECRET');
 const sign = (value: string) => crypto.createHmac('sha256', secret()).update(value).digest('hex');
 const bearer = (req: any) => String(req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim();

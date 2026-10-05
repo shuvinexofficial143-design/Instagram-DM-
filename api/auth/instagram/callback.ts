@@ -1,7 +1,7 @@
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../../src/server/supabaseConfig.js';
+import { normalizeAppUrl, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../../src/server/supabaseConfig.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-const PROD_ORIGIN = String(process.env.APP_URL || 'https://autoreplys.vercel.app').replace(/\/+$/, '');
+const PROD_ORIGIN = normalizeAppUrl(process.env.APP_URL || 'https://autoreplys.vercel.app');
 const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
 
 const META_APP_ID = String(process.env.INSTAGRAM_APP_ID || '').trim();
@@ -57,7 +57,7 @@ function getRedirectUri(req: any): string {
     return `${PROD_ORIGIN}/api/auth/instagram/callback`;
   }
 
-  if (configured && !configured.includes('localhost')) return configured;
+  if (configured && !configured.includes('localhost')) return normalizeAppUrl(configured);
   if (host) return `${proto}://${host}/api/auth/instagram/callback`;
   return `${PROD_ORIGIN}/api/auth/instagram/callback`;
 }

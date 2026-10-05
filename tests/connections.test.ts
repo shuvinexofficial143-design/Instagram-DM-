@@ -5,7 +5,7 @@ process.env.INSTAGRAM_APP_SECRET = 'test-secret';
 process.env.GOOGLE_SHEETS_CLIENT_ID = 'test-google-app';
 process.env.GOOGLE_SHEETS_CLIENT_SECRET = 'test-google-secret';
 process.env.GOOGLE_SHEETS_STATE_SECRET = 'test-state-secret';
-const { normalizeSupabaseUrl, upstreamFetch } = await import('../src/server/supabaseConfig');
+const { normalizeAppUrl, normalizeSupabaseUrl, upstreamFetch } = await import('../src/server/supabaseConfig');
 const { default: instagram } = await import('../api/auth/instagram');
 const { default: sheets } = await import('../api/google-sheets');
 const uid = '12345678-1234-4234-8234-123456789012';
@@ -88,4 +88,11 @@ test('Sheets create does not report success when saving its connection fails', a
   };
   const res = response(); await sheets(request('create-sheet', 'POST', { fields: ['Name'] }), res);
   assert.equal(res.statusCode, 500); assert.match(res.body.error, /Could not save/);
+});
+
+test('OAuth URLs normalize pasted schemes and reject unsafe configuration', () => {
+  assert.equal(normalizeAppUrl(' "autoreplys.vercel.app/" '), 'https://autoreplys.vercel.app');
+  assert.equal(normalizeAppUrl('autoreplys.vercel.app/api/auth/instagram/callback'), 'https://autoreplys.vercel.app/api/auth/instagram/callback');
+  assert.throws(() => normalizeAppUrl('javascript:alert(1)'));
+  assert.throws(() => normalizeAppUrl('https://user:password@example.com'));
 });

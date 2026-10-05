@@ -421,22 +421,56 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
   return null;
 }
 async function getPlanQuota(admin: any, workspaceId: string) {
-  const { data: profile } = await admin.from("autoreply_profiles").select("data").eq("user_id", workspaceId).maybeSingle();
+  // Independent reads start together; usage remains fresh for every message.
+  const [profileResult, usageResult] = await Promise.all([
+    admin.from("autoreply_profiles").select("data").eq("user_id", workspaceId).maybeSingle(),
+    admin.rpc("autoreply_get_usage", { p_user_id: workspaceId }),
+  ]);
+  if (profileResult.error || usageResult.error) throw new Error("Could not verify the message allowance");
+  const profile = profileResult.data;
+  const usage = usageResult.data;
   const plan = String(profile?.data?.plan || "free").toLowerCase();
-  const limits: Record<string,{messages:number;ai:number}> = {
-    free:{messages:1500,ai:1000}, starter:{messages:7500,ai:5000}, pro:{messages:25000,ai:15000}, business:{messages:75000,ai:40000}
+  const limits: Record<string, { messages: number; ai: number }> = {
+    free: { messages: 1500, ai: 1000 }, starter: { messages: 7500, ai: 5000 },
+    pro: { messages: 25000, ai: 15000 }, business: { messages: 75000, ai: 40000 },
   };
   const base = limits[plan] || limits.free;
-  const carryMessages = Number(profile?.data?.carry_forward_messages || 0);
-  const carryAi = Number(profile?.data?.carry_forward_ai_replies || 0);
+  const carryMessages = Math.max(0, Number(profile?.data?.carry_forward_messages || 0));
+  const carryAi = Math.max(0, Number(profile?.data?.carry_forward_ai_replies || 0));
   const carryExpiry = Date.parse(String(profile?.data?.carry_forward_expires_at || ""));
   const carryActive = Number.isFinite(carryExpiry) && carryExpiry > Date.now();
-  const { data: usage } = await admin.rpc("autoreply_get_usage", { p_user_id: workspaceId });
   return {
-    plan, totalUsed:Number(usage?.total_messages || 0), aiUsed:Number(usage?.ai_replies || 0),
-    totalLimit:base.messages + (carryActive ? carryMessages : 0),
-    aiLimit:base.ai + (carryActive ? carryAi : 0)
+    plan, totalUsed: Number(usage?.total_messages || 0), aiUsed: Number(usage?.ai_replies || 0),
+    totalLimit: base.messages + (carryActive ? carryMessages : 0),
+    aiLimit: base.ai + (carryActive ? carryAi : 0),
   };
+}
+
+function aiTimeoutMs(): number {
+  const configured = Number(Deno.env.get("DM_AI_TIMEOUT_MS") || 8000);
+  return Number.isFinite(configured) ? Math.min(12000, Math.max(2000, configured)) : 8000;
+}
+
+function canReuseSharedReply(history: any[], incomingText: string): boolean {
+  // Follow-up replies depend on this customer's history and must not be shared.
+  return history.length === 0 && !isConversationalGreeting(incomingText);
+}
+
+async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:string, incomingText:string, history:any[], openaiKey:string) {
+  try {
+    const { data: row } = await admin.from("autoreply_documents").select("data").eq("user_id",workspaceId).eq("collection","google_sheets_connections").eq("id","primary").maybeSingle();
+    const cfg=row?.data||{}; const fields=Array.isArray(cfg?.fields)?cfg.fields.map((x:any)=>String(x||"").trim()).filter(Boolean):[];
+    if(!cfg?.connected||!cfg?.spreadsheet_id||!fields.length||!cfg?.refresh_token||!openaiKey)return;
+    const transcript=[...(Array.isArray(history)?history.slice(-8):[]),{role:"user",content:incomingText}].map((m:any)=>String(m?.role||"user")+": "+String(m?.content||"")).join("\n");
+    const er=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{Authorization:"Bearer "+openaiKey,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-4o-mini",temperature:0,response_format:{type:"json_object"},messages:[{role:"system",content:"Extract only customer-provided lead information from the conversation. Return one JSON object using ONLY these exact keys: "+fields.join(", ")+". Omit fields that are unknown. Never guess."},{role:"user",content:transcript}]})});
+    const ep:any=await er.json().catch(()=>null); if(!er.ok)return; let extracted:any={}; try{extracted=JSON.parse(String(ep?.choices?.[0]?.message?.content||"{}"))}catch{return}
+    const clean:any={}; for(const key of fields){const v=extracted?.[key];if(v!==undefined&&v!==null&&String(v).trim())clean[key]=String(v).trim()} if(!Object.keys(clean).length)return;
+    const leadId=String(senderId||"").trim(); const {data:existing}=await admin.from("autoreply_documents").select("data").eq("user_id",workspaceId).eq("collection","ai_leads").eq("id",leadId).maybeSingle(); const merged={...(existing?.data||{}),...clean,instagram_username:(existing?.data?.instagram_username||senderId),updated_at:new Date().toISOString(),created_at:existing?.data?.created_at||new Date().toISOString()};
+    await admin.from("autoreply_documents").upsert({user_id:workspaceId,collection:"ai_leads",id:leadId,data:merged},{onConflict:"user_id,collection,id"});
+    const tr=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:String(Deno.env.get("GOOGLE_SHEETS_CLIENT_ID")||""),client_secret:String(Deno.env.get("GOOGLE_SHEETS_CLIENT_SECRET")||""),refresh_token:String(cfg.refresh_token),grant_type:"refresh_token"})}); const tp:any=await tr.json().catch(()=>null);if(!tr.ok||!tp?.access_token)return;
+    const values=fields.map((k:string)=>String(merged?.[k]||""));values.push(String(merged.instagram_username||senderId),String(merged.created_at||""),String(merged.updated_at||""));
+    await fetch("https://sheets.googleapis.com/v4/spreadsheets/"+encodeURIComponent(cfg.spreadsheet_id)+"/values/"+encodeURIComponent((cfg.sheet_name||"Leads")+"!A:ZZ")+":append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",{method:"POST",headers:{Authorization:"Bearer "+tp.access_token,"Content-Type":"application/json"},body:JSON.stringify({values:[values]})});
+  } catch(err){console.warn("[GOOGLE_SHEETS_LEAD_SYNC_WARN]",err)}
 }
 
 async function incrementUsage(admin:any, workspaceId:string, isAi:boolean) {
@@ -870,7 +904,7 @@ async function generateReply(
   if (!openaiKey) throw new Error("OPENAI_API_KEY is missing");
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeout = setTimeout(() => controller.abort(), aiTimeoutMs());
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -990,6 +1024,8 @@ async function sendInstagramText(
         recipient: { id: recipientId },
         message: { text: text.slice(0, 1000) },
       }),
+      // Never retry a Send API call: a timeout can follow a successful delivery.
+      signal: AbortSignal.timeout(10000),
     }
   );
 
@@ -1001,6 +1037,7 @@ async function sendInstagramText(
     );
   }
 
+  if (!payload?.message_id) throw new Error("Instagram did not confirm message delivery");
   return payload;
 }
 
@@ -1205,6 +1242,9 @@ Deno.serve(async (req: Request) => {
             startTyping(runtime, "supabase_runtime_context");
           }
           return runtime;
+        }).catch((error) => {
+          console.warn("[TYPING_CONTEXT_UNAVAILABLE]", error instanceof Error ? error.message : String(error));
+          return null;
         });
     const warmAutomationId = String(
       warmRuntime?.value?.automation?.id || ""
@@ -1231,8 +1271,7 @@ Deno.serve(async (req: Request) => {
     );
 
     if (
-      warmRuntimeValid &&
-      (instantReply || warmReplyValid || warmHistoryValid)
+      warmRuntimeValid && warmHistoryValid
     ) {
       const workspaceId = String(warmRuntime!.value.user_id || "");
       const claimKey = `${workspaceId}:${item.messageId}`;
@@ -1418,7 +1457,17 @@ Deno.serve(async (req: Request) => {
       continue;
     }
 
-    const quota = await getPlanQuota(admin, workspaceId);
+    let quota;
+    try {
+      quota = await getPlanQuota(admin, workspaceId);
+    } catch {
+      if (typingStarted) runInBackground(sendInstagramSenderAction(igUserId, item.senderId, accessToken, "typing_off"));
+      runInBackground(logEvent(admin, workspaceId, item.messageId || crypto.randomUUID(), {
+        status: "failed", reason: "quota_check_failed", sender_id: item.senderId,
+      }));
+      results.push({ messageId: item.messageId, ok: false, reason: "quota_check_failed" });
+      continue;
+    }
     if (quota.totalUsed >= quota.totalLimit) {
       results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_message_limit_reached" });
       continue;
@@ -1463,9 +1512,8 @@ Instagram DM style rules:
       : [];
     const historyMs = 0;
     let fastPath: string | null = null;
-    const cachedReply = isGreeting
-      ? ""
-      : asText(context?.cached_reply, 1000);
+    const sharedReplyAllowed = canReuseSharedReply(history, item.text);
+    const cachedReply = sharedReplyAllowed ? asText(context?.cached_reply, 1000) : "";
 
     if (instantReply) {
       responseText = instantReply;
@@ -1506,7 +1554,7 @@ Instagram DM style rules:
 
       aiMs = Math.round(performance.now() - aiStart);
 
-      if (!aiError && responseText && !isGreeting) {
+      if (!aiError && responseText && sharedReplyAllowed) {
         runInBackground(
           saveReplyCache(
             admin,
@@ -1562,6 +1610,7 @@ Instagram DM style rules:
       const sendMs = Math.round(performance.now() - sendStart);
       const instagramMessageId = String(sendResult?.message_id || "");
       runInBackground(incrementUsage(admin, workspaceId, true));
+      runInBackground(syncAiLeadToGoogleSheet(admin, workspaceId, item.senderId, item.text, history, openaiKey));
 
       if (typingStarted) {
         runInBackground(
@@ -1733,3 +1782,4 @@ Instagram DM style rules:
     results,
   });
 });
+

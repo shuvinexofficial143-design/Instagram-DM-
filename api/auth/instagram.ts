@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
-import { authenticatedUser, cleanEnvironment, UpstreamError } from '../../src/server/supabaseConfig.js';
+import { authenticatedUser, cleanEnvironment, normalizeAppUrl, UpstreamError } from '../../src/server/supabaseConfig.js';
 
-const PROD_ORIGIN = String(process.env.APP_URL || 'https://autoreplys.vercel.app').replace(/\/+$/, '');
+const PROD_ORIGIN = normalizeAppUrl(process.env.APP_URL || 'https://autoreplys.vercel.app');
 const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
@@ -19,7 +19,7 @@ function getRedirectUri(req: any): string {
   }
 
   if (configured && !configured.includes('localhost')) {
-    return configured;
+    return normalizeAppUrl(configured);
   }
 
   if (host) {
