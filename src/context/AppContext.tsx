@@ -590,14 +590,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAutomations([]);
     setContacts([]);
     setInboxMessages([]);
-    const unsubscribeAutomations = subscribeToUserCollection<Automation>(uid, 'automations', (data) => {
-      if (data) {
-        const sanitized: Automation[] = data.map(sanitizeAutomationRecord);
+    const loadAutomationsFromServer = async () => {
+      try {
+        const token = await auth.currentUser?.getIdToken().catch(() => '');
+        const response = await fetch('/api/automations', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || 'Automations could not be loaded.');
+        }
+        const sanitized: Automation[] = (
+          Array.isArray(payload.automations) ? payload.automations : []
+        ).map(sanitizeAutomationRecord);
         setAutomations(sanitized);
-      } else {
-        setAutomations([]);
+      } catch (err: any) {
+        console.warn('[AUTOMATION_API_LOAD_WARN]', err?.message || err);
       }
-    });
+    };
+
+    const unsubscribeAutomations = subscribeToUserCollection<Automation>(
+      uid,
+      'automations',
+      (data) => {
+        if (data) {
+          const sanitized: Automation[] = data.map(sanitizeAutomationRecord);
+          setAutomations(sanitized);
+        } else {
+          setAutomations([]);
+        }
+      },
+      (err) => {
+        console.warn('[AUTOMATION_REALTIME_LOAD_WARN]', err?.message || err);
+        void loadAutomationsFromServer();
+      }
+    );
+
+    // Load once through the server route too. Realtime remains the fast path,
+    // while this protects the page from transient PostgREST/read timeouts.
+    void loadAutomationsFromServer();
 
     const unsubscribeContacts = subscribeToUserCollection<Contact>(uid, 'contacts', (data) => {
       if (data) {
