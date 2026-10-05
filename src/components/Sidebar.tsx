@@ -24,6 +24,7 @@ import {
   Send,
   Gauge,
   ArrowRight,
+  GitBranch,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { UserAvatar } from './Common/UserAvatar';
