@@ -1,88 +1,46 @@
-import React, { useEffect, useState } from 'react';
-import { Package, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
-import { useApp } from '../../context/AppContext';
-import { auth, removeUserDocument, saveUserDocument, subscribeToUserCollection } from '../../lib/supabase';
+import React,{useEffect,useMemo,useState}from'react';
+import{CheckCircle2,ChevronRight,FolderPlus,Package,Plus,Save,Sparkles,Trash2,X}from'lucide-react';
+import{useApp}from'../../context/AppContext';
+import{auth,removeUserDocument,saveUserDocument,subscribeToUserCollection}from'../../lib/supabase';
 
-type Product = { id: string; name: string; price: string; description: string; url: string; active: boolean; updated_at?: string };
+type Catalog={id:string;name:string;description:string;active:boolean;updated_at?:string};
+type Product={id:string;catalog_id?:string;name:string;price:string;description:string;url:string;active:boolean;updated_at?:string};
+const DEFAULT_ID='default';
 
-export const CatalogPage: React.FC = () => {
-  const { setActiveTab, setIsBuilderOpen } = useApp();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [draft, setDraft] = useState<Omit<Product, 'id'>>({ name: '', price: '', description: '', url: '', active: true });
-  const [saving, setSaving] = useState(false);
+export const CatalogPage:React.FC=()=>{
+ const{setActiveTab,setIsBuilderOpen}=useApp();
+ const[catalogs,setCatalogs]=useState<Catalog[]>([]);
+ const[products,setProducts]=useState<Product[]>([]);
+ const[selected,setSelected]=useState(DEFAULT_ID);
+ const[newCatalog,setNewCatalog]=useState(false);
+ const[catalogName,setCatalogName]=useState('');
+ const[catalogDesc,setCatalogDesc]=useState('');
+ const[draft,setDraft]=useState<Omit<Product,'id'>>({catalog_id:DEFAULT_ID,name:'',price:'',description:'',url:'',active:true});
+ const[saving,setSaving]=useState(false);
 
-  useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-    return subscribeToUserCollection<Product>(uid, 'catalog_products', setProducts);
-  }, []);
+ useEffect(()=>{const uid=auth.currentUser?.uid;if(!uid)return;const a=subscribeToUserCollection<Catalog>(uid,'catalogs',setCatalogs);const b=subscribeToUserCollection<Product>(uid,'catalog_products',setProducts);return()=>{a?.();b?.()}},[]);
+ const allCatalogs=useMemo(()=>[{id:DEFAULT_ID,name:'Main Catalog',description:'Your default product collection',active:true} as Catalog,...catalogs.filter(x=>x.id!==DEFAULT_ID)],[catalogs]);
+ const current=allCatalogs.find(x=>x.id===selected)||allCatalogs[0];
+ const visible=products.filter(p=>(p.catalog_id||DEFAULT_ID)===selected);
 
-  const addProduct = async () => {
-    const uid = auth.currentUser?.uid;
-    if (!uid || !draft.name.trim()) return;
-    setSaving(true);
-    try {
-      const item: Product = { id: 'product_' + Date.now(), ...draft, name: draft.name.trim(), updated_at: new Date().toISOString() };
-      await saveUserDocument(uid, 'catalog_products', item);
-      setDraft({ name: '', price: '', description: '', url: '', active: true });
-    } finally { setSaving(false); }
-  };
+ const createCatalog=async()=>{const uid=auth.currentUser?.uid;const name=catalogName.trim();if(!uid||!name)return;const item={id:'catalog_'+Date.now(),name,description:catalogDesc.trim(),active:true,updated_at:new Date().toISOString()};await saveUserDocument(uid,'catalogs',item);setSelected(item.id);setDraft(p=>({...p,catalog_id:item.id}));setCatalogName('');setCatalogDesc('');setNewCatalog(false)};
+ const addProduct=async()=>{const uid=auth.currentUser?.uid;if(!uid||!draft.name.trim())return;setSaving(true);try{await saveUserDocument(uid,'catalog_products',{id:'product_'+Date.now(),...draft,catalog_id:selected,name:draft.name.trim(),updated_at:new Date().toISOString()});setDraft({catalog_id:selected,name:'',price:'',description:'',url:'',active:true})}finally{setSaving(false)}};
+ const saveProduct=async(p:Product)=>{const uid=auth.currentUser?.uid;if(uid)await saveUserDocument(uid,'catalog_products',{...p,catalog_id:p.catalog_id||DEFAULT_ID,updated_at:new Date().toISOString()})};
+ const removeProduct=async(p:Product)=>{const uid=auth.currentUser?.uid;if(uid&&window.confirm('Delete '+p.name+'?'))await removeUserDocument(uid,'catalog_products',p.id)};
+ const deleteCatalog=async()=>{const uid=auth.currentUser?.uid;if(!uid||selected===DEFAULT_ID)return;if(!window.confirm('Delete this catalog? Products inside it will also be deleted.'))return;for(const p of visible)await removeUserDocument(uid,'catalog_products',p.id);await removeUserDocument(uid,'catalogs',selected);setSelected(DEFAULT_ID);setDraft(d=>({...d,catalog_id:DEFAULT_ID}))};
+ const useInAi=()=>{const lines=visible.filter(p=>p.active).map(p=>'- '+p.name+(p.price?' | Price: '+p.price:'')+(p.description?' | '+p.description:'')+(p.url?' | Link: '+p.url:''));sessionStorage.setItem('autoreply:prefill-ai-prompt','# PRODUCT CATALOG: '+current.name+'\n'+(lines.join('\n')||'No active products.')+'\n\nOnly recommend products from this catalog. Never invent price, stock or links.');setActiveTab('automations');setIsBuilderOpen(true)};
 
-  const saveProduct = async (item: Product) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-    await saveUserDocument(uid, 'catalog_products', { ...item, updated_at: new Date().toISOString() });
-  };
+ return <div className="min-h-full bg-[#F7FAFF] px-4 py-6 sm:px-6 lg:px-8"><div className="mx-auto max-w-6xl space-y-6">
+  <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[11px] font-black uppercase tracking-[.16em] text-indigo-600">Product knowledge</p><h1 className="mt-1 text-2xl font-black text-slate-950 sm:text-3xl">Catalogs</h1><p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Create separate catalogs for different businesses, categories or campaigns. Choose one catalog when you build an AI automation.</p></div><button onClick={()=>setNewCatalog(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-black text-white"><FolderPlus className="h-4 w-4"/>New catalog</button></header>
 
-  const removeProduct = async (item: Product) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid || !window.confirm('Delete ' + item.name + ' from the catalog?')) return;
-    await removeUserDocument(uid, 'catalog_products', item.id);
-  };
+  <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{allCatalogs.map(c=>{const count=products.filter(p=>(p.catalog_id||DEFAULT_ID)===c.id).length;const on=selected===c.id;return <button key={c.id} onClick={()=>{setSelected(c.id);setDraft(d=>({...d,catalog_id:c.id}))}} className={`rounded-2xl border p-4 text-left transition ${on?'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-100':'border-slate-200 bg-white hover:border-indigo-200'}`}><div className="flex items-start justify-between"><span className={`flex h-10 w-10 items-center justify-center rounded-xl ${on?'bg-indigo-600 text-white':'bg-slate-50 text-slate-500'}`}><Package className="h-5 w-5"/></span><ChevronRight className="h-4 w-4 text-slate-300"/></div><h3 className="mt-3 text-sm font-black text-slate-900">{c.name}</h3><p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-500">{c.description||'Product collection'}</p><p className="mt-3 text-[10px] font-black text-indigo-600">{count} product{count===1?'':'s'}</p></button>})}</section>
 
-  const useCatalogInAi = () => {
-    const active = products.filter((p) => p.active);
-    const lines = active.map((p) => '- ' + p.name + (p.price ? ' | Price: ' + p.price : '') + (p.description ? ' | ' + p.description : '') + (p.url ? ' | Link: ' + p.url : ''));
-    sessionStorage.setItem('autoreply:prefill-ai-prompt', '# PRODUCT CATALOG\n' + (lines.join('\n') || 'No active products in catalog.') + '\n\nOnly recommend products from this catalog. Do not invent prices, availability or links.');
-    setActiveTab('automations');
-    setIsBuilderOpen(true);
-  };
+  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[10px] font-black uppercase tracking-wider text-indigo-600">Selected catalog</p><h2 className="mt-1 text-lg font-black text-slate-950">{current.name}</h2><p className="mt-1 text-xs text-slate-500">Products below are only part of this catalog.</p></div><div className="flex gap-2">{selected!==DEFAULT_ID&&<button onClick={deleteCatalog} className="h-10 rounded-xl border border-rose-200 px-3 text-[11px] font-black text-rose-600">Delete catalog</button>}<button onClick={useInAi} className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-[11px] font-black text-white"><Sparkles className="h-4 w-4"/>Use in AI</button></div></div></section>
 
-  return (
-    <div className="min-h-full bg-[#F7FAFF] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div><p className="text-[11px] font-bold uppercase tracking-[.16em] text-indigo-600">Sales content</p><h1 className="mt-1 text-2xl font-bold text-slate-950 sm:text-3xl">Product Catalog</h1><p className="mt-1 text-sm text-slate-500">Manage product facts that can be reused by AI conversations.</p></div>
-          <button onClick={useCatalogInAi} className="flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-xs font-bold text-white"><Sparkles className="h-4 w-4" />Use Catalog in AI</button>
-        </header>
+  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-sm font-black text-slate-900">Add product to {current.name}</h2><div className="mt-4 grid gap-3 md:grid-cols-2"><input value={draft.name} onChange={e=>setDraft(p=>({...p,name:e.target.value}))} placeholder="Product name" className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm"/><input value={draft.price} onChange={e=>setDraft(p=>({...p,price:e.target.value}))} placeholder="Price, e.g. ₹399" className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm"/><textarea value={draft.description} onChange={e=>setDraft(p=>({...p,description:e.target.value}))} placeholder="Description, variants, stock notes" rows={3} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm md:col-span-2"/><input value={draft.url} onChange={e=>setDraft(p=>({...p,url:e.target.value}))} placeholder="Product URL (optional)" className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm"/><button onClick={addProduct} disabled={saving||!draft.name.trim()} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 text-xs font-black text-white disabled:opacity-50"><Plus className="h-4 w-4"/>{saving?'Saving…':'Add product'}</button></div></section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900">Add product</h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <input value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} placeholder="Product name" className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-indigo-400" />
-            <input value={draft.price} onChange={(e) => setDraft((p) => ({ ...p, price: e.target.value }))} placeholder="Price, e.g. ₹399" className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-indigo-400" />
-            <textarea value={draft.description} onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))} placeholder="Short description, variants, stock notes" rows={3} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none focus:border-indigo-400 md:col-span-2" />
-            <input value={draft.url} onChange={(e) => setDraft((p) => ({ ...p, url: e.target.value }))} placeholder="Product / checkout URL (optional)" className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-indigo-400" />
-            <button onClick={addProduct} disabled={saving || !draft.name.trim()} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white disabled:opacity-50"><Plus className="h-4 w-4" />{saving ? 'Saving...' : 'Add product'}</button>
-          </div>
-        </section>
+  <section className="grid gap-4 md:grid-cols-2">{visible.length?visible.map(item=><article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><Package className="h-4 w-4"/></span><label className="flex items-center gap-2 text-[11px] font-bold text-slate-600"><input type="checkbox" checked={item.active} onChange={e=>setProducts(prev=>prev.map(p=>p.id===item.id?{...p,active:e.target.checked}:p))}/>Active</label></div><input value={item.name} onChange={e=>setProducts(prev=>prev.map(p=>p.id===item.id?{...p,name:e.target.value}:p))} className="mt-4 w-full text-base font-black text-slate-900 outline-none"/><input value={item.price} onChange={e=>setProducts(prev=>prev.map(p=>p.id===item.id?{...p,price:e.target.value}:p))} placeholder="Price" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/><textarea value={item.description} onChange={e=>setProducts(prev=>prev.map(p=>p.id===item.id?{...p,description:e.target.value}:p))} rows={3} className="mt-2 w-full rounded-lg border border-slate-200 p-3 text-sm"/><input value={item.url} onChange={e=>setProducts(prev=>prev.map(p=>p.id===item.id?{...p,url:e.target.value}:p))} placeholder="Product URL" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/><div className="mt-4 flex gap-2"><button onClick={()=>saveProduct(item)} className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-xs font-black text-white"><Save className="h-4 w-4"/>Save</button><button onClick={()=>removeProduct(item)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-rose-200 text-rose-600"><Trash2 className="h-4 w-4"/></button></div></article>):<div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500 md:col-span-2">No products in this catalog yet.</div>}</section>
 
-        <section className="grid gap-4 md:grid-cols-2">
-          {products.length ? products.map((item) => (
-            <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><Package className="h-4.5 w-4.5" /></span>
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={item.active} onChange={(e) => setProducts((prev) => prev.map((p) => p.id === item.id ? { ...p, active: e.target.checked } : p))} />Active</label>
-              </div>
-              <input value={item.name} onChange={(e) => setProducts((prev) => prev.map((p) => p.id === item.id ? { ...p, name: e.target.value } : p))} className="mt-4 w-full border-0 p-0 text-base font-bold text-slate-900 outline-none" />
-              <input value={item.price} onChange={(e) => setProducts((prev) => prev.map((p) => p.id === item.id ? { ...p, price: e.target.value } : p))} placeholder="Price" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-              <textarea value={item.description} onChange={(e) => setProducts((prev) => prev.map((p) => p.id === item.id ? { ...p, description: e.target.value } : p))} rows={3} placeholder="Description" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-              <input value={item.url} onChange={(e) => setProducts((prev) => prev.map((p) => p.id === item.id ? { ...p, url: e.target.value } : p))} placeholder="Product URL" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-              <div className="mt-4 flex gap-2"><button onClick={() => void saveProduct(item)} className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 text-xs font-bold text-white"><Save className="h-4 w-4" />Save</button><button onClick={() => void removeProduct(item)} className="flex min-h-10 items-center justify-center rounded-xl border border-rose-200 px-3 text-rose-600"><Trash2 className="h-4 w-4" /></button></div>
-            </article>
-          )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500 md:col-span-2">No products yet. Add your first product above.</div>}
-        </section>
-      </div>
-    </div>
-  );
+  {newCatalog&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-wider text-indigo-600">New collection</p><h3 className="mt-1 text-lg font-black text-slate-950">Create catalog</h3></div><button onClick={()=>setNewCatalog(false)} className="rounded-lg border border-slate-200 p-2 text-slate-500"><X className="h-4 w-4"/></button></div><input autoFocus value={catalogName} onChange={e=>setCatalogName(e.target.value)} placeholder="Catalog name" className="mt-4 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/><textarea value={catalogDesc} onChange={e=>setCatalogDesc(e.target.value)} placeholder="What is this catalog for?" rows={3} className="mt-3 w-full rounded-xl border border-slate-200 p-3 text-sm"/><button onClick={createCatalog} disabled={!catalogName.trim()} className="mt-4 h-11 w-full rounded-xl bg-indigo-600 text-xs font-black text-white disabled:opacity-50">Create catalog</button></div></div>}
+ </div></div>
 };
