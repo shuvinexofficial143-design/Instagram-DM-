@@ -272,70 +272,6 @@ export const AutomationsPage: React.FC = () => {
         </div>
       </div>
 
-      {(automations || []).length === 0 && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[.14em] text-violet-700">Quick start</p>
-              <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-950">Build your first Instagram automation</h2>
-              <p className="mt-1 max-w-2xl text-sm text-slate-500">Start from a proven workflow instead of an empty screen. You can edit every trigger, message and AI instruction before publishing.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsTemplateModalOpen(true)}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-bold text-violet-800 hover:bg-violet-100"
-            >
-              <Layers className="h-4 w-4" />
-              Browse all templates
-            </button>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {templates.slice(0, 4).map((tpl) => {
-              const Icon = tpl.icon;
-              return (
-                <button
-                  key={tpl.id}
-                  type="button"
-                  onClick={() => handleSelectTemplate(tpl)}
-                  className="group rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-left transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-white hover:shadow-md"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-violet-700 shadow-sm ring-1 ring-slate-200">
-                      <Icon className="h-5 w-5" />
-                    </span>
-                    <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-violet-600" />
-                  </div>
-                  <h3 className="mt-4 text-sm font-bold leading-5 text-slate-900">{tpl.title}</h3>
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{tpl.description}</p>
-                  <div className="mt-4 flex items-center gap-2 text-xs font-bold text-violet-700">
-                    <span>{tpl.flowPreview.trigger}</span>
-                    <ArrowRight className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{tpl.flowPreview.action}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-5 grid gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:grid-cols-3">
-            {[
-              ['1', 'Choose a trigger', 'DM, comment, story reply or AI conversation.'],
-              ['2', 'Set the response', 'Write a fixed reply or configure the AI assistant.'],
-              ['3', 'Review & publish', 'Test the flow, then switch it on when ready.'],
-            ].map(([stepNo, title, desc]) => (
-              <div key={stepNo} className="flex gap-3">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-violet-100 text-xs font-bold text-violet-800">{stepNo}</span>
-                <div>
-                  <p className="text-sm font-bold text-slate-800">{title}</p>
-                  <p className="mt-0.5 text-xs leading-5 text-slate-500">{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* 2. Controls & Search Filter Bar */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
         {/* Row 1: Search Automation/Keyword Input (Left) & Create Automation Button (Top Right) */}
@@ -415,7 +351,7 @@ export const AutomationsPage: React.FC = () => {
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
               {(automations || []).length
                 ? 'Clear or change the search and filters to find an existing automation.'
-                : 'Choose a quick-start template above or create a custom workflow for Instagram DMs, comments, stories or AI conversations.'}
+                : 'Create your first custom workflow for Instagram DMs, comments, stories or AI conversations.'}
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               {(automations || []).length > 0 && (
