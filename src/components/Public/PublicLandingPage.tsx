@@ -10,6 +10,8 @@ import {
   Zap,
   ShieldCheck,
   Sparkles,
+  BookOpen,
+  Package,
   Menu,
   X,
 } from 'lucide-react';
@@ -82,7 +84,7 @@ export const PublicLandingPage: React.FC = () => {
                 <span className="bg-gradient-to-r from-[#6C5CE7] to-[#3B5BFF] bg-clip-text text-transparent"> automated growth.</span>
               </h1>
               <p className="mt-6 max-w-2xl text-base font-medium leading-7 text-slate-600 sm:text-lg">
-                AutoReply helps you automate Instagram DMs, respond with AI, manage conversations, and keep your leads organized from one clean workspace.
+                Build Instagram DM automations without a confusing flow builder. Give your AI business knowledge, choose product catalogs, analyze its behavior, collect leads in Google Sheets, and manage every conversation from one workspace.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <button onClick={goLogin} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#3B5BFF] px-6 py-3.5 text-sm font-black text-white shadow-xl shadow-indigo-200 hover:bg-indigo-700">
@@ -155,6 +157,8 @@ export const PublicLandingPage: React.FC = () => {
                 [BarChart3, 'Analytics', 'See activity and performance signals from your automation workspace.'],
                 [Zap, 'Automation Rules', 'Create focused Instagram automations for DMs, comments, and story interactions.'],
                 [ShieldCheck, 'Workspace Controls', 'Keep account data separated and manage your connected Instagram workspace securely.'],
+                [BookOpen, 'Knowledge Base', 'Store business-wide facts, FAQs and policies once so your AI answers from approved information.'],
+                [Package, 'Multiple Catalogs', 'Create separate product catalogs for brands, categories or campaigns and use the right one in each AI setup.'],
               ].map(([Icon, title, text]) => (
                 <div key={String(title)} className="rounded-2xl border border-slate-200 bg-[#F9FAFD] p-6">
                   <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
@@ -174,11 +178,12 @@ export const PublicLandingPage: React.FC = () => {
               <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Simple workflow</p>
               <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">From setup to automated replies.</h2>
             </div>
-            <div className="mt-12 grid gap-5 md:grid-cols-3">
+            <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
               {[
-                ['01', 'Sign in', 'Create or access your workspace and open the dashboard.'],
-                ['02', 'Connect Instagram', 'Connect your eligible Instagram account through the official connection flow.'],
-                ['03', 'Automate', 'Configure your automation and let AutoReply handle conversations while you monitor everything from the workspace.'],
+                ['01', 'Connect Instagram', 'Sign in and connect your eligible Instagram account through the official connection flow.'],
+                ['02', 'Add business knowledge', 'Add approved FAQs, policies and product catalogs so the AI has reliable information.'],
+                ['03', 'Describe & analyze your AI', 'Write what you want in plain language. The analyzer shows behavior, missing information and customer fields before you publish.'],
+                ['04', 'Publish & manage leads', 'Test the assistant, optionally connect Google Sheets, then publish and monitor conversations from the workspace.'],
               ].map(([num, title, text]) => (
                 <div key={num} className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm">
                   <span className="text-sm font-black text-indigo-600">{num}</span>
