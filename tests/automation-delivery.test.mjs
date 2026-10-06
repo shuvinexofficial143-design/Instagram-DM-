@@ -83,7 +83,7 @@ function fixture(automations = [ai], options = {}) {
         apiCalls.push({ url: String(url), body, signal: init.signal });
         if (body.message && options.sendFails) return Response.json({ error: { message: 'Missing permission' } }, { status: 403 });
         if (body.sender_action === 'typing_on' && options.typingGate) await options.typingGate;
-        if (body.message) { options.onSend?.(); return Response.json({ message_id: 'out-' + apiCalls.length }); }
+        if (body.message) { options.onSend?.(); if (options.sendGate) await options.sendGate; return Response.json({ message_id: 'out-' + apiCalls.length }); }
         if (String(url).endsWith('/replies')) return Response.json({ id: 'public-reply' });
         return Response.json({ username: 'customer' });
       }
@@ -123,7 +123,7 @@ test('first AI DM generates and sends a confirmed reply against real schema', as
   assert.equal(r.status, 200); assert.equal(r.body.sent, 1); assert.equal(f.aiInputs.length, 1);
   assert.equal(f.apiCalls.filter(c => c.body.message).length, 1);
   assert.deepEqual(f.apiCalls.filter(c => c.body.sender_action).map(c => c.body.sender_action), ['typing_on', 'typing_off']);
-  assert.ok(f.apiCalls.findIndex(c => c.body.sender_action === 'typing_off') < f.apiCalls.findIndex(c => c.body.message), 'Accepted typing is stopped when the reply is ready');
+  assert.ok(f.apiCalls.findIndex(c => c.body.sender_action === 'typing_off') > f.apiCalls.findIndex(c => c.body.message), 'Typing is stopped after the send request');
 });
 test('two distinct messages in one batch both reply and the second sees history', async () => {
   const f = fixture(); const event = dm('m1', 'first'); event.entry[0].messaging.push(dm('m2', 'second').entry[0].messaging[0]);
@@ -263,4 +263,19 @@ test('self notification without recipient or echo flag cannot trigger AI', async
 test('is_self notifications never generate an AI reply', async () => {
   const f = fixture(); assert.equal((await f.post(dm('self', 'Reply', { is_self: true }))).body.processed, 0);
   assert.equal(f.aiInputs.length, 0);
+});
+
+test('typing stays active throughout a slow Send API request and stops after confirmation', async () => {
+  const delivery = deferred(), sending = deferred();
+  const f = fixture([ai], { sendGate: delivery.promise, onSend: sending.resolve });
+  const request = f.post(dm());
+  try {
+    await withinDeadline(sending.promise);
+    await new Promise(done => setImmediate(done));
+    assert.ok(f.apiCalls.some(c => c.body.sender_action === 'typing_on'));
+    assert.equal(f.apiCalls.some(c => c.body.sender_action === 'typing_off'), false,
+      'No empty gap while Meta is still accepting the message');
+  } finally { delivery.resolve(); }
+  assert.equal((await request).body.sent, 1);
+  assert.equal(f.apiCalls.filter(c => c.body.sender_action === 'typing_off').length, 1);
 });
