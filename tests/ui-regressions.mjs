@@ -41,6 +41,7 @@ try {
       export {BillingUsagePage} from './src/components/Billing/BillingUsagePage';
       export {Header} from './src/components/Header';
       export {HomePage} from './src/components/Home/HomePage';
+      export {AnalyticsPage} from './src/components/Analytics/AnalyticsPage';
       export {AiAssistantSetup} from './src/components/Automations/AiAssistantSetup';
       export {AutomationBuilder} from './src/components/Automations/AutomationBuilder';
       export {AutomationsPage} from './src/components/Automations/AutomationsPage';
@@ -88,6 +89,15 @@ try {
   globalThis.__uiFixture=fixture();
   html=renderToStaticMarkup(React.createElement(ui.HomePage));
   for(const removed of ['Set up your Instagram assistant','Connect Instagram</strong>','Add business knowledge','Test &amp; publish an automation']) assert.ok(!html.includes(removed),`dashboard does not render removed setup box: ${removed}`);assert.ok(!html.includes('Webhook Connection'));assert.ok(!html.includes('Disconnect account'));checks++;
+  // Equal series must keep both colors visible; sparse activity cannot dip below zero.
+  globalThis.__uiFixture=fixture({inboxMessages:['in','out'].map((direction,index)=>({id:String(index),direction,timestamp:new Date().toISOString(),ig_user_id:'sample'}))});
+  html=renderToStaticMarkup(React.createElement(ui.AnalyticsPage));
+  assert.ok(html.includes('3-day average trend'));
+  const lines=[...html.matchAll(/<path d="([^"]+)" fill="none" stroke="(#[^"]+)" stroke-width="([^"]+)"/g)];
+  assert.equal(lines.length,2);assert.equal(lines[0][1],lines[1][1]);
+  assert.ok(Number(lines[0][3])>Number(lines[1][3]),'incoming edges remain visible underneath equal replies');
+  for(const [,,y] of lines[0][1].matchAll(/(?:M |, )(\d+(?:\.\d+)?) (\d+(?:\.\d+)?)/g))assert.ok(Number(y)<=98 && Number(y)>=4,'curve stays inside count bounds');
+  checks++;
   globalThis.__uiFixture=fixture({isBuilderOpen:true});
   html=renderToStaticMarkup(React.createElement(ui.AutomationBuilder));
   assert.ok(html.includes('What should start this automation?'));assert.ok(!html.includes('Name your automation'));assert.ok(html.includes('aria-label="Close automation builder"'));checks++;

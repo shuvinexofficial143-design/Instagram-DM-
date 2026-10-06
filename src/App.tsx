@@ -111,59 +111,58 @@ const AppShell: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [splashPhase]);
 
-  if (splashPhase !== 'done') {
+  // Build the destination underneath the overlay before fading it out.
+  const renderDestination = () => {
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+    const isResetPasswordRoute = pathname === '/reset-password';
+    const supportPage = publicSupportPage(pathname);
+    const isPublicLandingRoute = pathname === '/';
+
+    if (isResetPasswordRoute) return <ErrorBoundary><ResetPasswordPage /></ErrorBoundary>;
+
+    if (!firebaseUser && (supportPage || pathname === '/about')) {
+      return <ErrorBoundary><div className="min-h-[100dvh] bg-slate-50">
+        <header className="public-page-header"><a href="/" className="brand">Auto Replies</a><a href="/login" className="button-secondary">Log in</a></header>
+        <Suspense fallback={<PageLoadingFallback />}>
+          {pathname === '/about' ? <AboutUsPage /> : <SupportPage page={supportPage} />}
+        </Suspense>
+      </div></ErrorBoundary>;
+    }
+
+    if (!firebaseUser) {
+      return (
+        <ErrorBoundary>
+          {isPublicLandingRoute ? <PublicLandingPage /> : <LoginPage />}
+        </ErrorBoundary>
+      );
+    }
+
+    if (isAdminRoute) {
+      return (
+        <ErrorBoundary>
+          <div className="min-h-[100dvh] bg-[#F7FAFF]">
+            <AdminPage />
+          </div>
+        </ErrorBoundary>
+      );
+    }
+
     return (
       <ErrorBoundary>
-        <AppSplashScreen exiting={splashPhase === 'exit'} />
-      </ErrorBoundary>
-    );
-  }
-
-  const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
-  const isResetPasswordRoute = pathname === '/reset-password';
-  const supportPage = publicSupportPage(pathname);
-  const isPublicLandingRoute = pathname === '/';
-
-  if (isResetPasswordRoute) return <ErrorBoundary><ResetPasswordPage /></ErrorBoundary>;
-
-  if (!firebaseUser && (supportPage || pathname === '/about')) {
-    return <ErrorBoundary><div className="min-h-[100dvh] bg-slate-50">
-      <header className="public-page-header"><a href="/" className="brand">Auto Replies</a><a href="/login" className="button-secondary">Log in</a></header>
-      <Suspense fallback={<PageLoadingFallback />}>
-        {pathname === '/about' ? <AboutUsPage /> : <SupportPage page={supportPage} />}
-      </Suspense>
-    </div></ErrorBoundary>;
-  }
-
-  if (!firebaseUser) {
-    return (
-      <ErrorBoundary>
-        {isPublicLandingRoute ? <PublicLandingPage /> : <LoginPage />}
-      </ErrorBoundary>
-    );
-  }
-
-  if (isAdminRoute) {
-    return (
-      <ErrorBoundary>
-        <div className="min-h-[100dvh] bg-[#F7FAFF]">
-          <AdminPage />
+        <div className="flex min-h-[100dvh] w-full overflow-x-clip bg-[#F7FAFF] font-sans text-slate-900 md:h-[100dvh] md:overflow-hidden">
+          <div className="hidden shrink-0 md:block"><Sidebar /></div>
+          <div className="flex min-w-0 flex-1 flex-col md:h-[100dvh] md:min-h-0">
+            <Header />
+            <MainContent />
+          </div>
         </div>
       </ErrorBoundary>
     );
-  }
-
-  return (
-    <ErrorBoundary>
-      <div className="flex min-h-[100dvh] w-full overflow-x-clip bg-[#F7FAFF] font-sans text-slate-900 md:h-[100dvh] md:overflow-hidden">
-        <div className="hidden shrink-0 md:block"><Sidebar /></div>
-        <div className="flex min-w-0 flex-1 flex-col md:h-[100dvh] md:min-h-0">
-          <Header />
-          <MainContent />
-        </div>
-      </div>
-    </ErrorBoundary>
-  );
+  };
+  return <>
+    {!authLoading ? renderDestination() : null}
+    {splashPhase !== 'done' ? <AppSplashScreen exiting={splashPhase === 'exit'} /> : null}
+  </>;
 };
 
 export default function App() {
