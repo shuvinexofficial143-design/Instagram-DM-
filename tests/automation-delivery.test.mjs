@@ -42,7 +42,12 @@ function fixture(automations = [ai], options = {}) {
           if (options.rulesGate) await options.rulesGate;
           return { data: automations.map(a => ({ id: a.id, data: a })) };
         }
-        if (table === 'autoreply_documents' && filters.collection === 'contacts') return { data: options.contacts || [] };
+        if (table === 'autoreply_documents' && filters.collection === 'contacts') {
+          options.onInboundStart?.();
+          if (options.inboundGate) await options.inboundGate;
+          if (options.inboundFails) return { data: null, error: { code: 'database' } };
+          return { data: options.contacts || [] };
+        }
         if (table === 'autoreply_documents') return { data: single ? null : [] };
         return { data: single ? null : [] };
       }
@@ -77,6 +82,7 @@ function fixture(automations = [ai], options = {}) {
       const body = JSON.parse(init.body || '{}');
       if (String(url).includes('api.openai.com')) {
         aiInputs.push(body.messages);
+        options.onAIStart?.();
         if (options.aiFails) return Response.json({ error: { message: 'AI outage' } }, { status: 503 });
         return Response.json({ choices: [{ message: { content: 'AI: ' + body.messages.at(-1).content } }] });
       }
@@ -376,4 +382,39 @@ test('different verified usernames are never merged', async () => {
   const saved = await f.persist({ senderId: 'new', messageId: 'm', triggerType: 'dm', timestamp: Date.now(), text: 'hi' }, { username: 'customer', avatar_url: '' });
   assert.equal(saved.contact.id, 'new'); assert.equal(saved.contact.interactions.dms, 1);
   assert.equal(f.writes.filter(w => w.deleted).length, 0);
+});
+
+
+test('typing and AI start while inbox persistence is pending, but sending waits for storage', async () => {
+  const storage = deferred(), typing = deferred(), generation = deferred();
+  const f = fixture([ai], { inboundGate: storage.promise,
+    onTypingAttempt: typing.resolve, onAIStart: generation.resolve });
+  const request = f.post(dm());
+  try {
+    await withinDeadline(Promise.all([typing.promise, generation.promise]));
+    assert.equal(f.aiInputs.length, 1);
+    assert.equal(f.apiCalls.some(c => c.body.message), false);
+    assert.equal(f.apiCalls.some(c => c.body.sender_action === 'typing_off'), false);
+  } finally { storage.resolve(); }
+  const r = await request;
+  assert.equal(r.body.sent, 1);
+  const log = f.writes.find(w => w.collection === 'webhook_events' && w.data.status === 'sent').data;
+  assert.equal(typeof log.inbound_save_ms, 'number');
+});
+
+test('failed inbound storage blocks delivery and cleans up typing after parallel AI', async () => {
+  const f = fixture([ai], { inboundFails: true });
+  const r = await f.post(dm());
+  assert.equal(r.body.sent, 0);
+  assert.equal(r.body.results[0].reason, 'inbox_save_failed');
+  assert.equal(f.apiCalls.some(c => c.body.message), false);
+  assert.equal(f.apiCalls.filter(c => c.body.sender_action === 'typing_off').length, 1);
+});
+
+test('static automation cannot send when inbound storage fails', async () => {
+  const f = fixture([staticRule('dm')], { inboundFails: true });
+  const r = await f.post(dm());
+  assert.equal(r.body.sent, 0);
+  assert.equal(r.body.results[0].reason, 'inbox_save_failed');
+  assert.equal(f.apiCalls.length, 0);
 });
