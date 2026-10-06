@@ -14,17 +14,17 @@ function runtime(fetch = globalThis.fetch, env = {}) {
   return context.helpers;
 }
 
-test('quota starts profile and usage reads concurrently', async () => {
+test('quota uses real plan columns and starts plan and usage reads concurrently', async () => {
   let finishProfile;
   let usageStarted = false;
   const profile = new Promise(resolve => { finishProfile = resolve; });
-  const admin = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => profile }) }) }),
+  const admin = { from: table => { assert.equal(table, 'autoreply_plans'); return { select: columns => { assert.equal(columns, 'id,total_messages,ai_replies'); return { eq: (key, value) => { assert.equal(key, 'id'); assert.equal(value, 'free'); return { maybeSingle: () => profile }; } }; } }; },
     rpc: async () => { usageStarted = true; return { data: { total_messages: 8, ai_replies: 3 } }; } };
   const pending = runtime().getPlanQuota(admin, 'workspace');
   assert.equal(usageStarted, true);
-  finishProfile({ data: { data: { plan: 'pro' } } });
+  finishProfile({ data: { id: 'free', total_messages: 1500, ai_replies: 1000 } });
   const quota = await pending;
-  assert.equal(quota.totalLimit, 25000);
+  assert.equal(quota.totalLimit, 1500);
   assert.equal(quota.totalUsed, 8);
 });
 

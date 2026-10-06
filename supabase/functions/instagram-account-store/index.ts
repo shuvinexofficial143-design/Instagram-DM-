@@ -53,7 +53,7 @@ async function readInstagramProfile(accessToken: string) {
 
   const response = await fetch(
     `https://graph.instagram.com/v21.0/me?${params.toString()}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(8000) }
   );
 
   const body = await response.text();
@@ -77,7 +77,7 @@ async function readInstagramProfile(accessToken: string) {
 }
 
 async function ensureWebhookSubscription(accessToken: string, igUserId: string) {
-  const fields = "messages,messaging_postbacks,message_deliveries,message_reads,comments,mentions";
+  const fields = "messages,messaging_postbacks,messaging_seen,comments,live_comments,mentions";
   const targets = [
     `https://graph.instagram.com/v25.0/${encodeURIComponent(igUserId)}/subscribed_apps`,
     "https://graph.instagram.com/v25.0/me/subscribed_apps",
@@ -92,6 +92,7 @@ async function ensureWebhookSubscription(accessToken: string, igUserId: string) 
     try {
       const response = await fetch(`${endpoint}?${params.toString()}`, {
         method: "POST",
+        signal: AbortSignal.timeout(8000),
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const body: any = await response.json().catch(() => null);
@@ -138,7 +139,7 @@ function normalizeMediaItem(item: any, forcedKind?: "STORY") {
   };
 }
 
-async function fetchInstagramMedia(accessToken: string, kind: "comment" | "story") {
+async function fetchInstagramMedia(accessToken: string, kind: "comment" | "story", igUserId = "me") {
   const endpoint = kind === "story" ? "stories" : "media";
   const fields =
     kind === "story"
@@ -151,10 +152,18 @@ async function fetchInstagramMedia(accessToken: string, kind: "comment" | "story
     limit: "50",
   });
 
-  const response = await fetch(
-    `https://graph.instagram.com/v21.0/me/${endpoint}?${params.toString()}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
+  const url = `https://graph.instagram.com/v25.0/${encodeURIComponent(igUserId)}/${endpoint}?${params.toString()}`;
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(5000) });
+      if (response.status >= 500 && attempt === 0) { await response.body?.cancel(); continue; }
+      break;
+    } catch (error) {
+      if (attempt === 1) throw new Error("Instagram media service could not be reached. Please try again.");
+    }
+  }
+  if (!response) throw new Error("Instagram media service could not be reached");
 
   const body = await response.text();
   if (!response.ok) {
@@ -727,7 +736,7 @@ Deno.serve(async (req: Request) => {
         await ensureWebhookSubscription(accessToken, igUserId);
       }
 
-      const items = await fetchInstagramMedia(accessToken, kind);
+      const items = await fetchInstagramMedia(accessToken, kind, igUserId || "me");
 
       return reply(200, {
         ok: true,
@@ -816,6 +825,11 @@ Deno.serve(async (req: Request) => {
       let account: any = data?.account || null;
       const accessToken = String(account?.access_token || "").trim();
 
+      let webhookSubscribed = false;
+      if (account?.ig_user_id && accessToken) {
+        webhookSubscribed = await ensureWebhookSubscription(accessToken, String(account.ig_user_id));
+      }
+
       // Refresh public professional-profile metrics on normal account load so
       // existing connections receive new fields without forcing reconnect.
       if (account?.username && accessToken) {
@@ -846,6 +860,7 @@ Deno.serve(async (req: Request) => {
       return reply(200, {
         ok: true,
         account: account?.username ? safeAccount(account) : null,
+        webhookSubscribed,
       });
     }
 

@@ -40,40 +40,20 @@ export default async function handler(req: any, res: any) {
   };
 
   try {
-    const profileUrl =
-      SUPABASE_URL +
-      '/rest/v1/autoreply_profiles?user_id=eq.' +
-      encodeURIComponent(identity.userId) +
-      '&select=data&limit=1';
-
-    const [profileResponse, usageResponse] = await Promise.all([
-      fetch(profileUrl, { headers, cache: 'no-store' }),
+    const [planResponse, usageResponse] = await Promise.all([
+      fetch(SUPABASE_URL + '/rest/v1/autoreply_plans?id=eq.free&select=id,total_messages,ai_replies&limit=1', { headers, signal: AbortSignal.timeout(8000) }),
       fetch(SUPABASE_URL + '/rest/v1/rpc/autoreply_get_usage', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ p_user_id: identity.userId }),
+        method: 'POST', headers, body: JSON.stringify({ p_user_id: identity.userId }), signal: AbortSignal.timeout(8000),
       }),
     ]);
-
-    const profiles: any[] = await profileResponse.json().catch(() => []);
-    const usagePayload: any = await usageResponse.json().catch(() => null);
-
-    if (!profileResponse.ok) {
-      throw new Error('Could not load workspace plan');
-    }
-
-    const profile = profiles?.[0]?.data || {};
-    const plan = String(profile?.plan || 'free').toLowerCase();
-    const base = LIMITS[plan] || LIMITS.free;
-
-    const expiry = Date.parse(String(profile?.carry_forward_expires_at || ''));
-    const carryActive = Number.isFinite(expiry) && expiry > Date.now();
-    const totalLimit = base.messages + (carryActive ? Number(profile?.carry_forward_messages || 0) : 0);
-    const aiLimit = base.ai + (carryActive ? Number(profile?.carry_forward_ai_replies || 0) : 0);
-
-    const usage = Array.isArray(usagePayload) ? usagePayload[0] || {} : usagePayload || {};
-    const totalUsed = usageResponse.ok ? Number(usage?.total_messages || 0) : 0;
-    const aiUsed = usageResponse.ok ? Number(usage?.ai_replies || 0) : 0;
+    if (!planResponse.ok || !usageResponse.ok) throw new Error('Could not verify workspace usage');
+    const plans: any[] = await planResponse.json();
+    const usage: any = await usageResponse.json();
+    const plan = 'free';
+    const totalLimit = Number(plans?.[0]?.total_messages ?? 1500);
+    const aiLimit = Number(plans?.[0]?.ai_replies ?? 1000);
+    const totalUsed = Number(usage?.total_messages || 0);
+    const aiUsed = Number(usage?.ai_replies || 0);
 
     res.setHeader('Cache-Control', 'private, no-store');
     return res.status(200).json({
@@ -84,7 +64,7 @@ export default async function handler(req: any, res: any) {
       totalLimit,
       aiLimit,
       reset: 'monthly',
-      source: usageResponse.ok ? 'database' : 'profile_only',
+      source: 'database',
     });
   } catch (error: any) {
     return res.status(500).json({
