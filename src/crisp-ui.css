@@ -437,10 +437,10 @@ img,video,canvas { max-width:100%; }
   transform:scale(1);
   transition:opacity .42s cubic-bezier(.22,1,.36,1),transform .42s cubic-bezier(.22,1,.36,1);
 }
-.app-splash-flow { position:absolute; inset:-8%; opacity:.18; pointer-events:none; animation:appSplashFlow 9s ease-in-out infinite; will-change:transform; }
+.app-splash-flow { position:absolute; inset:-8%; opacity:.18; pointer-events:none; animation:appSplashFlow 4.5s ease-in-out infinite; will-change:transform; }
 .app-splash-flow svg { width:100%; height:100%; fill:none; stroke:#8b5cf6; stroke-width:2; }
-.app-splash-flow path { transform-box:fill-box; transform-origin:center; animation:appSplashLine 6s ease-in-out infinite; will-change:transform; }
-.app-splash-flow path + path { stroke:#10c981; animation-direction:reverse; animation-delay:-3s; }
+.app-splash-flow path { transform-box:fill-box; transform-origin:center; animation:appSplashLine 3s ease-in-out infinite; will-change:transform; }
+.app-splash-flow path + path { stroke:#10c981; animation-direction:reverse; animation-delay:-1.5s; }
 @keyframes appSplashLine { 0%,100% { transform:translateY(-9px); } 50% { transform:translateY(9px); } }
 @keyframes appSplashFlow { 0%,100% { transform:translate3d(-6px,0,0); } 50% { transform:translate3d(6px,0,0); } }
 .app-splash-screen.is-exiting {

@@ -220,7 +220,7 @@ async function fetchMessagingUserProfile(accessToken: string, igsid: string) {
 
   return {
     id: String(payload?.id || igsid),
-    username: String(payload?.username || payload?.name || "").trim(),
+    username: String(payload?.username || "").trim(),
     name: String(payload?.name || "").trim(),
     profile_pic: String(payload?.profile_pic || "").trim(),
     follower_count: Number(payload?.follower_count || 0),
@@ -249,7 +249,8 @@ async function refreshMissingContactProfiles(
     return (
       looksLikeNumericId(data?.ig_username) ||
       !String(data?.ig_username || "").trim() ||
-      !String(data?.avatar_url || "").trim()
+      !String(data?.avatar_url || "").trim() ||
+      !data?.profile_refreshed_at || Date.now() - Date.parse(data.profile_refreshed_at) > 24 * 60 * 60 * 1000
     );
   });
 
@@ -269,10 +270,11 @@ async function refreshMissingContactProfiles(
 
         const nextContact = {
           ...(row?.data || {}),
-          id: igsid,
+          id: row.id,
           ig_user_id: igsid,
           ig_username: profile.username || row?.data?.ig_username || igsid,
           avatar_url: profile.profile_pic || row?.data?.avatar_url || "",
+          profile_refreshed_at: new Date().toISOString(),
           full_name: profile.name || row?.data?.full_name || "",
           follower_count:
             profile.follower_count || Number(row?.data?.follower_count || 0),
@@ -379,7 +381,13 @@ Deno.serve(async (req: Request) => {
   }
 
   const action = String(payload?.action || "");
-  const workspaceId = payload?.workspaceId;
+  let workspaceId = payload?.workspaceId;
+  if (action === "refresh_contact_profiles" && !String(workspaceId || "").startsWith("guest_")) {
+    const jwt = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    const { data, error } = await getAdminClient().auth.getUser(jwt);
+    if (error || !data?.user) return reply(401, { ok: false, error: "Authentication required" });
+    workspaceId = data.user.id;
+  }
 
   // Admin V2: return only aggregate/platform-safe data after verifying the
   // caller's real Supabase session. Never return Instagram access tokens.

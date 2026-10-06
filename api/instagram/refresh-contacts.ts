@@ -1,27 +1,5 @@
+import { resolveAiIdentity } from '../_auth.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
-
-const GUEST_COOKIE = 'autoreply_guest_workspace';
-
-function getCookie(req: any, name: string): string {
-  const raw = String(req?.headers?.cookie || '');
-  for (const part of raw.split(';')) {
-    const idx = part.indexOf('=');
-    if (idx < 0) continue;
-    if (part.slice(0, idx).trim() !== name) continue;
-
-    const value = part.slice(idx + 1).trim();
-    try {
-      return decodeURIComponent(value);
-    } catch {
-      return value;
-    }
-  }
-  return '';
-}
-
-function isWorkspaceId(value: string): boolean {
-  return /^guest_[a-f0-9-]{16,}$/i.test(value);
-}
 
 async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 20000) {
   const controller = new AbortController();
@@ -39,8 +17,9 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   }
 
-  const workspaceId = getCookie(req, GUEST_COOKIE);
-  if (!isWorkspaceId(workspaceId)) {
+  const identity = await resolveAiIdentity(req, true);
+  const workspaceId = identity?.userId || identity?.workspaceId;
+  if (!workspaceId) {
     return res.status(401).json({ ok: false, error: 'Workspace not found.' });
   }
 
@@ -49,7 +28,7 @@ export default async function handler(req: any, res: any) {
       `${SUPABASE_URL}/functions/v1/instagram-account-store`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(identity?.userId ? { Authorization: String(req.headers.authorization || '') } : {}) },
         body: JSON.stringify({
           action: 'refresh_contact_profiles',
           workspaceId,

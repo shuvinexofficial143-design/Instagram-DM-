@@ -682,7 +682,7 @@ async function getSenderProfile(
     }
 
     return {
-      username: String(payload?.username || payload?.name || senderId),
+      username: String(payload?.username || senderId),
       avatar_url: String(payload?.profile_pic || ""),
     };
   } catch (err) {
@@ -705,38 +705,52 @@ async function persistInboundMessage(
     String(item?.messageId || "").trim() ||
     `in_${item.senderId}_${item.timestamp || Date.now()}`;
 
-  const { data: existingContact } = await admin
-    .from("autoreply_documents")
-    .select("data")
-    .eq("user_id", workspaceId)
-    .eq("collection", "contacts")
-    .eq("id", item.senderId)
-    .maybeSingle();
-
-  const existing = existingContact?.data || {};
-  const interactions = existing?.interactions || {};
+  // Scoped sender IDs can change after reconnecting. Resolve saved aliases first;
+  // only use a username supplied by Meta, never an unverified message value.
+  const verifiedUsername = String(profile.username || "").trim().replace(/^@/, "").toLowerCase();
+  const canMatchUsername = /^[a-z0-9._]{1,30}$/.test(verifiedUsername) && !/^\d+$/.test(verifiedUsername);
+  const senderId = String(item.senderId);
+  const filters = [`id.eq.${senderId}`, `data->>ig_user_id.eq.${senderId}`, `data->ig_user_ids.cs.["${senderId}"]`];
+  if (canMatchUsername) filters.push(`data->>ig_username.eq.${verifiedUsername}`);
+  const { data: candidates, error: lookupError } = await admin.from("autoreply_documents")
+    .select("id,data").eq("user_id", workspaceId).eq("collection", "contacts")
+    .or(filters.join(","));
+  if (lookupError) throw lookupError;
+  const matches = (candidates || []).filter((row: any) => row.id === senderId || row.data?.ig_user_id === senderId ||
+    (row.data?.ig_user_ids || []).includes(senderId) || (canMatchUsername &&
+      String(row.data?.ig_username || "").replace(/^@/, "").toLowerCase() === verifiedUsername));
+  matches.sort((a: any, b: any) => String(a.data?.first_interaction_at || "").localeCompare(String(b.data?.first_interaction_at || "")));
+  const canonicalId = matches[0]?.id || senderId;
+  const existing = matches[0]?.data || {};
+  const interactions = { comments: 0, dms: 0, stories: 0 };
+  for (const row of matches) for (const key of Object.keys(interactions)) interactions[key] += Number(row.data?.interactions?.[key] || 0);
+  const username = canMatchUsername ? verifiedUsername : existing.ig_username || senderId;
+  const avatar = profile.avatar_url || matches.find((row: any) => row.data?.avatar_url)?.data.avatar_url || "";
+  const aliases = [...new Set([senderId, ...matches.flatMap((row: any) => [row.id, row.data?.ig_user_id, ...(row.data?.ig_user_ids || [])])].filter(Boolean))];
 
   const contact = {
-    id: item.senderId,
-    ig_username: profile.username || item.senderId,
+    ...existing,
+    id: canonicalId,
+    ig_username: username,
+    ig_user_ids: aliases,
     ig_user_id: item.senderId,
-    avatar_url: profile.avatar_url || existing?.avatar_url || "",
+    avatar_url: avatar,
     first_interaction_at: existing?.first_interaction_at || nowIso,
-    last_interaction_at: nowIso,
+    last_interaction_at: [nowIso, ...matches.map((row: any) => row.data?.last_interaction_at || "")].sort().at(-1),
     interactions: {
       comments: Number(interactions?.comments || 0) + (countInteraction && item.triggerType === "comment" ? 1 : 0),
       dms: Number(interactions?.dms || 0) + (countInteraction && item.triggerType === "dm" ? 1 : 0),
       stories: Number(interactions?.stories || 0) + (countInteraction && item.triggerType === "story_reply" ? 1 : 0),
     },
-    tags: Array.isArray(existing?.tags) ? existing.tags : [],
+    tags: [...new Set(matches.flatMap((row: any) => Array.isArray(row.data?.tags) ? row.data.tags : []))],
     status: existing?.status || "lead",
   };
 
   const inbox = {
     id: messageId,
     from_ig_id: item.senderId,
-    from_username: profile.username || item.senderId,
-    from_avatar: profile.avatar_url || "",
+    from_username: username,
+    from_avatar: avatar,
     message_text: item.text,
     direction: "in",
     is_automated: false,
@@ -750,7 +764,7 @@ async function persistInboundMessage(
         {
           user_id: workspaceId,
           collection: "contacts",
-          id: item.senderId,
+          id: canonicalId,
           data: contact,
         },
         { onConflict: "user_id,collection,id" }
@@ -776,6 +790,17 @@ async function persistInboundMessage(
     throw new Error("Could not save incoming message");
   }
 
+  if (!contactResult.error) {
+    for (const duplicate of matches.filter((row: any) => row.id !== canonicalId)) {
+      // Keep a recoverable copy before removing a redundant contact. Messages
+      // retain their original IDs and timestamps for conversation history.
+      const archived = await admin.from("autoreply_documents").upsert({ user_id: workspaceId,
+        collection: "contact_identity_archive", id: duplicate.id, data: { ...duplicate.data, merged_into: canonicalId } },
+        { onConflict: "user_id,collection,id" });
+      if (!archived.error) await admin.from("autoreply_documents").delete().eq("user_id", workspaceId)
+        .eq("collection", "contacts").eq("id", duplicate.id);
+    }
+  }
   return { contact, inbox, messageId };
 }
 

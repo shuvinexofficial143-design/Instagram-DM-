@@ -633,6 +633,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // while this protects the page from transient PostgREST/read timeouts.
     void loadAutomationsFromServer();
 
+    let signedInProfileRefreshRequested = false;
     const unsubscribeContacts = subscribeToUserCollection<Contact>(uid, 'contacts', (data) => {
       if (data) {
         const sanitized: Contact[] = data.map((c) => ({
@@ -652,6 +653,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           status: c.status || 'converted',
         }));
         setContacts(filterOutMockContacts(sanitized));
+        if (sanitized.length && !signedInProfileRefreshRequested) {
+          signedInProfileRefreshRequested = true;
+          void (async () => {
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) return;
+            const result = await fetch('/api/instagram/refresh-contacts', { method: 'POST',
+              credentials: 'same-origin', headers: { Authorization: `Bearer ${token}` } });
+            if (!result.ok) console.warn('[IG_CONTACT_PROFILE_REFRESH_WARN]', result.status);
+          })().catch((error) => console.warn('[IG_CONTACT_PROFILE_REFRESH_WARN]', error?.message));
+        }
       } else {
         setContacts([]);
       }

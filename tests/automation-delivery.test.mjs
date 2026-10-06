@@ -6,7 +6,7 @@ import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform(source + '\nglobalThis.helpers = { extractAutomationEvents, matchAutomation, executeStaticActions, createTypingSession };', { loader: 'ts', format: 'esm' });
+const compiled = await transform(source + '\nglobalThis.helpers = { extractAutomationEvents, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
@@ -21,14 +21,14 @@ function fixture(automations = [ai], options = {}) {
       const query = {
         select(value) { columns = value; return query; },
         eq(key, value) { filters[key] = value; return query; },
-        in() { return query; }, order() { return query; }, limit() { return query; },
+        or() { return query; }, delete() { mutation = { deleted: true, ...filters }; return query; }, in() { return query; }, order() { return query; }, limit() { return query; },
         upsert(value) { mutation = value; return query; }, update(value) { mutation = value; return query; },
         async maybeSingle() { return result(true); },
         then(resolve, reject) { return Promise.resolve(result(false)).then(resolve, reject); },
       };
       async function result(single) {
         if (mutation) {
-          writes.push({ table, ...mutation });
+          writes.push({ table, ...mutation, ...(mutation.deleted ? filters : {}) });
           if (table === 'autoreply_dm_history') history.set(mutation.sender_id, mutation.messages);
           return { data: null, error: null };
         }
@@ -42,6 +42,7 @@ function fixture(automations = [ai], options = {}) {
           if (options.rulesGate) await options.rulesGate;
           return { data: automations.map(a => ({ id: a.id, data: a })) };
         }
+        if (table === 'autoreply_documents' && filters.collection === 'contacts') return { data: options.contacts || [] };
         if (table === 'autoreply_documents') return { data: single ? null : [] };
         return { data: single ? null : [] };
       }
@@ -95,6 +96,7 @@ function fixture(automations = [ai], options = {}) {
   vm.runInContext(compiled.code, context);
   return {
     helpers: context.helpers, apiCalls, aiInputs, writes,
+    persist: (item, profile, count = true) => context.helpers.persistInboundMessage(admin, "workspace", item, profile, count),
     async post(event, secret = 'relay-secret') {
       const response = await handler(new Request('https://project.supabase.co/functions/v1/instagram-live-webhook', { method: 'POST',
         body: JSON.stringify({ event, metaAppSecret: secret }) }));
@@ -344,4 +346,34 @@ test('inbox receives messages when quota is exhausted or a keyword does not matc
     assert.equal(r.body.sent,0);
     assert.ok(f.writes.some(row => row.collection === 'inbox_messages' && row.id === 'unreplied-inbound'));
   }
+});
+
+
+test('verified username reconciles changed sender IDs and preserves earliest contact history', async () => {
+  const f = fixture([], { contacts: [
+    { id: 'old', data: { ig_user_id: 'old', ig_username: 'customer', first_interaction_at: '2026-09-01T00:00:00Z', interactions: { dms: 7 }, tags: ['VIP'], status: 'converted', avatar_url: 'saved-photo' } },
+    { id: 'new', data: { ig_user_id: 'new', ig_username: 'customer', first_interaction_at: '2026-10-01T00:00:00Z', interactions: { dms: 12 }, tags: ['New'] } },
+  ] });
+  const saved = await f.persist({ senderId: 'new', messageId: 'm', triggerType: 'dm', timestamp: Date.now(), text: 'hello' }, { username: 'customer', avatar_url: '' }, false);
+  assert.equal(saved.contact.id, 'old'); assert.equal(saved.contact.ig_user_id, 'new');
+  assert.equal(saved.contact.interactions.dms, 19); assert.equal(saved.contact.status, 'converted');
+  assert.equal(saved.contact.first_interaction_at, '2026-09-01T00:00:00Z');
+  assert.equal(saved.inbox.from_avatar, 'saved-photo');
+  assert.deepEqual(Array.from(saved.contact.ig_user_ids).sort(), ['new', 'old']);
+  assert.ok(f.writes.some(w => w.collection === 'contact_identity_archive' && w.id === 'new'));
+  assert.ok(f.writes.some(w => w.deleted && w.id === 'new'));
+});
+
+test('numeric fallback keeps saved username and photo when Meta profile lookup fails', async () => {
+  const f = fixture([], { contacts: [{ id: 'original', data: { ig_user_id: '123456789', ig_user_ids: ['123456789'], ig_username: 'customer', avatar_url: 'photo', interactions: { dms: 7 } } }] });
+  const saved = await f.persist({ senderId: '123456789', messageId: 'm', triggerType: 'dm', timestamp: Date.now(), text: 'hi' }, { username: '123456789', avatar_url: '' });
+  assert.equal(saved.contact.id, 'original'); assert.equal(saved.inbox.from_username, 'customer');
+  assert.equal(saved.inbox.from_avatar, 'photo'); assert.equal(saved.contact.interactions.dms, 8);
+});
+
+test('different verified usernames are never merged', async () => {
+  const f = fixture([], { contacts: [{ id: 'other', data: { ig_user_id: 'other', ig_username: 'someone_else', interactions: { dms: 9 } } }] });
+  const saved = await f.persist({ senderId: 'new', messageId: 'm', triggerType: 'dm', timestamp: Date.now(), text: 'hi' }, { username: 'customer', avatar_url: '' });
+  assert.equal(saved.contact.id, 'new'); assert.equal(saved.contact.interactions.dms, 1);
+  assert.equal(f.writes.filter(w => w.deleted).length, 0);
 });
