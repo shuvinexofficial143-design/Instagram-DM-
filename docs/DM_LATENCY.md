@@ -67,8 +67,8 @@ still does not prove that Instagram displayed the indicator.
 
 The new `autoreply_prepare_automation_event` RPC returns a durable claim, history,
 fresh automation rules and quota together, eliminating all additional eligibility
-network round trips. It allows only service-role execution and refuses unknown
-business IDs rather than invoking the legacy single-account fallback. Preparation
+network round trips. It allows only service-role execution. It preserves the existing single-account
+ID-scope compatibility fallback; with multiple accounts, exact routing is required. Preparation
 failure blocks typing and send. Run migration before deploying this function.
 Self events and the connected account's sender username are also filtered, covering
 outgoing change notifications without recipient/is_echo fields. Text equality is
@@ -79,3 +79,18 @@ runs in parallel. Off is requested when the reply is ready, without waiting for
 that API to send the actual reply; if on is pending, off is sequenced behind it.
 Mocked tests cover these gates. Live RPC execution was validated inside a rolled
 back transaction, and role privileges were checked without exposing account tokens.
+
+
+## ID compatibility hotfix
+
+An extra exact-ID precheck in the preparation RPC blocked notifications whose
+business ID differs from the connected account's app-scoped ID. Meta POST requests
+were acknowledged, but no claim/reply was started. The precheck was removed to
+restore the existing service-only single-account resolution behavior. The original
+context RPC only uses this fallback when exactly one runtime account exists; it
+never chooses arbitrarily among multiple workspaces. HMAC authentication remains
+mandatory before calling this service-only RPC. Live database execution using a
+different ID scope was validated inside a rolled-back transaction.
+
+Batch-result and unresolved-account diagnostics now expose safe reason/latency
+fields in function logs without message text, replies or tokens.

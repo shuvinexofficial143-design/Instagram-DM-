@@ -1219,7 +1219,7 @@ Deno.serve(async (req: Request) => {
           p_candidates: [], p_message_id: "", p_sender_id: "",
         });
         if (error || !data?.runtime_ready) throw new Error("Automation preparation unavailable");
-        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-single-round-trip" });
+        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-id-compatibility" });
       } catch {
         return reply(503, { ok: false, quotaReady: false });
       }
@@ -1378,6 +1378,7 @@ Deno.serve(async (req: Request) => {
     const contextMs = Math.round(performance.now() - contextStart);
 
     if (!context?.user_id || !context?.account?.access_token) {
+      console.warn("[LIVE_DM_ACCOUNT_UNRESOLVED]", { entryId: item.entryId, recipientId: item.recipientId });
       results.push({
         messageId: item.messageId,
         ok: false,
@@ -1800,6 +1801,11 @@ Instagram DM style rules:
     }
   }
 
+  console.log("[LIVE_DM_BATCH_RESULT]", results.map(r => ({
+    ok: r.ok, sent: Boolean(r.sent), reason: r.reason || null,
+    duplicate: Boolean(r.duplicate), contextMs: r.contextMs,
+    typingOnDispatchedMs: r.typingOnDispatchedMs, aiMs: r.aiMs, sendMs: r.sendMs,
+  })));
   return reply(200, {
     ok: true,
     processed: results.length,
