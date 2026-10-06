@@ -174,7 +174,7 @@ async function subscribeInstagramApp(igUserId: string, accessToken: string): Pro
   if (!token || !igUserId) return;
 
   const fields =
-    'messages,messaging_postbacks,message_deliveries,message_reads,comments,mentions';
+    'messages,messaging_postbacks,messaging_seen,comments,live_comments,mentions';
   const urls = [
     `https://graph.instagram.com/v21.0/${encodeURIComponent(igUserId)}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`,
     `https://graph.instagram.com/v21.0/me/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`,

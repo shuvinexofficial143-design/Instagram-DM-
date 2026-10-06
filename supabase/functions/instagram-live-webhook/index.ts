@@ -33,11 +33,8 @@ const historyCache = new Map<
 
 function runInBackground(task: Promise<unknown>) {
   const runtime = (globalThis as any).EdgeRuntime;
-  if (runtime?.waitUntil) {
-    runtime.waitUntil(task);
-  } else {
-    task.catch((err) => console.warn("[BACKGROUND_TASK_WARN]", err));
-  }
+  const safeTask = task.catch((err) => console.warn("[BACKGROUND_TASK_WARN]", err instanceof Error ? err.message : String(err)));
+  if (runtime?.waitUntil) runtime.waitUntil(safeTask);
 }
 
 function reply(status: number, body: Record<string, unknown>) {
@@ -247,7 +244,7 @@ async function loadDmContext(
   const { data, error } = await admin.rpc("autoreply_claim_dm_context_v4", {
     p_candidates: candidates,
     p_message_id: String(messageId || ""),
-    p_query_key: normalizeReplyCacheKey(incomingText),
+    p_query_key: "",
     p_sender_id: String(senderId || ""),
     p_include_history: Boolean(includeHistory),
   });
@@ -272,7 +269,7 @@ async function claimMessageOnly(
   const { data, error } = await admin.rpc("autoreply_claim_message_only", {
     p_user_id: workspaceId,
     p_message_id: String(messageId || ""),
-    p_query_key: normalizeReplyCacheKey(incomingText),
+    p_query_key: "",
     p_sender_id: String(senderId || ""),
   });
 
@@ -422,27 +419,21 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
 }
 async function getPlanQuota(admin: any, workspaceId: string) {
   // Independent reads start together; usage remains fresh for every message.
-  const [profileResult, usageResult] = await Promise.all([
-    admin.from("autoreply_profiles").select("data").eq("user_id", workspaceId).maybeSingle(),
+  // Profiles contain identity columns, not a JSON plan document. Until a
+  // server-issued subscription exists, use the configured free entitlement.
+  const [planResult, usageResult] = await Promise.all([
+    admin.from("autoreply_plans").select("id,total_messages,ai_replies").eq("id", "free").maybeSingle(),
     admin.rpc("autoreply_get_usage", { p_user_id: workspaceId }),
   ]);
-  if (profileResult.error || usageResult.error) throw new Error("Could not verify the message allowance");
-  const profile = profileResult.data;
+  if (planResult.error || usageResult.error) {
+    console.error("[QUOTA_LOOKUP_FAILED]", { planCode: planResult.error?.code, usageCode: usageResult.error?.code });
+    throw new Error("Could not verify the message allowance");
+  }
   const usage = usageResult.data;
-  const plan = String(profile?.data?.plan || "free").toLowerCase();
-  const limits: Record<string, { messages: number; ai: number }> = {
-    free: { messages: 1500, ai: 1000 }, starter: { messages: 7500, ai: 5000 },
-    pro: { messages: 25000, ai: 15000 }, business: { messages: 75000, ai: 40000 },
-  };
-  const base = limits[plan] || limits.free;
-  const carryMessages = Math.max(0, Number(profile?.data?.carry_forward_messages || 0));
-  const carryAi = Math.max(0, Number(profile?.data?.carry_forward_ai_replies || 0));
-  const carryExpiry = Date.parse(String(profile?.data?.carry_forward_expires_at || ""));
-  const carryActive = Number.isFinite(carryExpiry) && carryExpiry > Date.now();
   return {
-    plan, totalUsed: Number(usage?.total_messages || 0), aiUsed: Number(usage?.ai_replies || 0),
-    totalLimit: base.messages + (carryActive ? carryMessages : 0),
-    aiLimit: base.ai + (carryActive ? carryAi : 0),
+    plan: "free", totalUsed: Number(usage?.total_messages || 0), aiUsed: Number(usage?.ai_replies || 0),
+    totalLimit: Number(planResult.data?.total_messages ?? 1500),
+    aiLimit: Number(planResult.data?.ai_replies ?? 1000),
   };
 }
 
@@ -734,9 +725,9 @@ async function persistInboundMessage(
     first_interaction_at: existing?.first_interaction_at || nowIso,
     last_interaction_at: nowIso,
     interactions: {
-      comments: Number(interactions?.comments || 0),
-      dms: Number(interactions?.dms || 0) + 1,
-      stories: Number(interactions?.stories || 0),
+      comments: Number(interactions?.comments || 0) + (item.triggerType === "comment" ? 1 : 0),
+      dms: Number(interactions?.dms || 0) + (item.triggerType === "dm" ? 1 : 0),
+      stories: Number(interactions?.stories || 0) + (item.triggerType === "story_reply" ? 1 : 0),
     },
     tags: Array.isArray(existing?.tags) ? existing.tags : [],
     status: existing?.status || "lead",
@@ -1041,6 +1032,147 @@ async function sendInstagramText(
   return payload;
 }
 
+async function secretsMatch(received: string, expected: string) {
+  const encoder = new TextEncoder();
+  const [a, b] = await Promise.all([received, expected].map(value => crypto.subtle.digest("SHA-256", encoder.encode(value))));
+  const x = new Uint8Array(a), y = new Uint8Array(b);
+  let difference = 0;
+  for (let i = 0; i < x.length; i++) difference |= x[i] ^ y[i];
+  return difference === 0;
+}
+
+function extractAutomationEvents(event: any): any[] {
+  const items: any[] = [];
+  const addMessage = (entry: any, value: any) => {
+    const message = value.message || value;
+    const story = message.reply_to?.story || value.reply_to?.story || value.story;
+    const mediaId = String(story?.id || message.reply_to?.story_id || value.reply_to?.story_id || value.story_id || "");
+    const text = asText(message.text || value.text, 6000);
+    const senderId = String(value.sender?.id || value.from?.id || "");
+    const entryId = String(entry.id || "");
+    const recipientId = String(value.recipient?.id || entryId);
+    if (!text || !senderId || !recipientId || message.is_echo || value.is_echo || senderId === entryId) return;
+    const timestamp = Number(value.timestamp || entry.time || Date.now());
+    items.push({ entryId, senderId, recipientId, text, timestamp, mediaId,
+      triggerType: story || mediaId ? "story_reply" : "dm",
+      messageId: String(message.mid || value.mid || `dm_${senderId}_${timestamp}_${text}`),
+    });
+  };
+  for (const entry of Array.isArray(event?.entry) ? event.entry : []) {
+    for (const value of Array.isArray(entry.messaging) ? entry.messaging : []) addMessage(entry, value);
+    for (const change of Array.isArray(entry.changes) ? entry.changes : []) {
+      if (change.field === "messages") addMessage(entry, change.value || {});
+      if (!["comments", "comment", "live_comments"].includes(change.field)) continue;
+      const value = change.value || {};
+      const senderId = String(value.from?.id || value.sender?.id || "");
+      const commentId = String(value.id || value.comment_id || "");
+      const text = asText(value.text, 6000);
+      if (!senderId || !commentId || !text || senderId === String(entry.id || "") || value.parent_id) continue;
+      items.push({ entryId: String(entry.id || ""), recipientId: String(entry.id || ""), senderId,
+        messageId: `comment_${commentId}`, commentId, triggerType: "comment", text,
+        timestamp: Number(entry.time || Date.now()), mediaId: String(value.media?.id || value.media_id || ""),
+      });
+    }
+  }
+  const seen = new Set<string>();
+  return items.filter(item => !seen.has(item.messageId) && Boolean(seen.add(item.messageId)));
+}
+
+function matchAutomation(automations: any[], item: any): any | null {
+  const matches = automations.filter(auto => {
+    if (auto.status !== "active") return false;
+    const typeMatches = auto.trigger_type === item.triggerType ||
+      (item.triggerType === "dm" && auto.trigger_type === "dm_ai_conversation");
+    if (!typeMatches) return false;
+    const config = auto.trigger_config || {};
+    if (config.media_scope === "specific_media" || config.story_scope === "specific_story" || config.post_scope === "specific_post") {
+      if (!config.selected_media_id || String(config.selected_media_id) !== item.mediaId) return false;
+    }
+    if (config.all_or_keywords !== "keywords") return true;
+    const text = item.text.toLocaleLowerCase();
+    return (config.keywords || []).some((keyword: any) => String(keyword).trim() && text.includes(String(keyword).trim().toLocaleLowerCase()));
+  });
+  // An explicit keyword/static DM rule takes priority over the AI catch-all.
+  matches.sort((a, b) => Number(a.trigger_type === "dm_ai_conversation") - Number(b.trigger_type === "dm_ai_conversation") ||
+    Number(b.trigger_config?.media_scope === "specific_media") - Number(a.trigger_config?.media_scope === "specific_media") ||
+    Number(b.trigger_config?.all_or_keywords === "keywords") - Number(a.trigger_config?.all_or_keywords === "keywords"));
+  return matches[0] || null;
+}
+
+async function metaWrite(path: string, accessToken: string, body: any) {
+  const response = await fetch(`https://graph.instagram.com/${GRAPH_VERSION}/${path}`, {
+    method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(10000),
+  });
+  const payload: any = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.error?.message || `Instagram API HTTP ${response.status}`);
+  return payload;
+}
+
+async function saveContactTags(admin: any, workspaceId: string, senderId: string, tags: string[]) {
+  const { data, error: readError } = await admin.from("autoreply_documents").select("data").eq("user_id", workspaceId)
+    .eq("collection", "contacts").eq("id", senderId).maybeSingle();
+  if (readError) throw new Error("Could not load contact tags");
+  const { error } = await admin.from("autoreply_documents").upsert({ user_id: workspaceId, collection: "contacts", id: senderId,
+    data: { ...(data?.data || {}), ig_user_id: senderId, tags: [...new Set([...(data?.data?.tags || []), ...tags.filter(Boolean)])] },
+  }, { onConflict: "user_id,collection,id" });
+  if (error) throw new Error("Could not save the contact tag");
+}
+
+async function executeStaticActions(admin: any, workspaceId: string, item: any, automation: any, account: any) {
+  const deliveries: any[] = [];
+  const actions = automation.actions || [];
+  let intentionalDelayMs = 0;
+  const supported = new Set(["add_delay", "send_dm", "reply_comment", "add_tag", "auto_like_comment"]);
+  if (actions.some((a: any) => !supported.has(a.type))) {
+    return { ok: false, sent: false, reason: "unsupported_automation_action" };
+  }
+  const delay = actions.filter((a: any) => a.type === "add_delay").reduce((sum: number, a: any) => sum + Number(a.delay_seconds || 0), 0);
+  if (!Number.isFinite(delay) || delay < 0 || delay > 20) return { ok: false, sent: false, reason: "configured_delay_exceeds_20_seconds" };
+  try {
+    if (delay) {
+      intentionalDelayMs = delay * 1000;
+      await new Promise(resolve => setTimeout(resolve, intentionalDelayMs));
+    }
+    // Send the private reply first. A public "Sent you a DM" is only posted
+    // after Instagram has confirmed that the private message was accepted.
+    const ordered = [...actions].sort((a, b) => Number(b.type === "send_dm") - Number(a.type === "send_dm"));
+    for (const action of ordered) {
+      if (action.type === "send_dm") {
+        let text = asText(action.message_text, 1000);
+        const links = (action.buttons || []).filter((b: any) => /^https?:\/\//.test(String(b.url || "")))
+          .map((b: any) => `${b.label}: ${b.url}`).join("\n");
+        if (links) text = asText(`${text}\n${links}`, 1000);
+        if (!text) continue;
+        const recipient = item.triggerType === "comment" ? { comment_id: item.commentId } : { id: item.senderId };
+        const payload = await metaWrite(`${encodeURIComponent(account.ig_user_id)}/messages`, account.access_token, { recipient, message: { text } });
+        if (!payload?.message_id) throw new Error("Instagram did not confirm private message delivery");
+        deliveries.push({ type: "send_dm", id: String(payload.message_id), text });
+        // Each confirmed message counts; partial action failures never erase it.
+        runInBackground(incrementUsage(admin, workspaceId, false));
+        runInBackground(markOutboundClaim(admin, workspaceId, String(payload.message_id)));
+        runInBackground(persistOutboundMessage(admin, workspaceId, item, { username: item.senderId, avatar_url: "" }, automation, text, String(payload.message_id)));
+      }
+      if (action.type === "reply_comment" && item.triggerType === "comment" && action.comment_reply_text) {
+        const payload = await metaWrite(`${encodeURIComponent(item.commentId)}/replies`, account.access_token, { message: asText(action.comment_reply_text, 1000) });
+        if (!payload?.id) throw new Error("Instagram did not confirm comment reply");
+        deliveries.push({ type: "reply_comment", id: String(payload.id) });
+        runInBackground(incrementUsage(admin, workspaceId, false));
+      }
+      if (action.type === "add_tag" && action.tag_name) {
+        await saveContactTags(admin, workspaceId, item.senderId, [action.tag_name]);
+      }
+    }
+    if (!deliveries.length) return { ok: false, sent: false, reason: "no_reply_action", intentional_delay_ms: intentionalDelayMs };
+    runInBackground(updateAutomationStats(admin, workspaceId, automation));
+    return { ok: true, sent: true, deliveries, intentional_delay_ms: intentionalDelayMs,
+      skipped_actions: actions.filter((a: any) => a.type === "auto_like_comment").map((a: any) => a.type) };
+  } catch (error) {
+    return { ok: false, sent: deliveries.length > 0, deliveries, reason: "automation_action_failed",
+      error: error instanceof Error ? error.message : String(error), intentional_delay_ms: intentionalDelayMs };
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const edgeReceivedAt = Date.now();
   if (req.method === "GET") {
@@ -1081,6 +1213,14 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (url.searchParams.get("check") === "runtime") {
+      try {
+        await getPlanQuota(getAdminClient(), "__runtime_healthcheck__");
+        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-all-triggers" });
+      } catch {
+        return reply(503, { ok: false, quotaReady: false });
+      }
+    }
     return reply(200, {
       ok: true,
       directMetaWebhookReady: Boolean(
@@ -1137,6 +1277,10 @@ Deno.serve(async (req: Request) => {
     event = payload;
     openaiKey = cleanToken(Deno.env.get("OPENAI_API_KEY"));
   } else {
+    const relaySecret = cleanToken(Deno.env.get("INSTAGRAM_APP_SECRET"));
+    if (!relaySecret || !payload?.metaAppSecret || !(await secretsMatch(String(payload.metaAppSecret), relaySecret))) {
+      return reply(403, { ok: false, error: "Invalid relay authentication" });
+    }
     // Backward-compatible architecture used by the current Vercel webhook.
     event = payload?.event;
     relayReceivedAt = Number(payload?.relayReceivedAt || 0);
@@ -1146,9 +1290,9 @@ Deno.serve(async (req: Request) => {
   }
 
   // If OpenAI is unavailable, the configured fallback message is still sent.
-  const messages = extractDirectMessages(event);
+  const messages = extractAutomationEvents(event);
   if (!messages.length) {
-    return reply(200, { ok: true, processed: 0, reason: "no_text_dm_events" });
+    return reply(200, { ok: true, processed: 0, reason: "no_automation_events" });
   }
 
   const admin = getAdminClient();
@@ -1160,31 +1304,13 @@ Deno.serve(async (req: Request) => {
     const instantReply = getInstantFastReply(item.text);
     const businessId = String(item.entryId || item.recipientId || "");
     const incomingTextKey = normalizeReplyCacheKey(item.text);
-    const memoryKey = `${businessId}:${incomingTextKey}`;
-    const pendingMemory = pendingOutboundMemory.get(memoryKey);
-
-    if (pendingMemory && pendingMemory.expiresAt <= Date.now()) {
-      pendingOutboundMemory.delete(memoryKey);
-    } else if (
-      pendingMemory &&
-      pendingMemory.recipientId !== String(item.senderId || "")
-    ) {
-      results.push({
-        messageId: item.messageId,
-        ok: true,
-        ignored: true,
-        reason: "outbound_echo_memory",
-        totalMs: Math.round(performance.now() - totalStart),
-      });
-      continue;
-    }
-
     const contextStart = performance.now();
     let context: any = null;
     let contextSource = "supabase_runtime_context_v5";
     let typingOnDispatchedMs: number | null = null;
     let typingContextSource: "edge_memory" | "supabase_runtime_context" | "full_context" | null = null;
     let typingStarted = false;
+    let typingTask: Promise<any> = Promise.resolve(null);
 
     const startTyping = (runtime: any, source: "edge_memory" | "supabase_runtime_context" | "full_context") => {
       if (typingStarted) return;
@@ -1210,177 +1336,16 @@ Deno.serve(async (req: Request) => {
       typingContextSource = source;
       typingOnDispatchedMs = Math.round(performance.now() - totalStart);
 
-      runInBackground(
-        sendInstagramSenderAction(
-          typingIgUserId,
-          item.senderId,
-          typingAccessToken,
-          "typing_on"
-        )
-      );
+      typingTask = sendInstagramSenderAction(typingIgUserId, item.senderId, typingAccessToken, "typing_on");
+      runInBackground(typingTask);
     };
 
-    const warmRuntime = runtimeContextMemory.get(businessId);
-    const warmRuntimeValid = Boolean(
-      warmRuntime && warmRuntime.expiresAt > Date.now()
-    );
-
-    if (warmRuntimeValid) {
-      startTyping(warmRuntime!.value, "edge_memory");
+    try {
+      context = await loadDmContext(admin, [item.entryId, item.recipientId], item.messageId, "", item.senderId, true);
+    } catch {
+      results.push({ messageId: item.messageId, ok: false, reason: "context_lookup_failed" });
+      continue;
     }
-
-    // Cold isolates still launch a tiny indexed runtime-context lookup in
-    // parallel with the full dedupe/cache/history RPC. It exists only so
-    // typing_on can be dispatched as early as possible.
-    const typingContextPromise = warmRuntimeValid
-      ? Promise.resolve(warmRuntime!.value)
-      : loadTypingRuntimeContext(
-          admin,
-          [item.entryId, item.recipientId]
-        ).then((runtime) => {
-          if (runtime) {
-            startTyping(runtime, "supabase_runtime_context");
-          }
-          return runtime;
-        }).catch((error) => {
-          console.warn("[TYPING_CONTEXT_UNAVAILABLE]", error instanceof Error ? error.message : String(error));
-          return null;
-        });
-    const warmAutomationId = String(
-      warmRuntime?.value?.automation?.id || ""
-    );
-    const warmReplyKey =
-      warmRuntime?.value?.user_id && warmAutomationId && incomingTextKey
-        ? `${warmRuntime.value.user_id}:${warmAutomationId}:${incomingTextKey}`
-        : "";
-    const warmReply = warmReplyKey
-      ? replyCacheMemory.get(warmReplyKey)
-      : undefined;
-    const warmReplyValid = Boolean(
-      warmReply && warmReply.expiresAt > Date.now()
-    );
-    const warmHistoryKey =
-      warmRuntime?.value?.user_id && item.senderId
-        ? `${warmRuntime.value.user_id}:${item.senderId}`
-        : "";
-    const warmHistory = warmHistoryKey
-      ? historyCache.get(warmHistoryKey)
-      : undefined;
-    const warmHistoryValid = Boolean(
-      warmHistory && warmHistory.expiresAt > Date.now()
-    );
-
-    if (
-      warmRuntimeValid && warmHistoryValid
-    ) {
-      const workspaceId = String(warmRuntime!.value.user_id || "");
-      const claimKey = `${workspaceId}:${item.messageId}`;
-      const existingClaimExpiry = messageClaimMemory.get(claimKey) || 0;
-      const messageState =
-        item.messageId && existingClaimExpiry > Date.now()
-          ? "duplicate"
-          : "new";
-
-      if (item.messageId && messageState === "new") {
-        messageClaimMemory.set(claimKey, Date.now() + 30 * 60 * 1000);
-      }
-
-      context = {
-        ...warmRuntime!.value,
-        cached_reply: warmReplyValid ? warmReply!.responseText : null,
-        history: warmHistoryValid ? warmHistory!.messages.slice(-10) : [],
-        message_state: messageState,
-      };
-      contextSource = "edge_memory";
-
-      // Persist dedupe state cross-isolate without making the visible reply wait.
-      if (messageState === "new") {
-        runInBackground(
-          claimMessageOnly(
-            admin,
-            workspaceId,
-            item.messageId,
-            isGreeting ? "" : item.text,
-            item.senderId
-          )
-        );
-      }
-    } else {
-      const fullContextPromise = loadDmContext(
-        admin,
-        [item.entryId, item.recipientId],
-        item.messageId,
-        isGreeting ? "" : item.text,
-        item.senderId,
-        true
-      );
-
-      // Both requests are already in flight. Await the full context needed for
-      // reply correctness, while typing_on may already be travelling to Meta.
-      context = await fullContextPromise;
-
-      if (context?.user_id && context?.account?.access_token) {
-        if (!typingStarted) {
-          startTyping(context, "full_context");
-        }
-        const runtimeValue = {
-          user_id: context.user_id,
-          account: context.account,
-          automation: context.automation || null,
-        };
-        const expiresAt = Date.now() + 15_000;
-        const accountIgId = String(context?.account?.ig_user_id || businessId);
-
-        if (businessId) {
-          runtimeContextMemory.set(businessId, {
-            expiresAt,
-            value: runtimeValue,
-          });
-        }
-        if (accountIgId && accountIgId !== businessId) {
-          runtimeContextMemory.set(accountIgId, {
-            expiresAt,
-            value: runtimeValue,
-          });
-        }
-
-        if (item.messageId) {
-          // Remember every observed message id locally. Whether Supabase marked
-          // it new, duplicate, or outbound-echo, seeing it again on this warm
-          // isolate should never trigger another reply.
-          messageClaimMemory.set(
-            `${context.user_id}:${item.messageId}`,
-            Date.now() + 30 * 60 * 1000
-          );
-        }
-
-        const automationId = String(context?.automation?.id || "");
-        if (automationId && context?.cached_reply && incomingTextKey) {
-          replyCacheMemory.set(
-            `${context.user_id}:${automationId}:${incomingTextKey}`,
-            {
-              responseText: String(context.cached_reply),
-              expiresAt: Date.now() + 60 * 60 * 1000,
-            }
-          );
-        }
-
-        if (item.senderId) {
-          historyCache.set(
-            `${context.user_id}:${item.senderId}`,
-            {
-              messages: Array.isArray(context?.history)
-                ? context.history.slice(-10)
-                : [],
-              expiresAt: Date.now() + 60_000,
-            }
-          );
-        }
-      }
-    }
-
-    // Keep the lightweight typing lookup detached from the visible reply path.
-    void typingContextPromise;
 
     const contextMs = Math.round(performance.now() - contextStart);
 
@@ -1397,7 +1362,16 @@ Deno.serve(async (req: Request) => {
 
     const workspaceId = String(context.user_id);
     const account = context.account;
-    const automation = context.automation || null;
+    const { data: automationRows, error: automationError } = await admin
+      .from("autoreply_documents").select("id,data,updated_at")
+      .eq("user_id", workspaceId).eq("collection", "automations")
+      .order("updated_at", { ascending: false });
+    if (automationError) {
+      results.push({ messageId: item.messageId, ok: false, reason: "automation_lookup_failed" });
+      continue;
+    }
+    const automation = matchAutomation((automationRows || []).map((r: any) => ({ ...r.data, id: r.id })), item);
+    context.automation = automation;
     const igUserId = String(
       account?.ig_user_id ||
         item.entryId ||
@@ -1443,7 +1417,7 @@ Deno.serve(async (req: Request) => {
           trigger_type: "dm_ai_conversation",
           sender_id: item.senderId,
           incoming_text: item.text,
-          reason: "No active DM AI Conversation automation",
+          reason: "No matching active automation",
           context_ms: contextMs,
         })
       );
@@ -1451,7 +1425,7 @@ Deno.serve(async (req: Request) => {
         messageId: item.messageId,
         ok: true,
         ignored: true,
-        reason: "no_active_dm_ai_automation",
+        reason: "no_matching_automation",
         totalMs: Math.round(performance.now() - totalStart),
       });
       continue;
@@ -1472,10 +1446,32 @@ Deno.serve(async (req: Request) => {
       results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_message_limit_reached" });
       continue;
     }
-    if (quota.aiUsed >= quota.aiLimit) {
+    if (automation.trigger_type === "dm_ai_conversation" && quota.aiUsed >= quota.aiLimit) {
       results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_ai_limit_reached" });
       continue;
     }
+
+    if (automation.trigger_type !== "dm_ai_conversation") {
+      const actionStart = performance.now();
+      const outcome = await executeStaticActions(admin, workspaceId, item, automation, account);
+      runInBackground(logEvent(admin, workspaceId, item.messageId, {
+        ...outcome, status: outcome.ok ? "sent" : "failed", trigger_type: item.triggerType,
+        automation_id: automation.id, automation_name: automation.name,
+        context_ms: contextMs, action_ms: Math.round(performance.now() - actionStart),
+        total_ms: Math.round(performance.now() - totalStart),
+      }));
+      results.push({ messageId: item.messageId, ...outcome, totalMs: Math.round(performance.now() - totalStart) });
+      continue;
+    }
+    const extraDelay = (automation.actions || []).filter((a: any) => a.type === "add_delay")
+      .reduce((sum: number, a: any) => sum + Number(a.delay_seconds || 0), 0);
+    if (!Number.isFinite(extraDelay) || extraDelay < 0 || extraDelay > 20) {
+      runInBackground(logEvent(admin, workspaceId, item.messageId, { status: "failed", reason: "configured_delay_exceeds_20_seconds" }));
+      results.push({ messageId: item.messageId, ok: false, reason: "configured_delay_exceeds_20_seconds" });
+      continue;
+    }
+    if (extraDelay) await new Promise(resolve => setTimeout(resolve, extraDelay * 1000));
+    startTyping(context, "full_context");
 
     const aiAction = (automation?.actions || []).find(
       (a: any) => a?.type === "ai_chatbot"
@@ -1512,7 +1508,7 @@ Instagram DM style rules:
       : [];
     const historyMs = 0;
     let fastPath: string | null = null;
-    const sharedReplyAllowed = canReuseSharedReply(history, item.text);
+    const sharedReplyAllowed = false;
     const cachedReply = sharedReplyAllowed ? asText(context?.cached_reply, 1000) : "";
 
     if (instantReply) {
@@ -1610,16 +1606,13 @@ Instagram DM style rules:
       const sendMs = Math.round(performance.now() - sendStart);
       const instagramMessageId = String(sendResult?.message_id || "");
       runInBackground(incrementUsage(admin, workspaceId, true));
+      const tagActions = (automation.actions || []).filter((a: any) => a.type === "add_tag");
+      if (tagActions.length) runInBackground(saveContactTags(admin, workspaceId, item.senderId, tagActions.map((a: any) => a.tag_name)));
       runInBackground(syncAiLeadToGoogleSheet(admin, workspaceId, item.senderId, item.text, history, openaiKey));
 
       if (typingStarted) {
         runInBackground(
-          sendInstagramSenderAction(
-            igUserId,
-            item.senderId,
-            accessToken,
-            "typing_off"
-          )
+          typingTask.then(() => sendInstagramSenderAction(igUserId, item.senderId, accessToken, "typing_off"))
         );
       }
 
@@ -1635,6 +1628,8 @@ Instagram DM style rules:
         { role: "assistant", content: responseText, at: Date.now() },
       ];
 
+      // Persist the new conversation before the next event in this batch.
+      await saveHistory(admin, workspaceId, item.senderId, nextHistory);
       runInBackground(
         (async () => {
           let senderProfile = {
@@ -1655,7 +1650,6 @@ Instagram DM style rules:
               item,
               senderProfile
             ),
-            saveHistory(admin, workspaceId, item.senderId, nextHistory),
             persistOutboundMessage(
               admin,
               workspaceId,
@@ -1721,12 +1715,7 @@ Instagram DM style rules:
 
       if (typingStarted) {
         runInBackground(
-          sendInstagramSenderAction(
-            igUserId,
-            item.senderId,
-            accessToken,
-            "typing_off"
-          )
+          typingTask.then(() => sendInstagramSenderAction(igUserId, item.senderId, accessToken, "typing_off"))
         );
       }
       console.error("[LIVE_DM_SEND_FAILED]", sendError);
@@ -1782,4 +1771,3 @@ Instagram DM style rules:
     results,
   });
 });
-

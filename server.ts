@@ -601,7 +601,7 @@ async function startServer() {
       return { success: false, reason: 'no_valid_token' };
     }
 
-    const fields = 'messages,messaging_postbacks,message_deliveries,message_reads,comments,mentions';
+    const fields = 'messages,messaging_postbacks,messaging_seen,comments,live_comments,mentions';
     const targetId = igUserId && igUserId !== 'primary' ? igUserId : 'me';
 
     const endpoints = [
