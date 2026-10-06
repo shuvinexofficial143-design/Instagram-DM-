@@ -62,3 +62,13 @@ test('a user cannot load or delete another Instagram workspace',async()=>{
    assert.equal(result.status,403);
  }
 });
+
+
+test('reconnecting the same verified account preserves business sender scopes', async () => {
+  const f = fixture(); await f.save();
+  f.tables.autoreply_instagram_tokens[0].account.own_sender_ids = ['1349115649944643'];
+  await f.save();
+  assert.deepEqual(f.tables.autoreply_instagram_tokens[0].account.own_sender_ids, ['1349115649944643']);
+  f.setBusiness('business-b'); await f.save();
+  assert.equal(f.tables.autoreply_instagram_tokens.find(r => r.account.ig_user_id === 'business-b').account.own_sender_ids, undefined);
+});
