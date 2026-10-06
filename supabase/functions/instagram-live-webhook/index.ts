@@ -445,21 +445,91 @@ function canReuseSharedReply(history: any[], incomingText: string): boolean {
   return history.length === 0 && !isConversationalGreeting(incomingText);
 }
 
-async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:string, incomingText:string, history:any[], openaiKey:string) {
-  try {
-    const { data: row } = await admin.from("autoreply_documents").select("data").eq("user_id",workspaceId).eq("collection","google_sheets_connections").eq("id","primary").maybeSingle();
-    const cfg=row?.data||{}; const fields=Array.isArray(cfg?.fields)?cfg.fields.map((x:any)=>String(x||"").trim()).filter(Boolean):[];
-    if(!cfg?.connected||!cfg?.spreadsheet_id||!fields.length||!cfg?.refresh_token||!openaiKey)return;
-    const transcript=[...(Array.isArray(history)?history.slice(-8):[]),{role:"user",content:incomingText}].map((m:any)=>String(m?.role||"user")+": "+String(m?.content||"")).join("\n");
-    const er=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{Authorization:"Bearer "+openaiKey,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-4o-mini",temperature:0,response_format:{type:"json_object"},messages:[{role:"system",content:"Extract only customer-provided lead information from the conversation. Return one JSON object using ONLY these exact keys: "+fields.join(", ")+". Omit fields that are unknown. Never guess."},{role:"user",content:transcript}]})});
-    const ep:any=await er.json().catch(()=>null); if(!er.ok)return; let extracted:any={}; try{extracted=JSON.parse(String(ep?.choices?.[0]?.message?.content||"{}"))}catch{return}
-    const clean:any={}; for(const key of fields){const v=extracted?.[key];if(v!==undefined&&v!==null&&String(v).trim())clean[key]=String(v).trim()} if(!Object.keys(clean).length)return;
-    const leadId=String(senderId||"").trim(); const {data:existing}=await admin.from("autoreply_documents").select("data").eq("user_id",workspaceId).eq("collection","ai_leads").eq("id",leadId).maybeSingle(); const merged={...(existing?.data||{}),...clean,instagram_username:(existing?.data?.instagram_username||senderId),updated_at:new Date().toISOString(),created_at:existing?.data?.created_at||new Date().toISOString()};
-    await admin.from("autoreply_documents").upsert({user_id:workspaceId,collection:"ai_leads",id:leadId,data:merged},{onConflict:"user_id,collection,id"});
-    const tr=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:String(Deno.env.get("GOOGLE_SHEETS_CLIENT_ID")||""),client_secret:String(Deno.env.get("GOOGLE_SHEETS_CLIENT_SECRET")||""),refresh_token:String(cfg.refresh_token),grant_type:"refresh_token"})}); const tp:any=await tr.json().catch(()=>null);if(!tr.ok||!tp?.access_token)return;
-    const values=fields.map((k:string)=>String(merged?.[k]||""));values.push(String(merged.instagram_username||senderId),String(merged.created_at||""),String(merged.updated_at||""));
-    await fetch("https://sheets.googleapis.com/v4/spreadsheets/"+encodeURIComponent(cfg.spreadsheet_id)+"/values/"+encodeURIComponent((cfg.sheet_name||"Leads")+"!A:ZZ")+":append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",{method:"POST",headers:{Authorization:"Bearer "+tp.access_token,"Content-Type":"application/json"},body:JSON.stringify({values:[values]})});
-  } catch(err){console.warn("[GOOGLE_SHEETS_LEAD_SYNC_WARN]",err)}
+type CustomerStage='new'|'ready'|'interested'|'low'|'customer'|'repeat'|'support';
+type CustomerInsight={id?:string;stage:CustomerStage;priority:'high'|'normal'|'low';reason:string;summary?:string;next_step?:string;source:'automatic'|'manual';updated_at?:string;fields?:Record<string,string>};
+const customerStages:Record<CustomerStage,{label:string;color:string}>={
+ new:{label:'New lead',color:'bg-slate-100 text-slate-600'},ready:{label:'Ready to buy',color:'bg-orange-100 text-orange-800'},interested:{label:'Interested',color:'bg-blue-100 text-blue-800'},low:{label:'Low interest',color:'bg-slate-100 text-slate-600'},customer:{label:'Confirmed customer',color:'bg-emerald-100 text-emerald-800'},repeat:{label:'Repeat customer',color:'bg-green-100 text-green-800'},support:{label:'Needs support',color:'bg-rose-100 text-rose-800'}};
+function inferCustomerInsight(text:string,previous?:CustomerInsight):CustomerInsight {
+ if(previous?.source==='manual')return previous;
+ const value=text.toLowerCase();let stage:CustomerStage=previous?.stage || 'new',priority:CustomerInsight['priority']=previous?.priority || 'normal',reason=previous?.reason || 'No clear purchase intent yet';
+ if(/refund|complaint|not delivered|wrong product|bad service|disappointed|शिकायत|रिफंड|खराब|नहीं मिला/.test(value)){stage='support';priority='high';reason='Customer mentioned a complaint or refund';}
+ else if(/not interested|no thanks|too expensive|नहीं चाहिए|नहीं खरीद|महंगा|महँगा/.test(value)){stage='low';priority='low';reason='Customer declined or raised a price objection';}
+ else if(/payment link|how to pay|place (?:an )?order|want to buy|buy now|ऑर्डर करना|खरीदना है|पेमेंट लिंक|भुगतान कैसे/.test(value)){stage='ready';priority='high';reason='Customer asked about ordering or payment';}
+ else if(/price|cost|available|details|delivery|कीमत|प्राइस|उपलब्ध|जानकारी|डिलीवरी/.test(value) && stage!=='support' && stage!=='ready'){stage='interested';priority='normal';reason='Customer asked for product or service details';}
+ return {stage,priority,reason,source:'automatic',summary:text.slice(0,240),next_step:stage==='support'?'Review and resolve the complaint':stage==='ready'?'Help the customer complete the order':stage==='low'?'Address the concern without pushing': 'Answer questions and follow up',updated_at:new Date().toISOString()};
+}
+
+
+async function sheetJson(url:string,init:any={}) {
+ const r=await fetch(url,{...init,signal:AbortSignal.timeout(8000)}),body=await r.json().catch(()=>null);
+ if(!r.ok)throw new Error(body?.error?.message || `Google Sheets request failed (HTTP ${r.status})`);return body;
+}
+async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:string, incomingText:string, history:any[], openaiKey:string, automationId:string, messageId:string, replyText:string) {
+ const jobId=automationId+':'+(messageId||crypto.randomUUID());let leaseOwner='';
+ try {
+  const [{data:binding,error:bindingError},{data:connection,error:connectionError},{data:contacts,error:contactError}]=await Promise.all([
+   admin.from('autoreply_documents').select('data').eq('user_id',workspaceId).eq('collection','google_sheets_automations').eq('id',automationId).maybeSingle(),
+   admin.from('autoreply_documents').select('data').eq('user_id',workspaceId).eq('collection','google_sheets_connections').eq('id','primary').maybeSingle(),
+   admin.from('autoreply_documents').select('id,data').eq('user_id',workspaceId).eq('collection','contacts')]);
+  if(bindingError||connectionError||contactError)throw new Error('Could not load Google Sheets sync settings');
+  const cfg=binding?.data,connectionCfg=connection?.data;
+  if(!cfg?.spreadsheet_id || !connectionCfg?.connected)return;
+  const fields=Array.isArray(cfg.fields)?cfg.fields:[];
+  const contact=(contacts||[]).find((r:any)=>r.id===senderId||r.data?.ig_user_id===senderId||(r.data?.ig_user_ids||[]).includes(senderId));
+  const contactId=contact?.id||senderId,username=contact?.data?.ig_username||senderId;
+  const transcript=[...(Array.isArray(history)?history.slice(-20):[]),{role:'user',content:incomingText}].map((m:any)=>String(m.role)+': '+String(m.content)).join('\n');
+  let clean:any={};
+  if(openaiKey&&fields.length){
+   try {
+    const ep=await sheetJson('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+openaiKey,'Content-Type':'application/json'},body:JSON.stringify({model:'gpt-4o-mini',temperature:0,response_format:{type:'json_object'},messages:[{role:'system',content:'Extract only facts explicitly supplied by the CUSTOMER, never the assistant. Return JSON using ONLY these exact keys: '+fields.join(', ')+'. Omit unknown fields. Do not infer payment confirmation or guess personal data.'},{role:'user',content:transcript}]})});
+    const extracted=JSON.parse(ep?.choices?.[0]?.message?.content||'{}');
+    for(const field of fields){if(extracted[field]!=null && typeof extracted[field]!=='object' && String(extracted[field]).trim())clean[field]=String(extracted[field]).trim().slice(0,2000);}
+   }catch(error:any){await logEvent(admin,workspaceId,'extract:'+jobId,{status:'failed',trigger_type:'dm',sender_id:senderId,reason:'lead_extraction_failed',error:error.message});}
+  }
+  const now=new Date().toISOString();
+  const {error:queueError}=await admin.from('autoreply_documents').upsert({user_id:workspaceId,collection:'sheet_sync_jobs',id:jobId,data:{automation_id:automationId,contact_id:contactId,username,fields:clean,message_id:messageId,incoming_text:incomingText,reply_text:replyText,created_at:now,status:'pending'}},{onConflict:'user_id,collection,id'});
+  if(queueError)throw new Error('Could not queue Google Sheet update');
+  leaseOwner=crypto.randomUUID();let claimed=false;
+  for(let attempt=0;attempt<4;attempt++){
+   const {data,error}=await admin.rpc('autoreply_claim_sheet_sync',{p_workspace_id:workspaceId,p_automation_id:automationId,p_owner_id:leaseOwner});
+   if(error)throw new Error('Could not coordinate Google Sheet updates');if(data){claimed=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,[400,1200,3000,5000][attempt]));
+  }
+  if(!claimed){await logEvent(admin,workspaceId,'queued:'+jobId,{status:'ignored',reason:'sheet_update_queued',sender_id:senderId,trigger_type:'dm'});return;}
+  const token=connectionCfg.access_token && Number(connectionCfg.expires_at)>Date.now()+60000 ? connectionCfg.access_token : (await sheetJson('https://autoreplys.vercel.app/api/google-sheets?action=runtime-token',{method:'POST',headers:{'Content-Type':'application/json','X-Autoreply-OAuth-Secret':String(Deno.env.get('INSTAGRAM_APP_SECRET')||'')},body:JSON.stringify({refreshToken:connectionCfg.refresh_token})})).accessToken;
+  if(!token)throw new Error('Reconnect Google Sheets to resume updates');
+  const headers={Authorization:'Bearer '+token,'Content-Type':'application/json'},base='https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(cfg.spreadsheet_id);
+  const historyName=cfg.history_sheet||'Conversation history';
+  const tabs=await sheetJson(base+'?fields=sheets.properties.title',{headers});
+  if(!(tabs?.sheets||[]).some((tab:any)=>tab.properties?.title===historyName))await sheetJson(base+':batchUpdate',{method:'POST',headers,body:JSON.stringify({requests:[{addSheet:{properties:{title:historyName}}}]})});
+  const leadHeaders=[...fields,'Instagram Username','Created At','Updated At','Instagram ID','Customer status','Priority','Reason','Summary','Next step'];
+  const put=async(range:string,values:any[])=>sheetJson(base+'/values/'+encodeURIComponent(range)+'?valueInputOption=RAW',{method:'PUT',headers,body:JSON.stringify({values})});
+  await put('Leads!A1',[leadHeaders]);await put("'"+historyName+"'!A1",[['Event ID','Timestamp','Instagram ID','Instagram Username','Customer message','Reply']]);
+  const {data:queued,error:queuedError}=await admin.from('autoreply_documents').select('id,data').eq('user_id',workspaceId).eq('collection','sheet_sync_jobs');
+  if(queuedError)throw new Error('Could not load pending Sheet updates');
+  const jobs=(queued||[]).filter((row:any)=>row.data?.automation_id===automationId && row.data?.status==='pending').sort((a:any,b:any)=>String(a.data.created_at).localeCompare(String(b.data.created_at))).slice(0,20);
+  for(const job of jobs){
+   await admin.rpc('autoreply_claim_sheet_sync',{p_workspace_id:workspaceId,p_automation_id:automationId,p_owner_id:leaseOwner});
+   const entry=job.data,leadId=automationId+':'+entry.contact_id;
+   const [{data:previous},{data:insightRow}]=await Promise.all([
+    admin.from('autoreply_documents').select('data').eq('user_id',workspaceId).eq('collection','ai_leads').eq('id',leadId).maybeSingle(),
+    admin.from('autoreply_documents').select('data').eq('user_id',workspaceId).eq('collection','customer_insights').eq('id',entry.contact_id).maybeSingle()]);
+   const merged={...(previous?.data?.fields||{}),...entry.fields},insight=insightRow?.data||inferCustomerInsight(entry.incoming_text);
+   const createdAt=previous?.data?.created_at||entry.created_at;
+   const values=[...fields.map((field:string)=>String(merged[field]||'')),entry.username,createdAt,entry.created_at,entry.contact_id,insight.stage,insight.priority,insight.reason,insight.summary||'',insight.next_step||''];
+   const grid=await sheetJson(base+'/values/'+encodeURIComponent('Leads!A:ZZ'),{headers});
+   const rows=grid?.values||[];const found=rows.findIndex((row:any[],i:number)=>i>0 && (row[fields.length+3]===entry.contact_id || (!row[fields.length+3] && String(row[fields.length]||'').replace(/^@/,'').toLowerCase()===String(entry.username).toLowerCase())));
+   if(found>0)await put('Leads!A'+(found+1),[values]);
+   else await sheetJson(base+'/values/'+encodeURIComponent('Leads!A:ZZ')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',headers,body:JSON.stringify({values:[values]})});
+   const historyRows=await sheetJson(base+'/values/'+encodeURIComponent("'"+historyName+"'!A:A"),{headers});
+   const historyValues=[job.id,entry.created_at,entry.contact_id,entry.username,entry.incoming_text,entry.reply_text];
+   if(!(historyRows?.values||[]).some((row:any)=>row[0]===job.id))await sheetJson(base+'/values/'+encodeURIComponent("'"+historyName+"'!A:F")+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',headers,body:JSON.stringify({values:[historyValues]})});
+   const {error:leadError}=await admin.from('autoreply_documents').upsert({user_id:workspaceId,collection:'ai_leads',id:leadId,data:{fields:merged,contact_id:entry.contact_id,automation_id:automationId,instagram_username:entry.username,created_at:createdAt,updated_at:entry.created_at}},{onConflict:'user_id,collection,id'});if(leadError)throw new Error('Could not save lead sync progress');
+   const {error:doneError}=await admin.from('autoreply_documents').update({data:{...entry,status:'synced',synced_at:new Date().toISOString()}}).eq('user_id',workspaceId).eq('collection','sheet_sync_jobs').eq('id',job.id);if(doneError)throw new Error('Could not confirm Sheet update');
+  }
+  await logEvent(admin,workspaceId,'sheets:'+jobId,{status:'sent',trigger_type:'dm',sender_id:senderId,reason:'google_sheet_updated',automation_name:automationId});
+ }catch(error:any){await logEvent(admin,workspaceId,'sheets:'+jobId,{status:'failed',trigger_type:'dm',sender_id:senderId,reason:'google_sheet_sync_failed',error:error.message});}
+ finally{if(leaseOwner)await admin.from('autoreply_sheet_sync_leases').delete().eq('workspace_id',workspaceId).eq('automation_id',automationId).eq('owner_id',leaseOwner);}
 }
 
 async function incrementUsage(admin:any, workspaceId:string, isAi:boolean) {
@@ -745,6 +815,13 @@ async function persistInboundMessage(
     tags: [...new Set(matches.flatMap((row: any) => Array.isArray(row.data?.tags) ? row.data.tags : []))],
     status: existing?.status || "lead",
   };
+
+  if(countInteraction) runInBackground((async()=>{
+    const {data:previous}=await admin.from('autoreply_documents').select('data').eq('user_id',workspaceId).eq('collection','customer_insights').eq('id',canonicalId).maybeSingle();
+    const insight=inferCustomerInsight(String(item.text||''),previous?.data);
+    const {error}=await admin.rpc('autoreply_save_customer_insight',{p_user_id:workspaceId,p_contact_id:canonicalId,p_data:insight});
+    if(error)console.warn('[CUSTOMER_INSIGHT_SAVE_FAILED]',error.code);
+  })());
 
   const inbox = {
     id: messageId,
@@ -1722,7 +1799,7 @@ Instagram DM style rules:
       runInBackground(incrementUsage(admin, workspaceId, true));
       const tagActions = (automation.actions || []).filter((a: any) => a.type === "add_tag");
       if (tagActions.length) runInBackground(saveContactTags(admin, workspaceId, item.senderId, tagActions.map((a: any) => a.tag_name)));
-      runInBackground(syncAiLeadToGoogleSheet(admin, workspaceId, item.senderId, item.text, history, openaiKey));
+      runInBackground(syncAiLeadToGoogleSheet(admin, workspaceId, item.senderId, item.text, history, openaiKey, String(automation.id), item.messageId, responseText));
 
       stopTyping();
 

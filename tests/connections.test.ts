@@ -77,17 +77,24 @@ test('Sheets callback cancellation resumes the saved automation with an error', 
   const url = new URL(res.location);
   assert.equal(url.searchParams.get('sheets'), 'error'); assert.equal(url.searchParams.get('resume'), 'ai-sheets');
 });
-test('Sheets create does not report success when saving its connection fails', async () => {
-  globalThis.fetch = async (url: any, init: any) => {
-    const value = String(url);
-    if (value.includes('/auth/')) return json({ id: uid });
-    if (value.includes('/rest/') && init?.method === 'POST') return json({}, 403);
-    if (value.includes('/rest/')) return json([{ data: { access_token: 'google-test-token', expires_at: Date.now() + 3600000 } }]);
-    if (value.endsWith('/spreadsheets')) return json({ spreadsheetId: 'test-sheet' });
-    return json({ updatedRange: 'Leads!A1' });
-  };
-  const res = response(); await sheets(request('create-sheet', 'POST', { fields: ['Name'] }), res);
-  assert.equal(res.statusCode, 500); assert.match(res.body.error, /Could not save/);
+test('Sheets create stops before Google when its durable reservation cannot be saved', async () => {
+ let googleCalls=0;
+ globalThis.fetch=async(url:any,init:any)=>{const value=String(url);if(value.includes('/auth/'))return json({id:uid});if(value.includes('collection=eq.google_sheets_connections'))return json([{data:{connected:true,access_token:'test',expires_at:Date.now()+3600000}}]);if(value.includes('/rest/')&&init?.method==='POST')return json({},403);if(value.includes('/rest/'))return json([]);googleCalls++;return json({});};
+ const res=response();await sheets(request('create-sheet','POST',{automationId:'auto_sheet1',fields:['Name']}),res);
+ assert.equal(res.statusCode,500);assert.match(res.body.error,/reserve/);assert.equal(googleCalls,0);
+});
+test('new AI automations get separate sheets; retry and edit reuse the existing sheet',async()=>{
+ const docs=new Map<string,any>();let creates=0;
+ globalThis.fetch=async(url:any,init:any)=>{const value=String(url);if(value.includes('/auth/'))return json({id:uid});if(value.includes('collection=eq.google_sheets_connections'))return json([{data:{connected:true,email:'test@example.test',access_token:'test',expires_at:Date.now()+3600000}}]);
+ if(value.includes('/rest/')){if(init?.method==='POST'){const body=JSON.parse(init.body);if(!value.includes('on_conflict')&&docs.has(body.id))return json({},409);docs.set(body.id,body.data);return json({});}const id=new URL(value).searchParams.get('id')?.replace('eq.','');return json(id&&docs.has(id)?[{data:docs.get(id)}]:[]);}
+ if(value.endsWith('/spreadsheets'))return json({spreadsheetId:'sheet-'+(++creates)});if(value.includes('?fields='))return json({sheets:[{properties:{title:'Conversation history'}}]});return json({});};
+ for(const id of ['auto_first','auto_second','auto_first']){const res=response();await sheets(request('create-sheet','POST',{automationId:id,fields:['Name']}),res);assert.equal(res.statusCode,200);assert.equal(res.body.spreadsheetId,id==='auto_first'?'sheet-1':'sheet-2');}
+ assert.equal(creates,2);
+ const req:any=request('status');req.query.automationId='auto_brand_new';const status=response();await sheets(req,status);assert.equal(status.body.spreadsheetUrl,'');assert.equal(status.body.connected,true);
+});
+test('ambiguous sheet creation is never blindly repeated',async()=>{
+ let creates=0;globalThis.fetch=async(url:any)=>{const value=String(url);if(value.includes('/auth/'))return json({id:uid});if(value.includes('collection=eq.google_sheets_connections'))return json([{data:{connected:true,access_token:'test',expires_at:Date.now()+3600000}}]);if(value.includes('/rest/'))return json([{data:{state:'creating',fields:['Name']}}]);creates++;return json({});};
+ const res=response();await sheets(request('create-sheet','POST',{automationId:'auto_pending',fields:['Name']}),res);assert.equal(res.statusCode,409);assert.equal(creates,0);
 });
 
 test('OAuth URLs normalize pasted schemes and reject unsafe configuration', () => {
@@ -120,4 +127,10 @@ test('Sheets connection launched from Integrations returns there when authorizat
  assert.equal(connected.statusCode,200);const state=new URL(connected.body.url).searchParams.get('state');
  const callback:any=request('callback');callback.query={action:'callback',error:'access_denied',state};const cancelled=response();await sheets(callback,cancelled);
  assert.ok(cancelled.location.includes('/integrations?sheets=error'));assert.ok(!cancelled.location.includes('resume=ai-sheets'));
+});
+
+test('runtime Google token refresh rejects browsers and uses the server OAuth configuration',async()=>{
+ const bad:any=request('runtime-token','POST',{refreshToken:'private-refresh'});const denied=response();await sheets(bad,denied);assert.equal(denied.statusCode,401);
+ let body='';globalThis.fetch=async(url:any,init:any)=>{assert.equal(String(url),'https://oauth2.googleapis.com/token');body=String(init.body);return json({access_token:'short-lived-google'});};
+ const good:any=request('runtime-token','POST',{refreshToken:'private-refresh'});good.headers['x-autoreply-oauth-secret']='test-secret';const ok=response();await sheets(good,ok);assert.equal(ok.statusCode,200);assert.equal(ok.body.accessToken,'short-lived-google');assert.ok(body.includes('client_id=test-google-app'));assert.ok(body.includes('refresh_token=private-refresh'));
 });

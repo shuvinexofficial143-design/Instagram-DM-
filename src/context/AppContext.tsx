@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, startTransition } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, startTransition } from 'react';
 import { normalizeActivityLog } from '../lib/activityLogs';
 import {
   UserProfile,
@@ -99,7 +99,7 @@ interface AppContextType {
   setAiPausedForUser: (username: string, paused: boolean) => void;
 
   // Actions
-  createAutomation: (newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'>) => void;
+  createAutomation: (newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'> & {id?:string}) => void;
   updateAutomation: (id: string, updates: Partial<Automation>) => void;
   deleteAutomation: (id: string) => void;
   toggleAutomationStatus: (id: string) => void;
@@ -263,6 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
   };
   const [automations, setAutomations] = useState<Automation[]>([]);
+  const [customerInsights,setCustomerInsights]=useState<any[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([]);
   const [webhookLogs, setLogs] = useState<WebhookLogEvent[]>([]);
@@ -634,6 +635,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     void loadAutomationsFromServer();
 
     let signedInProfileRefreshRequested = false;
+    setCustomerInsights([]);
+    const unsubscribeInsights=subscribeToUserCollection<any>(uid,'customer_insights',setCustomerInsights);
     const unsubscribeContacts = subscribeToUserCollection<Contact>(uid, 'contacts', (data) => {
       if (data) {
         const sanitized: Contact[] = data.map((c) => ({
@@ -706,6 +709,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       unsubscribeAutomations();
       unsubscribeContacts();
+      unsubscribeInsights();
       unsubscribeInbox();
       unsubscribeLogs();
       unsubscribeEvents();
@@ -963,7 +967,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
   const createAutomation = (
-    newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'>
+    newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'> & {id?:string}
   ) => {
     const now = new Date().toISOString();
     const cleanName = newAuto.name.trim();
@@ -976,7 +980,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const created: Automation = {
       ...newAuto,
       name: cleanName,
-      id: `auto_${Date.now()}`,
+      id: newAuto.id || `auto_${crypto.randomUUID()}`,
       created_at: now,
       updated_at: now,
       stats: {
@@ -1629,6 +1633,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsRenewModalOpen(false);
   };
 
+  const enrichedContacts=useMemo(()=>{const insights=new Map(customerInsights.map(item=>[item.id,item]));return contacts.map(contact=>({...contact,customer_insight:insights.get(contact.id)}));},[contacts,customerInsights]);
+
   return (
     <AppContext.Provider
       value={{
@@ -1643,7 +1649,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         instagramAccounts, workspaceId:workspaceId || firebaseUser?.uid || '', accountSwitching, accountError,
         refreshInstagramAccounts, switchInstagramAccount, startInstagramConnection, instagramConnectMode,
         automations,
-        contacts,
+        contacts: enrichedContacts,
         inboxMessages,
         webhookLogs,
         pausedAiUsers,

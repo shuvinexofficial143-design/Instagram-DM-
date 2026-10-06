@@ -43,6 +43,7 @@ export interface FlowInstructionNode {
 }
 
 export interface TriggerConfig {
+  sheet_fields?: string[];
   all_or_keywords: 'all' | 'keywords' | 'ai_conversation';
   keywords: string[];
   smart_matching?: boolean;
@@ -110,6 +111,7 @@ export interface ContactInteraction {
 }
 
 export interface Contact {
+  customer_insight?: import('./lib/customerInsights').CustomerInsight;
   id: string;
   ig_username: string;
   ig_user_id: string;

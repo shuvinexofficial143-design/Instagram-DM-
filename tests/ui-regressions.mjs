@@ -48,6 +48,7 @@ try {
       export {relativeAutomationTime, matchesPreviewMessage, uniqueAutomationName} from './src/lib/automationPresentation';
       export {normalizeActivityLog} from './src/lib/activityLogs';
       export {AutomationReviewPhone} from './src/components/Automations/AutomationReviewPhone';
+      export {CustomerBadges,CustomerInsightPanel} from './src/components/Common/CustomerInsight';
       export {InstagramAccounts} from './src/components/Common/InstagramAccounts';
       export {ActivityLogsPage} from './src/components/Activity/ActivityLogsPage';
       export {workspaceNavigation,WorkspaceTabs} from './src/components/WorkspaceNavigation';
@@ -149,6 +150,9 @@ try {
   globalThis.__uiFixture=fixture({workspaceId:'account-b',instagramAccounts:[{workspaceId:'account-a',account:{username:'first_business',status:'connected'}},{workspaceId:'account-b',account:{username:'second_business',status:'connected'}}]});
   html=renderToStaticMarkup(React.createElement(ui.InstagramAccounts));for(const label of ['first_business','second_business','Current account','Add Instagram account','Switch account'])assert.ok(html.includes(label));checks++;
   html=renderToStaticMarkup(React.createElement(ui.Sidebar));assert.ok(html.includes('sidebar-account-switch'));assert.ok(html.includes('value="account-b" selected=""'));checks++;
+  html=renderToStaticMarkup(React.createElement(ui.CustomerInsightPanel,{contact:{id:'canonical',ig_username:'customer',customer_insight:{stage:'support',priority:'high',source:'manual',reason:'Delivery complaint',summary:'Customer needs help',next_step:'Resolve delivery'}}}));
+  for(const text of ['Needs support','High priority','Delivery complaint','Manual','Customer status','Customer priority','Resume automatic assessment'])assert.ok(html.includes(text));checks++;
+  html=renderToStaticMarkup(React.createElement(ui.CustomerBadges,{insight:{stage:'ready',priority:'high',source:'automatic',reason:'Asked for payment'}}));assert.ok(html.includes('Ready to buy'));assert.ok(html.includes('bg-orange-100'));checks++;
   assert.deepEqual(ui.workspaceNavigation.filter(item=>!['settings','help','billing'].includes(item.id)).map(item=>item.id),['home','knowledge','automations','inbox','contacts','analytics']);checks++;
   const allTabs=ui.workspaceNavigation.flatMap(item=>item.tabs);
   for(const tab of ['contacts','crm','knowledge','catalog','lead-forms','settings','integrations','activity'])assert.ok(allTabs.includes(tab));

@@ -5,7 +5,9 @@ import {
   UserCheck, X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { auth, removeUserDocument, saveUserDocument, subscribeToUserCollection } from '../../lib/supabase';
+import { supabase, auth, removeUserDocument, saveUserDocument, subscribeToUserCollection } from '../../lib/supabase';
+import {CustomerBadges,CustomerInsightPanel} from '../Common/CustomerInsight';
+import {customerStages} from '../../lib/customerInsights';
 import { UserAvatar } from '../Common/UserAvatar';
 
 type ThreadStatus = 'open' | 'pending' | 'resolved';
@@ -47,10 +49,11 @@ const emptyMeta = (id: string): ThreadMeta => ({
 
 export const InboxPage: React.FC = () => {
   const {
-    inboxMessages, instagramAccount, contacts, firebaseUser, sendManualReply,
+    workspaceId, inboxMessages, instagramAccount, contacts, firebaseUser, sendManualReply,
     isAiPausedForUser, toggleAiForUser, deleteInboxThread, markInboxThreadRead, markInboxThreadUnread,
   } = useApp();
 
+  const [stageFilter,setStageFilter]=useState('all');
   const [inputText, setInputText] = useState('');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread' | 'open' | 'pending' | 'resolved' | 'high' | 'snoozed'>('all');
@@ -67,13 +70,14 @@ export const InboxPage: React.FC = () => {
   const [showSavedReplies, setShowSavedReplies] = useState(false);
 
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
+    const uid = workspaceId || auth.currentUser?.uid;
     if (!uid) return;
+    setMetas([]);setNotes([]);setSavedReplies([]);setActiveUsername('');
     const stopMeta = subscribeToUserCollection<ThreadMeta>(uid, 'inbox_thread_meta', setMetas);
     const stopNotes = subscribeToUserCollection<InboxNote>(uid, 'inbox_notes', setNotes);
     const stopReplies = subscribeToUserCollection<SavedReply>(uid, 'inbox_saved_replies', setSavedReplies);
     return () => { stopMeta(); stopNotes(); stopReplies(); };
-  }, []);
+  }, [workspaceId]);
 
   const metaMap = useMemo(() => new Map(metas.map((item) => [cleanKey(item.id), item])), [metas]);
   const myUsername = cleanKey(instagramAccount?.username || '');
@@ -110,11 +114,13 @@ export const InboxPage: React.FC = () => {
     const summary = summaryFor(username);
     const matchesSearch = !search.trim() || key.includes(cleanKey(search));
     if (!matchesSearch) return false;
+    const insight=(contacts||[]).find(c=>cleanKey(c.ig_username||c.ig_user_id)===key)?.customer_insight;
+    if(stageFilter!=='all'&&(insight?.stage||'new')!==stageFilter)return false;
     if (filter === 'unread') return summary.unread > 0;
     if (filter === 'open') return meta.status === 'open';
     if (filter === 'pending') return meta.status === 'pending';
     if (filter === 'resolved') return meta.status === 'resolved';
-    if (filter === 'high') return meta.priority === 'high';
+    if (filter === 'high') return insight?.priority === 'high' || meta.priority === 'high';
     if (filter === 'snoozed') return Boolean(meta.snooze_until && new Date(meta.snooze_until).getTime() > Date.now());
     return true;
   }).sort((a, b) => {
@@ -146,7 +152,7 @@ export const InboxPage: React.FC = () => {
   }, [selectedKey]);
 
   const saveMeta = async (updates: Partial<ThreadMeta>) => {
-    const uid = auth.currentUser?.uid;
+    const uid = workspaceId || auth.currentUser?.uid;
     if (!uid || !selectedKey) return;
     const next: ThreadMeta = { ...selectedMeta, ...updates, id: selectedKey, updated_at: new Date().toISOString() };
     await saveUserDocument(uid, 'inbox_thread_meta', next);
@@ -155,8 +161,13 @@ export const InboxPage: React.FC = () => {
       : [next, ...prev]);
   };
 
+  const toggleCustomerPriority=async()=>{
+    const priority=(selectedContact?.customer_insight?.priority || selectedMeta.priority)==='high'?'normal':'high';
+    try{if(selectedContact){const {error}=await supabase.rpc('autoreply_save_customer_insight',{p_user_id:workspaceId,p_contact_id:selectedContact.id,p_data:{...selectedContact.customer_insight,stage:selectedContact.customer_insight?.stage||'new',priority,source:'manual',reason:'Priority set by workspace owner',updated_at:new Date().toISOString()}});if(error)throw error;}await saveMeta({priority});}catch(error:any){window.alert(error.message||'Could not update customer priority');}
+  };
+
   const addNote = async () => {
-    const uid = auth.currentUser?.uid;
+    const uid = workspaceId || auth.currentUser?.uid;
     if (!uid || !selectedKey || !noteText.trim()) return;
     const note: InboxNote = { id: 'note_' + Date.now(), thread_id: selectedKey, text: noteText.trim(), created_at: new Date().toISOString() };
     await saveUserDocument(uid, 'inbox_notes', note);
@@ -176,7 +187,7 @@ export const InboxPage: React.FC = () => {
   };
 
   const saveQuickReply = async () => {
-    const uid = auth.currentUser?.uid;
+    const uid = workspaceId || auth.currentUser?.uid;
     if (!uid || !newReplyTitle.trim() || !newReplyText.trim()) return;
     const reply: SavedReply = { id: 'reply_' + Date.now(), title: newReplyTitle.trim(), text: newReplyText.trim(), created_at: new Date().toISOString() };
     await saveUserDocument(uid, 'inbox_saved_replies', reply);
@@ -186,7 +197,7 @@ export const InboxPage: React.FC = () => {
   };
 
   const deleteQuickReply = async (reply: SavedReply) => {
-    const uid = auth.currentUser?.uid;
+    const uid = workspaceId || auth.currentUser?.uid;
     if (!uid) return;
     await removeUserDocument(uid, 'inbox_saved_replies', reply.id);
     setSavedReplies((prev) => prev.filter((item) => item.id !== reply.id));
@@ -230,6 +241,7 @@ export const InboxPage: React.FC = () => {
             {(['all','unread','open','pending','resolved'] as const).map((id) => (
               <button key={id} onClick={() => setFilter(id)} className={'rounded-xl border px-3 py-2 text-xs font-bold ' + (filter === id ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600')}>{id[0].toUpperCase() + id.slice(1)} <span className="opacity-70">({statusCounts[id]})</span></button>
             ))}
+            <select aria-label="Filter conversation customer status" value={stageFilter} onChange={e=>setStageFilter(e.target.value)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-2 text-xs"><option value="all">All customer statuses</option>{Object.entries(customerStages).map(([key,item])=><option key={key} value={key}>{item.label}</option>)}</select>
             <button onClick={() => setFilter('high')} className={'rounded-xl border px-3 py-2 text-xs font-bold ' + (filter === 'high' ? 'border-rose-600 bg-rose-600 text-white' : 'border-slate-200 bg-white text-slate-600')}>High priority</button>
             <button onClick={() => setFilter('snoozed')} className={'rounded-xl border px-3 py-2 text-xs font-bold ' + (filter === 'snoozed' ? 'border-amber-500 bg-amber-500 text-white' : 'border-slate-200 bg-white text-slate-600')}>Snoozed</button>
           </div>
@@ -253,7 +265,7 @@ export const InboxPage: React.FC = () => {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5"><p className="truncate text-xs font-bold text-slate-900">@{username}</p>{meta.priority === 'high' && <Star className="h-3 w-3 fill-rose-500 text-rose-500" />}{summary.unread > 0 && <span className="ml-auto min-w-5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-center text-xs font-bold text-white">{Math.min(99, summary.unread)}</span>}</div>
                         <p className="mt-1 truncate text-xs text-slate-500">{summary.last?.message_text || 'No messages yet'}</p>
-                        <div className="mt-1.5 flex items-center gap-1.5"><span className={'rounded-full px-1.5 py-0.5 text-xs font-bold ' + (meta.status === 'resolved' ? 'bg-emerald-50 text-emerald-700' : meta.status === 'pending' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700')}>{meta.status}</span>{meta.assignee && <span className="truncate text-xs font-semibold text-slate-400">· {meta.assignee}</span>}</div>
+                        <CustomerBadges insight={(contacts||[]).find(c=>cleanKey(c.ig_username||c.ig_user_id)===key)?.customer_insight}/><div className="mt-1.5 flex items-center gap-1.5"><span className={'rounded-full px-1.5 py-0.5 text-xs font-bold ' + (meta.status === 'resolved' ? 'bg-emerald-50 text-emerald-700' : meta.status === 'pending' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700')}>{meta.status}</span>{meta.assignee && <span className="truncate text-xs font-semibold text-slate-400">· {meta.assignee}</span>}</div>
                       </div>
                     </div>
                   </button>
@@ -275,7 +287,7 @@ export const InboxPage: React.FC = () => {
                     <div className="min-w-0"><h2 className="truncate text-sm font-bold text-slate-900">@{selectedUser}</h2><p className="text-xs text-slate-500">{selectedMeta.assignee ? 'Assigned to ' + selectedMeta.assignee : 'Unassigned'} · {selectedMeta.status}</p></div>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <button onClick={() => void saveMeta({ priority: selectedMeta.priority === 'high' ? 'normal' : 'high' })} className={'rounded-lg border p-2 ' + (selectedMeta.priority === 'high' ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-500')} title="Toggle priority"><Star className="h-4 w-4" /></button>
+                    <button onClick={() => void toggleCustomerPriority()} className={'rounded-lg border p-2 ' + ((selectedContact?.customer_insight?.priority || selectedMeta.priority) === 'high' ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-500')} title="Toggle priority"><Star className="h-4 w-4" /></button>
                     <button onClick={() => void saveMeta({ assignee: selectedMeta.assignee ? '' : (firebaseUser?.displayName || firebaseUser?.email || 'Me') })} className="rounded-lg border border-slate-200 p-2 text-slate-600" title="Assign to me"><UserCheck className="h-4 w-4" /></button>
                     <button onClick={() => void snoozeFor(1)} className="rounded-lg border border-slate-200 p-2 text-slate-600" title="Snooze 1 hour"><AlarmClock className="h-4 w-4" /></button>
                     <button onClick={() => toggleAiForUser(selectedUser)} className={'rounded-lg border p-2 ' + (aiPaused ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700')} aria-label={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'} title={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'}><span className="flex items-center gap-2 text-sm font-semibold">{aiPaused ? <BotOff className="h-4 w-4" /> : <Bot className="h-4 w-4" />}{aiPaused?'Resume AI':'Take over'}</span></button>
@@ -326,6 +338,7 @@ export const InboxPage: React.FC = () => {
 
               <div className="border-b border-slate-200 p-4">
                 <p className="text-xs font-bold text-slate-800">Conversation controls</p>
+                {selectedContact&&<CustomerInsightPanel key={selectedContact.id} contact={selectedContact}/>}
                 <div className="mt-3 grid grid-cols-3 gap-2">{(['open','pending','resolved'] as const).map((status) => <button key={status} onClick={() => void saveMeta({ status, snooze_until: status === 'open' ? undefined : selectedMeta.snooze_until })} className={'rounded-lg px-2 py-2 text-xs font-bold ' + (selectedMeta.status === status ? 'bg-indigo-600 text-white' : 'border border-slate-200 bg-white text-slate-600')}>{status}</button>)}</div>
                 <label className="mt-3 block"><span className="text-xs font-bold text-slate-500">Assignee</span><input value={selectedMeta.assignee} onChange={(e) => void saveMeta({ assignee: e.target.value })} placeholder="Unassigned" className="mt-1 min-h-9 w-full rounded-lg border border-slate-200 px-2.5 text-xs" /></label>
               </div>

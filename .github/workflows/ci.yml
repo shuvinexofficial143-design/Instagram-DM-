@@ -37,5 +37,11 @@ jobs:
       - name: UI regressions
         run: bun run test:ui
 
+      - name: Connection regressions
+        run: bun run test:connections
+
+      - name: Automation and customer Sheet regressions
+        run: bun run test:automations
+
       - name: Production build
         run: bun run build

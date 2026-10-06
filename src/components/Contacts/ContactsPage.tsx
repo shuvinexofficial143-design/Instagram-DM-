@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Search,
@@ -22,11 +22,16 @@ import {
   WandSparkles,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import {CustomerBadges,CustomerInsightPanel} from '../Common/CustomerInsight';
+import {customerStages} from '../../lib/customerInsights';
 import { Contact } from '../../types';
 import { UserAvatar } from '../Common/UserAvatar';
 
 export const ContactsPage: React.FC = () => {
-  const { contacts, deleteContact, deleteContactsBulk, sendManualReply } = useApp();
+  const { workspaceId, contacts, deleteContact, deleteContactsBulk, sendManualReply } = useApp();
+  const [stageFilter,setStageFilter]=useState('all');
+  const [priorityFilter,setPriorityFilter]=useState('all');
+  useEffect(()=>{setActiveContact(null);setSelectedContactIds([]);},[workspaceId]);
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
@@ -58,8 +63,8 @@ export const ContactsPage: React.FC = () => {
     }
     const matchesSearch = uname.includes(search.toLowerCase());
     const matchesTag = !selectedTag || (Array.isArray(c.tags) && c.tags.includes(selectedTag));
-    return matchesSearch && matchesTag;
-  });
+    return matchesSearch && matchesTag && (stageFilter==='all'||(c.customer_insight?.stage||'new')===stageFilter) && (priorityFilter==='all'||(c.customer_insight?.priority||'normal')===priorityFilter);
+  }).sort((a,b)=>({high:0,normal:1,low:2}[a.customer_insight?.priority||'normal']-({high:0,normal:1,low:2}[b.customer_insight?.priority||'normal'])));
 
   const isAllSelected =
     filteredContacts.length > 0 &&
@@ -252,6 +257,8 @@ export const ContactsPage: React.FC = () => {
 
         {/* Tag Filters & Bulk Delete & Export Button */}
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-between md:justify-end">
+          <select aria-label="Filter customer status" value={stageFilter} onChange={e=>setStageFilter(e.target.value)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs"><option value="all">All customer statuses</option>{Object.entries(customerStages).map(([key,item])=><option key={key} value={key}>{item.label}</option>)}</select>
+          <select aria-label="Filter customer priority" value={priorityFilter} onChange={e=>setPriorityFilter(e.target.value)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs"><option value="all">All priorities</option><option value="high">High priority</option><option value="normal">Normal priority</option><option value="low">Low priority</option></select>
           {selectedContactIds.length > 0 && (
             <button
               onClick={handleBulkDelete}
@@ -360,7 +367,7 @@ export const ContactsPage: React.FC = () => {
                           />
                           <div>
                             <div className="font-bold text-slate-950">@{contact.ig_username}</div>
-                            <div className="text-xs font-semibold text-slate-500">Instagram contact</div>
+                            <CustomerBadges insight={contact.customer_insight}/><p className="mt-1 max-w-52 truncate text-[11px] text-slate-500" title={contact.customer_insight?.reason}>{contact.customer_insight?.reason}</p>
                           </div>
                         </div>
                       </td>
@@ -433,6 +440,7 @@ export const ContactsPage: React.FC = () => {
                 <p className="text-xs text-slate-500">Instagram User • Captured Contact</p>
               </div>
 
+              <CustomerInsightPanel contact={(contacts||[]).find(c=>c.id===activeContact.id)||activeContact}/>
               <div className="mb-6 space-y-3 rounded-2xl border border-indigo-100 bg-gradient-to-br from-blue-50/70 to-violet-50/60 p-4">
                 <div className="text-xs font-bold text-slate-800">Engagement Breakdown:</div>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">

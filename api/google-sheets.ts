@@ -47,6 +47,41 @@ async function accessToken(connection: any) {
   return String(data.access_token);
 }
 
+async function sheetDocument(uid:string,token:string,id:string) {
+ const r=await upstreamFetch(`${SUPABASE_URL}/rest/v1/autoreply_documents?user_id=eq.${encodeURIComponent(uid)}&collection=eq.google_sheets_automations&id=eq.${encodeURIComponent(id)}&select=data`,{headers:headers(token)},'Automation sheet storage');
+ if(!r.ok)throw new Error('Could not read this automation sheet.');return (await r.json())?.[0]?.data || {};
+}
+async function saveSheetDocument(uid:string,token:string,id:string,data:any) {
+ const r=await upstreamFetch(`${SUPABASE_URL}/rest/v1/autoreply_documents?on_conflict=user_id,collection,id`,{method:'POST',headers:{...headers(token),'Content-Type':'application/json',Prefer:'resolution=merge-duplicates'},body:JSON.stringify({user_id:uid,collection:'google_sheets_automations',id,data})},'Automation sheet storage');
+ if(!r.ok)throw new Error('Could not save this automation sheet.');
+}
+export async function ensureAutomationSheet(uid:string,token:string,automationId:string,title:string,requestedFields:any) {
+ if(!/^auto_[a-zA-Z0-9_-]{4,}$/.test(automationId))throw Object.assign(new Error('A valid automation identity is required to create its sheet.'),{status:400});
+ const connection=await readConnection(uid,token);
+ if(!connection.connected)return null;
+ let cfg=await sheetDocument(uid,token,automationId);
+ if(cfg.state==='ready' && cfg.spreadsheet_id)return cfg;
+ const fields=cfg.fields?.length ? cleanFields(cfg.fields) : cleanFields(requestedFields);
+ if(!fields.length)throw Object.assign(new Error('Add at least one data field.'),{status:400});
+ const access=await accessToken(connection), googleHeaders={Authorization:'Bearer '+access,'Content-Type':'application/json'};
+ if(!cfg.spreadsheet_id){
+  if(cfg.state==='creating')throw Object.assign(new Error('Sheet creation is already in progress or awaiting confirmation. Refresh this automation before retrying.'),{status:409});
+  const reservation={state:'creating',fields,title,created_at:new Date().toISOString()};
+  const claim=await upstreamFetch(`${SUPABASE_URL}/rest/v1/autoreply_documents`,{method:'POST',headers:{...headers(token),'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,collection:'google_sheets_automations',id:automationId,data:reservation})},'Sheet creation reservation');
+  if(!claim.ok){if(claim.status===409){const existing=await sheetDocument(uid,token,automationId);if(existing.state==='ready')return existing;throw Object.assign(new Error('Sheet creation is already in progress. Refresh before retrying.'),{status:409});}throw new Error('Could not reserve this automation sheet.');}
+  // Never blindly repeat a create after an ambiguous network response.
+  const sheet=await googleJson('https://sheets.googleapis.com/v4/spreadsheets',{method:'POST',headers:googleHeaders,body:JSON.stringify({properties:{title:title.slice(0,100)},sheets:[{properties:{title:'Leads'}},{properties:{title:'Conversation history'}}]})},'Google Sheet creation');
+  if(!sheet?.spreadsheetId)throw new Error('Google did not confirm the new spreadsheet.');
+  cfg={...reservation,spreadsheet_id:sheet.spreadsheetId,spreadsheet_url:sheet.spreadsheetUrl || 'https://docs.google.com/spreadsheets/d/'+sheet.spreadsheetId,sheet_name:'Leads'};
+  await saveSheetDocument(uid,token,automationId,cfg);
+ }
+ await googleJson('https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(cfg.spreadsheet_id)+'/values/Leads!A1?valueInputOption=RAW',{method:'PUT',headers:googleHeaders,body:JSON.stringify({values:[[...fields,'Instagram Username','Created At','Updated At','Instagram ID','Customer status','Priority','Reason','Summary','Next step']]})},'Google Sheet columns');
+ const metadata=await googleJson('https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(cfg.spreadsheet_id)+'?fields=sheets.properties.title',{headers:googleHeaders},'Google Sheet tabs');
+ if(!(metadata?.sheets||[]).some((tab:any)=>tab.properties?.title==='Conversation history'))await googleJson('https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(cfg.spreadsheet_id)+':batchUpdate',{method:'POST',headers:googleHeaders,body:JSON.stringify({requests:[{addSheet:{properties:{title:'Conversation history'}}}]})},'Conversation history tab');
+ await googleJson('https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(cfg.spreadsheet_id)+"/values/"+encodeURIComponent("'Conversation history'!A1")+'?valueInputOption=RAW',{method:'PUT',headers:googleHeaders,body:JSON.stringify({values:[['Event ID','Timestamp','Instagram ID','Instagram Username','Customer message','Reply']]})},'Conversation history columns');
+ cfg={...cfg,fields,state:'ready',history_sheet:'Conversation history',updated_at:new Date().toISOString()};await saveSheetDocument(uid,token,automationId,cfg);return cfg;
+}
+
 export default async function handler(req: any, res: any) {
   const action = String(req.query?.action || '');
   let returnTo = req.query?.returnTo === 'integrations' ? 'integrations' : 'ai-sheets';
@@ -54,6 +89,13 @@ export default async function handler(req: any, res: any) {
   const fail = (message: string) => res.redirect(302, site() + destination() + 'sheets=error&message=' + encodeURIComponent(message));
   res.setHeader('Cache-Control', 'private, no-store');
   try {
+    if(action==='runtime-token') {
+      const supplied=String(req.headers?.['x-autoreply-oauth-secret'] || '');const expected=env('INSTAGRAM_APP_SECRET');
+      if(req.method!=='POST' || !expected || supplied.length!==expected.length || !crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected)))return res.status(401).json({ok:false,error:'Server authorization required.'});
+      if(!req.body?.refreshToken)return res.status(400).json({ok:false,error:'Reconnect Google Sheets to refresh its authorization.'});
+      const access=await accessToken({refresh_token:String(req.body.refreshToken)});
+      return res.status(200).json({ok:true,accessToken:access});
+    }
     if (!['connect', 'callback', 'status', 'create-sheet', 'append-lead'].includes(action)) return res.status(404).json({ ok: false, error: 'Unknown Google Sheets action.' });
     const method = ['create-sheet', 'append-lead'].includes(action) ? 'POST' : 'GET';
     if (req.method !== method) { res.setHeader('Allow', method); return res.status(405).json({ ok: false, error: 'Method Not Allowed' }); }
@@ -100,21 +142,18 @@ export default async function handler(req: any, res: any) {
       return req.query?.format === 'json' ? res.status(200).json({ ok: true, url }) : res.redirect(302, url);
     }
     const connection = await readConnection(user.id, token);
-    if (action === 'status') return res.status(200).json({ ok: true, connected: Boolean(connection.connected && (connection.refresh_token || connection.access_token)), email: connection.email || '', spreadsheetUrl: connection.spreadsheet_url || '', fields: cleanFields(connection.fields), updated_at: connection.updated_at || null });
+    const automationId=String(req.query?.automationId || req.body?.automationId || '');
+    const bound=automationId ? await sheetDocument(user.id,token,automationId) : connection;
+    if (action === 'status') return res.status(200).json({ ok: true, connected: Boolean(connection.connected && (connection.refresh_token || connection.access_token)), email: connection.email || '', spreadsheetUrl: bound.spreadsheet_url || '', fields: cleanFields(bound.fields), updated_at: connection.updated_at || null });
     if (action === 'append-lead' && !connection.spreadsheet_id) return res.status(409).json({ ok: false, error: 'Create a Google Sheet first.' });
     const access = await accessToken(connection);
     const googleHeaders = { Authorization: 'Bearer ' + access, 'Content-Type': 'application/json' };
     if (action === 'create-sheet') {
-      const fields = cleanFields(req.body?.fields);
-      if (!fields.length) return res.status(400).json({ ok: false, error: 'Add at least one data field.' });
-      const title = String(req.body?.title || 'AutoReply AI Leads').trim().slice(0, 100) || 'AutoReply AI Leads';
-      const sheet = await googleJson('https://sheets.googleapis.com/v4/spreadsheets', { method: 'POST', headers: googleHeaders, body: JSON.stringify({ properties: { title }, sheets: [{ properties: { title: 'Leads' } }] }) }, 'Google Sheet creation');
-      if (!sheet?.spreadsheetId) throw new Error('Google did not return a spreadsheet. Please retry.');
-      await googleJson('https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(sheet.spreadsheetId) + '/values/Leads!A1?valueInputOption=RAW', { method: 'PUT', headers: googleHeaders, body: JSON.stringify({ range: 'Leads!A1', majorDimension: 'ROWS', values: [[...fields, 'Instagram Username', 'Created At', 'Updated At']] }) }, 'Google Sheet columns');
-      const next = { ...connection, spreadsheet_id: sheet.spreadsheetId, spreadsheet_url: sheet.spreadsheetUrl || 'https://docs.google.com/spreadsheets/d/' + sheet.spreadsheetId, sheet_name: 'Leads', fields, updated_at: new Date().toISOString() };
-      await saveConnection(user.id, token, next);
-      return res.status(200).json({ ok: true, spreadsheetId: sheet.spreadsheetId, spreadsheetUrl: next.spreadsheet_url, sheetName: 'Leads', fields });
+      const cfg=await ensureAutomationSheet(user.id,token,automationId,String(req.body?.title || 'AutoReply AI Leads').trim(),req.body?.fields);
+      if(!cfg)return res.status(409).json({ok:false,error:'Connect your Google account first.'});
+      return res.status(200).json({ok:true,spreadsheetId:cfg.spreadsheet_id,spreadsheetUrl:cfg.spreadsheet_url,sheetName:cfg.sheet_name,fields:cfg.fields});
     }
+
     const fields = cleanFields(connection.fields), now = new Date().toISOString();
     const values = [...fields.map(key => String(req.body?.data?.[key] ?? '')), String(req.body?.instagramUsername || ''), now, now];
     const result = await googleJson('https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(connection.spreadsheet_id) + '/values/' + encodeURIComponent((connection.sheet_name || 'Leads') + '!A:ZZ') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', { method: 'POST', headers: googleHeaders, body: JSON.stringify({ values: [values] }) }, 'Google Sheet sync');

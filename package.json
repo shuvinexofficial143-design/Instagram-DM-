@@ -12,7 +12,7 @@
     "test:ui": "node tests/ui-regressions.mjs",
     "test:connections": "node --import tsx --test tests/connections.test.ts",
     "test:dm": "node --test tests/dm-runtime.test.mjs",
-    "test:automations": "node --test tests/automation-delivery.test.mjs tests/instagram-subscription.test.mjs tests/instagram-accounts.test.mjs"
+    "test:automations": "node --test tests/automation-delivery.test.mjs tests/instagram-subscription.test.mjs tests/instagram-accounts.test.mjs tests/customer-sheets.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
