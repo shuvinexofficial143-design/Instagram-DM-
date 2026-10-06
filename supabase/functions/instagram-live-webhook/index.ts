@@ -241,12 +241,10 @@ async function loadDmContext(
 
   if (!candidates.length) return null;
 
-  const { data, error } = await admin.rpc("autoreply_claim_dm_context_v4", {
+  const { data, error } = await admin.rpc("autoreply_prepare_automation_event", {
     p_candidates: candidates,
     p_message_id: String(messageId || ""),
-    p_query_key: "",
     p_sender_id: String(senderId || ""),
-    p_include_history: Boolean(includeHistory),
   });
 
   if (error) {
@@ -1051,9 +1049,10 @@ function extractAutomationEvents(event: any): any[] {
     const senderId = String(value.sender?.id || value.from?.id || "");
     const entryId = String(entry.id || "");
     const recipientId = String(value.recipient?.id || entryId);
-    if (!text || !senderId || !recipientId || message.is_echo || value.is_echo || senderId === entryId) return;
+    const senderUsername = String(value.from?.username || value.sender?.username || "").trim().toLowerCase();
+    if (!text || !senderId || !recipientId || message.is_echo || value.is_echo || message.is_self || value.is_self || senderId === entryId) return;
     const timestamp = Number(value.timestamp || entry.time || Date.now());
-    items.push({ entryId, senderId, recipientId, text, timestamp, mediaId,
+    items.push({ entryId, senderId, senderUsername, recipientId, text, timestamp, mediaId,
       triggerType: story || mediaId ? "story_reply" : "dm",
       messageId: String(message.mid || value.mid || `dm_${senderId}_${timestamp}_${text}`),
     });
@@ -1216,8 +1215,11 @@ Deno.serve(async (req: Request) => {
 
     if (url.searchParams.get("check") === "runtime") {
       try {
-        await getPlanQuota(getAdminClient(), "__runtime_healthcheck__");
-        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-latency" });
+        const { data, error } = await getAdminClient().rpc("autoreply_prepare_automation_event", {
+          p_candidates: [], p_message_id: "", p_sender_id: "",
+        });
+        if (error || !data?.runtime_ready) throw new Error("Automation preparation unavailable");
+        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-single-round-trip" });
       } catch {
         return reply(503, { ok: false, quotaReady: false });
       }
@@ -1309,7 +1311,7 @@ Deno.serve(async (req: Request) => {
     const incomingTextKey = normalizeReplyCacheKey(item.text);
     const contextStart = performance.now();
     let context: any = null;
-    let contextSource = "supabase_runtime_context_v5";
+    let contextSource = "supabase_prepare_automation_event";
     let typingOnDispatchedMs: number | null = null;
     let typingContextSource: "edge_memory" | "supabase_runtime_context" | "full_context" | null = null;
     let typingAckMs: number | null = null;
@@ -1353,6 +1355,18 @@ Deno.serve(async (req: Request) => {
       });
       runInBackground(typingTask);
     };
+
+    let typingStopRequested = false;
+    const stopTyping = () => {
+      if (!typingStarted || typingStopRequested) return;
+      typingStopRequested = true;
+      // Dispatch off as soon as the reply is ready. Never wait for the typing
+      // API before sending text; if on is pending, sequence off behind it.
+      runInBackground(typingAccepted
+        ? sendInstagramSenderAction(igUserIdForTyping(), item.senderId, cleanToken(context?.account?.access_token), "typing_off")
+        : typingTask.then(() => sendInstagramSenderAction(igUserIdForTyping(), item.senderId, cleanToken(context?.account?.access_token), "typing_off")));
+    };
+    const igUserIdForTyping = () => String(context?.account?.ig_user_id || item.entryId || item.recipientId || "");
 
     try {
       context = await loadDmContext(admin, [item.entryId, item.recipientId], item.messageId, "", item.senderId, true);
@@ -1412,37 +1426,16 @@ Deno.serve(async (req: Request) => {
     // Meta can emit an outgoing event with a different scoped sender ID and
     // without is_echo. Accept only events addressed to this business; never
     // suppress a real customer's message just because its text matches a reply.
-    if (item.triggerType !== "comment" &&
-        item.recipientId !== String(item.entryId) && item.recipientId !== igUserId) {
+    if ((item.senderUsername && item.senderUsername === String(account.username || "").toLowerCase()) ||
+        (item.triggerType !== "comment" && item.recipientId !== String(item.entryId) && item.recipientId !== igUserId)) {
       results.push({ messageId: item.messageId, ok: true, ignored: true, reason: "outgoing_message" });
       continue;
     }
 
-    // Fresh rules and fresh allowance are independent once the workspace is
-    // resolved. Overlap both reads instead of adding their round-trip times.
-    const eligibilityStart = performance.now();
-    let rulesMs = 0, quotaMs = 0;
-    const [rulesResult, quotaResult] = await Promise.allSettled([
-      (async () => {
-        const started = performance.now();
-        try {
-          return await admin.from("autoreply_documents").select("id,data,updated_at")
-            .eq("user_id", workspaceId).eq("collection", "automations")
-            .order("updated_at", { ascending: false });
-        } finally { rulesMs = Math.round(performance.now() - started); }
-      })(),
-      (async () => {
-        const started = performance.now();
-        try { return await getPlanQuota(admin, workspaceId); }
-        finally { quotaMs = Math.round(performance.now() - started); }
-      })(),
-    ]);
-    const eligibilityMs = Math.round(performance.now() - eligibilityStart);
-    if (rulesResult.status === "rejected" || rulesResult.value.error) {
-      results.push({ messageId: item.messageId, ok: false, reason: "automation_lookup_failed" });
-      continue;
-    }
-    const automation = matchAutomation((rulesResult.value.data || []).map((r: any) => ({ ...r.data, id: r.id })), item);
+    // The service-only RPC returns a single fresh snapshot. No additional
+    // network reads stand between the durable claim and starting typing/AI.
+    const eligibilityMs = 0, rulesMs = 0, quotaMs = 0;
+    const automation = matchAutomation(context.automations || [], item);
     context.automation = automation;
 
     // Profile/contact/inbox work is intentionally deferred until after the
@@ -1471,14 +1464,14 @@ Deno.serve(async (req: Request) => {
       continue;
     }
 
-    if (quotaResult.status === "rejected") {
+    if (!context.quota) {
       runInBackground(logEvent(admin, workspaceId, item.messageId || crypto.randomUUID(), {
         status: "failed", reason: "quota_check_failed", sender_id: item.senderId,
       }));
       results.push({ messageId: item.messageId, ok: false, reason: "quota_check_failed" });
       continue;
     }
-    const quota = quotaResult.value;
+    const quota = context.quota;
     if (quota.totalUsed >= quota.totalLimit) {
       results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_message_limit_reached" });
       continue;
@@ -1617,6 +1610,7 @@ Instagram DM style rules:
       )
     );
 
+    stopTyping();
     const sendStartEpoch = Date.now();
     const metaDeliveryMs = Math.max(
       0,
@@ -1648,11 +1642,7 @@ Instagram DM style rules:
       if (tagActions.length) runInBackground(saveContactTags(admin, workspaceId, item.senderId, tagActions.map((a: any) => a.tag_name)));
       runInBackground(syncAiLeadToGoogleSheet(admin, workspaceId, item.senderId, item.text, history, openaiKey));
 
-      if (typingStarted) {
-        runInBackground(
-          typingTask.then(() => sendInstagramSenderAction(igUserId, item.senderId, accessToken, "typing_off"))
-        );
-      }
+      stopTyping();
 
       if (instagramMessageId) {
         runInBackground(
@@ -1759,11 +1749,7 @@ Instagram DM style rules:
       const sendMs = Math.round(performance.now() - sendStart);
       const sendError = err instanceof Error ? err.message : String(err);
 
-      if (typingStarted) {
-        runInBackground(
-          typingTask.then(() => sendInstagramSenderAction(igUserId, item.senderId, accessToken, "typing_off"))
-        );
-      }
+      stopTyping();
       console.error("[LIVE_DM_SEND_FAILED]", sendError);
 
       runInBackground(

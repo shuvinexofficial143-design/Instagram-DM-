@@ -14,7 +14,7 @@ const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, sta
 
 function fixture(automations = [ai], options = {}) {
   const writes = [], apiCalls = [], aiInputs = [], claims = new Set(), history = new Map(), tasks = [];
-  const account = { ig_user_id: 'business', access_token: 'test-token' };
+  const account = { ig_user_id: 'business', username: 'business_handle', access_token: 'test-token' };
   const admin = {
     from(table) {
       let columns = '', mutation = null, filters = {};
@@ -53,13 +53,15 @@ function fixture(automations = [ai], options = {}) {
         if (options.usageGate) await options.usageGate;
         return { data: { total_messages: options.quotaUsed || 0, ai_replies: 0 } };
       }
-      if (name === 'autoreply_claim_dm_context_v4') {
-        // The deployed RPC skips history when a shared query cache hits. The
-        // processor must pass an empty key so follow-up history is never lost.
-        assert.equal(args.p_query_key, '');
+      if (name === 'autoreply_prepare_automation_event') {
+        options.onPrepare?.();
+        if (options.prepareGate) await options.prepareGate;
+        if (options.quotaError) return { data: null, error: { code: 'database' } };
         const duplicate = claims.has(args.p_message_id);
         claims.add(args.p_message_id);
-        return { data: { user_id: 'workspace', account, automation: ai, history: history.get(args.p_sender_id) || [], message_state: duplicate ? 'duplicate' : 'new' } };
+        return { data: { user_id: 'workspace', account, automation: ai,
+          automations, quota: { totalUsed: options.quotaUsed || 0, aiUsed: options.aiUsed || 0, totalLimit: 1500, aiLimit: 1000 },
+          history: history.get(args.p_sender_id) || [], message_state: duplicate ? 'duplicate' : 'new' } };
       }
       return { data: {}, error: null };
     },
@@ -121,6 +123,7 @@ test('first AI DM generates and sends a confirmed reply against real schema', as
   assert.equal(r.status, 200); assert.equal(r.body.sent, 1); assert.equal(f.aiInputs.length, 1);
   assert.equal(f.apiCalls.filter(c => c.body.message).length, 1);
   assert.deepEqual(f.apiCalls.filter(c => c.body.sender_action).map(c => c.body.sender_action), ['typing_on', 'typing_off']);
+  assert.ok(f.apiCalls.findIndex(c => c.body.sender_action === 'typing_off') < f.apiCalls.findIndex(c => c.body.message), 'Accepted typing is stopped when the reply is ready');
 });
 test('two distinct messages in one batch both reply and the second sees history', async () => {
   const f = fixture(); const event = dm('m1', 'first'); event.entry[0].messaging.push(dm('m2', 'second').entry[0].messaging[0]);
@@ -168,10 +171,10 @@ test('failed private reply cannot publish a false sent-you-a-DM comment', async 
   assert.equal(r.body.sent, 0); assert.equal(r.body.results[0].reason, 'automation_action_failed');
   assert.equal(f.apiCalls.length, 1);
 });
-test('quota failure blocks send before typing and records a visible error', async () => {
+test('preparation or quota failure blocks send before typing and returns an error', async () => {
   const f = fixture([ai], { quotaError: true }); const r = await f.post(dm());
-  assert.equal(r.body.results[0].reason, 'quota_check_failed'); assert.equal(f.apiCalls.length, 0);
-  assert.ok(f.writes.some(w => w.collection === 'webhook_events' && w.data.reason === 'quota_check_failed'));
+  assert.equal(r.body.results[0].reason, 'context_lookup_failed'); assert.equal(f.apiCalls.length, 0);
+
 });
 test('exhausted quota never starts typing', async () => {
   const f = fixture([ai], { quotaUsed: 1500 }); const r = await f.post(dm());
@@ -216,17 +219,14 @@ async function withinDeadline(promise) {
     timer = setTimeout(() => reject(new Error('Independent read/send did not start')), 1000);
   })]); } finally { clearTimeout(timer); }
 }
-test('rules and usage start together, but typing waits for both successful checks', async () => {
-  const rules = deferred(), usage = deferred(), rulesStarted = deferred(), usageStarted = deferred();
-  const f = fixture([ai], { rulesGate: rules.promise, usageGate: usage.promise,
-    onRulesStart: rulesStarted.resolve, onUsageStart: usageStarted.resolve });
+test('one preparation RPC gates typing and AI without separate rule/usage network reads', async () => {
+  const ready = deferred(), started = deferred();
+  const f = fixture([ai], { prepareGate: ready.promise, onPrepare: started.resolve,
+    onRulesStart: () => { throw new Error('Rules should be in the preparation RPC'); },
+    onUsageStart: () => { throw new Error('Usage should be in the preparation RPC'); } });
   const request = f.post(dm());
-  try {
-    await withinDeadline(Promise.all([rulesStarted.promise, usageStarted.promise]));
-    assert.equal(f.apiCalls.length, 0);
-    rules.resolve(); await new Promise(done => setImmediate(done));
-    assert.equal(f.apiCalls.length, 0, 'Fresh quota must pass before typing');
-  } finally { rules.resolve(); usage.resolve(); }
+  try { await withinDeadline(started.promise); assert.equal(f.apiCalls.length, 0); assert.equal(f.aiInputs.length, 0); }
+  finally { ready.resolve(); }
   assert.equal((await request).body.sent, 1);
 });
 test('slow typing acknowledgement cannot delay generating and sending the reply', async () => {
@@ -250,4 +250,17 @@ test('unflagged outgoing event with a different business sender scope cannot tri
   const r = await f.post(event);
   assert.equal(r.body.results[0].reason, 'outgoing_message');
   assert.equal(f.aiInputs.length, 0); assert.equal(f.apiCalls.length, 0);
+});
+
+test('self notification without recipient or echo flag cannot trigger AI', async () => {
+  const f = fixture(); const event = dm('self', 'Our outgoing reply');
+  const message = event.entry[0].messaging[0];
+  delete message.recipient; delete message.sender;
+  message.from = { id: 'another-business-scope', username: 'business_handle' };
+  assert.equal((await f.post(event)).body.sent, 0);
+  assert.equal(f.aiInputs.length, 0); assert.equal(f.apiCalls.length, 0);
+});
+test('is_self notifications never generate an AI reply', async () => {
+  const f = fixture(); assert.equal((await f.post(dm('self', 'Reply', { is_self: true }))).body.processed, 0);
+  assert.equal(f.aiInputs.length, 0);
 });

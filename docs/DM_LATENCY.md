@@ -56,3 +56,26 @@ notification or sender-action delivery alone takes longer than one second.
 - Manychat AI Replies: https://help.manychat.com/hc/en-us/articles/23018283889180-Manychat-AI-Replies
   Describes knowledge-based AI replies; does not publish a measurable subsecond
   Instagram delivery guarantee or enough internals to attribute its speed.
+
+
+## Follow-up: one preparation RPC
+
+Latest confirmed replies dispatched typing at 459/1,059ms, with Meta acknowledging
+at 1,264/2,257ms. Upstream event ingress took 1,302/2,861ms; signature verification
+was 1ms. The typing API accepted both actual customer requests. Acknowledgement
+still does not prove that Instagram displayed the indicator.
+
+The new `autoreply_prepare_automation_event` RPC returns a durable claim, history,
+fresh automation rules and quota together, eliminating all additional eligibility
+network round trips. It allows only service-role execution and refuses unknown
+business IDs rather than invoking the legacy single-account fallback. Preparation
+failure blocks typing and send. Run migration before deploying this function.
+Self events and the connected account's sender username are also filtered, covering
+outgoing change notifications without recipient/is_echo fields. Text equality is
+never used to suppress customer messages.
+
+Typing starts immediately after this single valid snapshot while AI generation
+runs in parallel. Off is requested when the reply is ready, without waiting for
+that API to send the actual reply; if on is pending, off is sequenced behind it.
+Mocked tests cover these gates. Live RPC execution was validated inside a rolled
+back transaction, and role privileges were checked without exposing account tokens.
