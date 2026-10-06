@@ -144,3 +144,21 @@ Controlled storage-gate tests prove typing and AI begin before storage completes
 while sends wait for durable storage. These establish the scheduling improvement,
 not a customer-visible subsecond latency guarantee. Existing ingress/API timings
 are historical observations, not fresh measurements of this version.
+
+
+## Verified self-echo sender identity repair
+
+Five numeric-sender inbox records matched five confirmed outgoing messages by
+both conversation/item identity (their raw MIDs differed only in account scope)
+and text. Each mistaken automation attempt to that sender failed with user not
+found. These are self echoes, not a second customer. The second AI automation's
+five confirmed sends are valid and must not be zeroed or counted twice.
+
+A server-maintained `own_sender_ids` array on the private connected-account record
+now filters verified business sender scopes before inbox writes, typing or AI.
+Reconnect preserves aliases only when the verified Instagram account ID matches;
+other accounts cannot inherit them. Numeric IDs alone and repeated message text
+are never reasons to suppress customers. Alias seeding/cleanup is restricted to
+evidence-backed workspace records; no global sender ID is hardcoded in the app.
+Incorrect inbox/contact/insight records are archived with their original data
+before removal, and successful outgoing messages/statistics stay intact.

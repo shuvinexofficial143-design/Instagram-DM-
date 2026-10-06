@@ -825,6 +825,17 @@ Deno.serve(async (req: Request) => {
         },{onConflict:"workspace_id"});
         if (registerError) throw registerError;
       }
+      // Preserve verified business sender scopes only for this exact account.
+      // These aliases prevent unflagged self echoes from becoming customers.
+      const { data: previousToken, error: previousTokenError } = await admin
+        .from("autoreply_instagram_tokens").select("account")
+        .eq("user_id", workspaceId).maybeSingle();
+      if (previousTokenError) throw previousTokenError;
+      if (String(previousToken?.account?.ig_user_id || "") === account.ig_user_id &&
+          Array.isArray(previousToken?.account?.own_sender_ids)) {
+        (account as any).own_sender_ids = previousToken.account.own_sender_ids
+          .map(String).filter((id: string) => /^\d+$/.test(id));
+      }
       const { error: tokenError } = await admin
         .from("autoreply_instagram_tokens")
         .upsert({ user_id: workspaceId, account }, { onConflict: "user_id" });

@@ -1363,7 +1363,7 @@ Deno.serve(async (req: Request) => {
           p_candidates: [], p_message_id: "", p_sender_id: "",
         });
         if (error || !data?.runtime_ready) throw new Error("Automation preparation unavailable");
-        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-typing-fast-start" });
+        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-self-echo-identity" });
       } catch {
         return reply(503, { ok: false, quotaReady: false });
       }
@@ -1570,7 +1570,9 @@ Deno.serve(async (req: Request) => {
     // Meta can emit an outgoing event with a different scoped sender ID and
     // without is_echo. Accept only events addressed to this business; never
     // suppress a real customer's message just because its text matches a reply.
-    if ((item.senderUsername && item.senderUsername === String(account.username || "").toLowerCase()) ||
+    const ownSenderIds = Array.isArray(account.own_sender_ids) ? account.own_sender_ids.map(String) : [];
+    if (item.senderId === igUserId || ownSenderIds.includes(item.senderId) ||
+        (item.senderUsername && item.senderUsername === String(account.username || "").toLowerCase()) ||
         (item.triggerType !== "comment" && item.recipientId !== String(item.entryId) && item.recipientId !== igUserId)) {
       results.push({ messageId: item.messageId, ok: true, ignored: true, reason: "outgoing_message" });
       continue;

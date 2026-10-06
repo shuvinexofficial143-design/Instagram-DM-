@@ -14,7 +14,7 @@ const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, sta
 
 function fixture(automations = [ai], options = {}) {
   const writes = [], apiCalls = [], aiInputs = [], claims = new Set(), history = new Map(), tasks = [];
-  const account = { ig_user_id: 'business', username: 'business_handle', access_token: 'test-token' };
+  const account = { ig_user_id: 'business', username: 'business_handle', access_token: 'test-token', own_sender_ids: options.ownSenderIds || [] };
   const admin = {
     from(table) {
       let columns = '', mutation = null, filters = {};
@@ -417,4 +417,18 @@ test('static automation cannot send when inbound storage fails', async () => {
   assert.equal(r.body.sent, 0);
   assert.equal(r.body.results[0].reason, 'inbox_save_failed');
   assert.equal(f.apiCalls.length, 0);
+});
+
+
+test('verified own sender scopes are ignored before inbox, typing, AI and usage writes', async () => {
+  const f = fixture([ai], { ownSenderIds: ['business-secondary-scope'] });
+  const event = dm('self-alias', 'A reply mirrored without is_echo');
+  event.entry[0].messaging[0].sender.id = 'business-secondary-scope';
+  const r = await f.post(event);
+  assert.equal(r.body.sent, 0);
+  assert.equal(r.body.results[0].reason, 'outgoing_message');
+  assert.equal(f.apiCalls.length, 0);
+  assert.equal(f.aiInputs.length, 0);
+  assert.equal(f.writes.some(w => ['contacts', 'inbox_messages'].includes(w.collection)), false);
+  assert.equal((await f.post(dm('customer-after-self', 'A reply mirrored without is_echo'))).body.sent, 1);
 });
