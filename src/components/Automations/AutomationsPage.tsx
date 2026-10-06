@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Zap,
   Search,
@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Automation, TriggerType } from '../../types';
+import { automationSummary, relativeAutomationTime } from '../../lib/automationPresentation';
 
 export const AutomationsPage: React.FC = () => {
   const {
@@ -37,6 +38,14 @@ export const AutomationsPage: React.FC = () => {
     setEditingAutomation,
     setIsBuilderOpen,
   } = useApp();
+
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const refresh = () => { if (!document.hidden) setNow(Date.now()); };
+    const timer = window.setInterval(refresh, 30000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+  }, []);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'paused'>('all');
@@ -66,6 +75,7 @@ export const AutomationsPage: React.FC = () => {
 
   // Global Header Stats
   const activeCount = (automations || []).filter((a) => a?.status === 'active').length;
+  const pausedCount = (automations || []).filter((a) => a?.status === 'paused').length;
   const totalRuns = (automations || []).reduce((acc, a) => acc + (a?.stats?.runs || 0), 0);
   const totalDmsSent = (automations || []).reduce((acc, a) => acc + (a?.stats?.dms_sent || 0), 0);
   const totalUniqueUsers = (automations || []).reduce((acc, a) => acc + (a?.stats?.unique_users || 0), 0);
@@ -200,8 +210,8 @@ export const AutomationsPage: React.FC = () => {
               <Zap className="w-5 h-5 text-emerald-700 stroke-[2.2]" />
             </div>
             <div>
-              <h3 className="font-bold text-slate-900 text-base">Active Automations</h3>
-              <p className="text-xs text-slate-600 font-semibold">Real-time comment & DM auto-responders running</p>
+              <h3 className="font-bold text-slate-900 text-base">Automation overview</h3>
+              <p className="text-xs text-slate-600 font-semibold">Manage your Instagram replies and review recorded performance</p>
             </div>
           </div>
 
@@ -260,13 +270,13 @@ export const AutomationsPage: React.FC = () => {
             {/* Comment Replies */}
             <div className="p-4 rounded-xl bg-slate-50/90 border border-slate-200 space-y-2 hover:border-purple-300 shadow-2xs transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Comment Replies</span>
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Paused automations</span>
                 <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
                   <MessageCircle className="w-4 h-4 stroke-[2.5]" />
                 </div>
               </div>
-              <div className="text-2xl md:text-3xl font-bold text-slate-950 tracking-tight">{totalRuns.toLocaleString()}</div>
-              <p className="text-xs text-slate-600 font-semibold">Automated public post & Reel comment replies</p>
+              <div className="text-2xl md:text-3xl font-bold text-slate-950 tracking-tight">{pausedCount.toLocaleString()}</div>
+              <p className="text-xs text-slate-600 font-semibold">Saved workflows currently switched off</p>
             </div>
           </div>
         </div>
@@ -378,52 +388,26 @@ export const AutomationsPage: React.FC = () => {
         ) : (
           filteredAutomations.map((auto) => {
             const isActive = auto.status === 'active';
-            const isAiConv = auto.trigger_type === 'dm_ai_conversation' || auto.trigger_config?.all_or_keywords === 'ai_conversation';
-            const triggerLabel =
-              auto.trigger_type === 'comment'
-                ? 'COMMENT TRIGGER'
-                : isAiConv
-                ? 'DM AI CONVERSATION'
-                : auto.trigger_type === 'dm'
-                ? 'USER DIRECT MESSAGE'
-                : 'STORY REPLY';
-
-            const triggerBoxText =
-              isAiConv
-                ? 'DM AI Conversation...'
-                : auto.trigger_type === 'dm'
-                ? 'User Direct Messa...'
-                : auto.trigger_type === 'comment'
-                ? `Comment "${auto.trigger_config.keywords[0] || 'Trigger'}"...`
-                : `Story Reply...`;
+            const summary = automationSummary(auto);
+            const ChannelIcon = summary.isAi ? Sparkles : auto.trigger_type === 'story_reply' ? Instagram : MessageCircle;
+            const updatedAt = auto.updated_at || auto.created_at;
+            const validUpdatedAt = updatedAt && Number.isFinite(Date.parse(updatedAt));
 
             return (
               <div
                 key={auto.id}
-                className="bg-white rounded-2xl p-5 md:p-6 border border-slate-200 hover:border-slate-300 shadow-sm hover:shadow-md transition-all space-y-4"
+                className="automation-workflow-card"
               >
                 {/* 1. Header & Name Row */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    {/* Active Green Dot */}
-                    <span
-                      className={`w-2.5 h-2.5 rounded-full inline-block ${
-                        isActive ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50 animate-pulse' : 'bg-slate-300'
-                      }`}
-                    ></span>
-
-                    {/* Name */}
-                    <h3 className="text-base font-bold text-slate-950 tracking-tight">{auto.name}</h3>
-
-                    {/* Pill Tag */}
-                    <span className="bg-emerald-100/80 text-emerald-800 border border-emerald-300 text-xs md:text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                      {triggerLabel}
-                    </span>
-
-                    {/* Time */}
-                    <span className="text-xs text-slate-500 font-bold">
-                      Last updated: 3 hours ago
-                    </span>
+                  <div className="automation-card-identity">
+                    <div className={`automation-channel-icon ${summary.isAi ? 'is-ai' : ''}`}><ChannelIcon aria-hidden="true" /></div>
+                    <div className="min-w-0">
+                      <div className="automation-card-title"><h3>{auto.name}</h3>
+                        <span className={`automation-state ${isActive ? 'is-active' : ''}`}>{isActive ? 'Active' : 'Paused'}</span>
+                      </div>
+                      <p className="automation-card-channel">{summary.channel} <span>·</span> {summary.scope}</p>
+                    </div>
                   </div>
 
                   {/* Toggle Switch & Menu */}
@@ -431,7 +415,8 @@ export const AutomationsPage: React.FC = () => {
                     <button
                       onClick={() => toggleAutomationStatus(auto.id)}
                       title={isActive ? 'Pause Automation' : 'Activate Automation'}
-                      className="transition-opacity hover:opacity-80"
+                      role="switch" aria-checked={isActive} aria-label={`${isActive ? 'Pause' : 'Activate'} ${auto.name}`}
+                      className="min-h-11 min-w-11 flex items-center justify-center transition-opacity hover:opacity-80"
                     >
                       {isActive ? (
                         <ToggleRight className="w-9 h-9 text-[#22C55E]" />
@@ -444,7 +429,8 @@ export const AutomationsPage: React.FC = () => {
                     <div className="relative">
                       <button
                         onClick={() => setOpenMenuId(openMenuId === auto.id ? null : auto.id)}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+                        aria-label={`More options for ${auto.name}`} aria-expanded={openMenuId === auto.id}
+                        className="min-h-11 min-w-11 flex items-center justify-center text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
                       >
                         <MoreVertical className="w-5 h-5" />
                       </button>
@@ -489,37 +475,35 @@ export const AutomationsPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 2. Flow Workflow Map (Workflow Map) */}
-                <div className="flex flex-wrap items-center gap-2.5 py-1">
-                  <div className="flex items-center gap-2 bg-slate-100 border border-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-900">
-                    <MessageCircle className="w-3.5 h-3.5 text-blue-600 stroke-[2.2]" />
-                    <span>[ {triggerBoxText} ]</span>
+                <div className="automation-card-flow">
+                  <div className="automation-flow-panel">
+                    <span className="automation-panel-label"><MessageCircle aria-hidden="true" /> When this happens</span>
+                    <p className="automation-trigger-summary">{summary.trigger}</p>
+                    {auto.trigger_config?.selected_media_thumbnail_url && (
+                      <div className="automation-content-preview">
+                        <img src={auto.trigger_config.selected_media_thumbnail_url} alt="Selected Instagram content" loading="lazy" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} />
+                        <span>{auto.trigger_config.selected_media_caption || summary.scope}</span>
+                      </div>
+                    )}
                   </div>
-
-                  <ArrowRight className="w-4 h-4 text-slate-600 shrink-0 stroke-[2.5]" />
-
-                  <div className="flex items-center gap-1.5 bg-indigo-50 border border-violet-200 px-3 py-1.5 rounded-xl text-xs font-bold text-[#6D28D9]">
-                    <Zap className="w-3.5 h-3.5 fill-[#6D28D9]" />
-                    <span>[ ⚡ {Array.isArray(auto.actions) ? auto.actions.length : 1} action ]</span>
+                  <ArrowRight className="automation-flow-arrow" aria-hidden="true" />
+                  <div className="automation-flow-panel automation-reply-panel">
+                    <span className="automation-panel-label"><Sparkles aria-hidden="true" /> {summary.isAi ? 'AI instructions' : 'Customer reply'}</span>
+                    <p className="automation-reply-summary">{summary.reply}</p>
+                    {summary.buttons.length > 0 && <div className="automation-reply-buttons">{summary.buttons.map((button, index) => <span key={index}>{button.label}</span>)}</div>}
                   </div>
                 </div>
-
-                {/* 3. Bottom Stats Bar (Metrics Bar) */}
-                <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center gap-3 md:gap-5 text-xs font-bold text-slate-600">
-                  <span className="flex items-center gap-1 font-bold text-slate-950">
-                    <Zap className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
-                    {auto.stats?.runs ?? 0} runs
-                  </span>
-                  <span>·</span>
-                  <span className="flex items-center gap-1 text-slate-800 font-bold">
-                    <Users className="w-3.5 h-3.5 text-slate-600 stroke-[2.2]" />
-                    {auto.stats?.unique_users ?? 0} Users
-                  </span>
-                  <span>·</span>
-                  <span className="flex items-center gap-1 text-slate-500 font-bold">
-                    <Clock className="w-3.5 h-3.5" />
-                    Recently active
-                  </span>
+                <div className="automation-action-list" aria-label="Configured actions">
+                  {summary.actionLabels.length ? summary.actionLabels.map((label, index) => <span key={index}><Zap aria-hidden="true" />{label}</span>) : <span>No actions configured</span>}
+                </div>
+                <div className="automation-card-metrics">
+                  <div><strong>{(auto.stats?.runs ?? 0).toLocaleString()}</strong><span>Runs</span></div>
+                  <div><strong>{(auto.stats?.dms_sent ?? 0).toLocaleString()}</strong><span>DMs sent</span></div>
+                  <div><strong>{(auto.stats?.unique_users ?? 0).toLocaleString()}</strong><span>Recorded users</span></div>
+                </div>
+                <div className="automation-card-footer">
+                  <span className="automation-updated"><Clock aria-hidden="true" /> Last updated: <time dateTime={validUpdatedAt ? updatedAt : undefined} title={validUpdatedAt ? new Date(updatedAt).toLocaleString() : undefined}>{relativeAutomationTime(updatedAt, now)}</time></span>
+                  <button type="button" onClick={() => { setEditingAutomation(auto); setIsBuilderOpen(true); }}><Edit2 aria-hidden="true" /> Edit automation</button>
                 </div>
               </div>
             );

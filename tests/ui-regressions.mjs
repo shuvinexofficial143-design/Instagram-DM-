@@ -45,6 +45,7 @@ try {
       export {AiAssistantSetup} from './src/components/Automations/AiAssistantSetup';
       export {AutomationBuilder} from './src/components/Automations/AutomationBuilder';
       export {AutomationsPage} from './src/components/Automations/AutomationsPage';
+      export {relativeAutomationTime} from './src/lib/automationPresentation';
       export {workspaceNavigation,WorkspaceTabs} from './src/components/WorkspaceNavigation';
       export {publicSupportPage} from './src/lib/navigation';`,resolveDir:root,loader:'tsx'},
     bundle:true,platform:'node',format:'esm',outfile:path.join(tmp,'ui.mjs'),packages:'external',jsx:'automatic',
@@ -110,6 +111,23 @@ try {
   assert.ok(html.includes('System prompt'));assert.ok(html.includes('id="ai-system-prompt"'));assert.ok(html.includes('for="ai-system-prompt"'));assert.ok(html.includes('Connect Google Sheets'));assert.ok(html.includes('data:image/png;base64,'));assert.ok(html.includes('Test messages stay inside this preview'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.AiAssistantSetup,{...setupProps,testMessage:'Question',testError:'Could not test',sheetsConnected:true,sheetsEmail:'test@example.test'}));
   assert.ok(html.includes('role="alert"'));assert.ok(html.includes('Could not test'));assert.ok(!html.includes('Test reply received'));assert.ok(html.includes('Connected'));assert.ok(html.includes('Change account'));checks++;
+  const clock = Date.parse('2026-10-06T12:00:00Z');
+  assert.equal(ui.relativeAutomationTime('2026-10-06T09:00:00Z',clock),'3 hours ago');
+  assert.equal(ui.relativeAutomationTime('2026-10-06T09:00:00Z',clock+3600000),'4 hours ago');
+  assert.equal(ui.relativeAutomationTime('invalid',clock),'Time unavailable');
+  assert.equal(ui.relativeAutomationTime('2026-10-07T12:00:00Z',clock),'Just now');checks++;
+  globalThis.__uiFixture=fixture({activeTab:'automations',automations:[{id:'comment-rule',name:'Product link',trigger_type:'comment',trigger_config:{all_or_keywords:'keywords',keywords:['LINK','PRICE'],selected_media_id:'post1'},actions:[{id:'send',type:'send_dm',message_text:'Here is your product link.'}],status:'paused',stats:{runs:0,dms_sent:0,unique_users:0},created_at:'2026-09-01',updated_at:'2026-09-01'}]});
+  html=renderToStaticMarkup(React.createElement(ui.AutomationsPage));
+  for(const text of ['Paused','Selected post or reel','LINK','PRICE','Here is your product link.','Edit automation','Last updated:']) assert.ok(html.includes(text),text);
+  assert.ok(!html.includes('3 hours ago')); assert.ok(!html.includes('Recently active'));
+  assert.ok(html.includes('role="switch"'));assert.ok(html.includes('aria-checked="false"'));checks++;
+  globalThis.__uiFixture=fixture({activeTab:'automations',automations:[{id:'ai-rule',name:'AI assistant',trigger_type:'dm_ai_conversation',trigger_config:{all_or_keywords:'ai_conversation',keywords:[]},actions:[{id:'ai',type:'ai_chatbot',ai_system_instruction:'Answer from the store catalogue.'},{id:'send',type:'send_dm'}],status:'active',stats:{runs:12,dms_sent:12,unique_users:0},created_at:'2026-09-01',updated_at:'2026-09-01'}]});
+  html=renderToStaticMarkup(React.createElement(ui.AutomationsPage));
+  for(const text of ['AI instructions','Answer from the store catalogue.','Every incoming message','Send AI reply'])assert.ok(html.includes(text),text);
+  assert.ok(html.includes('aria-checked="true"'));assert.ok(!html.includes('Comment Replies'));checks++;
+  globalThis.__uiFixture=fixture({activeTab:'settings'});
+  html=renderToStaticMarkup(React.createElement(ui.WorkspaceTabs));
+  assert.ok(html.includes('workspace-settings-tabs'));for(const text of ['Account','Integrations','Activity logs'])assert.ok(html.includes(text));assert.ok(html.includes('aria-current="page"'));checks++;
   const allTabs=ui.workspaceNavigation.flatMap(item=>item.tabs);
   for(const tab of ['contacts','crm','knowledge','catalog','lead-forms','settings','integrations','activity'])assert.ok(allTabs.includes(tab));
   assert.ok(ui.workspaceNavigation.length<15);checks++;

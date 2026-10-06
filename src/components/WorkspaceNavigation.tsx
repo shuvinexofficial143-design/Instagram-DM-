@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, BookOpen, CreditCard, HelpCircle, Inbox, LayoutDashboard, Settings, Users, Zap } from 'lucide-react';
+import { BarChart3, BookOpen, CreditCard, HelpCircle, Inbox, LayoutDashboard, Settings, Users, Zap, UserRound, Plug, History } from 'lucide-react';
 import { ActiveTab, useApp } from '../context/AppContext';
 
 export const workspaceNavigation = [
@@ -24,7 +24,10 @@ export const WorkspaceTabs = () => {
   const {activeTab,setActiveTab} = useApp();
   const group = groups.find(g=>g.items.some(item=>item.id===activeTab));
   if (!group) return null;
-  return <nav aria-label={group.title+' sections'} className="workspace-tabs">
-    {group.items.map(item=><button key={item.id} aria-current={item.id===activeTab?'page':undefined} onClick={()=>setActiveTab(item.id)}>{item.label}</button>)}
+  return <nav aria-label={group.title+' sections'} className={`workspace-tabs ${group.title === 'Settings' ? 'workspace-settings-tabs' : ''}`}>
+    {group.items.map(item=>{
+      const Icon = item.id === 'settings' ? UserRound : item.id === 'integrations' ? Plug : History;
+      return <button type="button" key={item.id} aria-current={item.id===activeTab?'page':undefined} onClick={()=>setActiveTab(item.id)}>{group.title === 'Settings' && <Icon aria-hidden="true" />}<span>{item.label}</span></button>;
+    })}
   </nav>;
 };
