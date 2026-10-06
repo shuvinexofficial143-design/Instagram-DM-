@@ -26,7 +26,7 @@ function fixture(automations = [ai], options = {}) {
         async maybeSingle() { return result(true); },
         then(resolve, reject) { return Promise.resolve(result(false)).then(resolve, reject); },
       };
-      function result(single) {
+      async function result(single) {
         if (mutation) {
           writes.push({ table, ...mutation });
           if (table === 'autoreply_dm_history') history.set(mutation.sender_id, mutation.messages);
@@ -37,14 +37,22 @@ function fixture(automations = [ai], options = {}) {
           return options.quotaError ? { error: { code: 'network' } } : { data: { id: 'free', total_messages: 1500, ai_replies: 1000 } };
         }
         if (table === 'autoreply_profiles') throw new Error('Production identity table has no data column');
-        if (table === 'autoreply_documents' && filters.collection === 'automations') return { data: automations.map(a => ({ id: a.id, data: a })) };
+        if (table === 'autoreply_documents' && filters.collection === 'automations') {
+          options.onRulesStart?.();
+          if (options.rulesGate) await options.rulesGate;
+          return { data: automations.map(a => ({ id: a.id, data: a })) };
+        }
         if (table === 'autoreply_documents') return { data: single ? null : [] };
         return { data: single ? null : [] };
       }
       return query;
     },
     async rpc(name, args) {
-      if (name === 'autoreply_get_usage') return { data: { total_messages: options.quotaUsed || 0, ai_replies: 0 } };
+      if (name === 'autoreply_get_usage') {
+        options.onUsageStart?.();
+        if (options.usageGate) await options.usageGate;
+        return { data: { total_messages: options.quotaUsed || 0, ai_replies: 0 } };
+      }
       if (name === 'autoreply_claim_dm_context_v4') {
         // The deployed RPC skips history when a shared query cache hits. The
         // processor must pass an empty key so follow-up history is never lost.
@@ -72,7 +80,8 @@ function fixture(automations = [ai], options = {}) {
       if (String(url).includes('graph.instagram.com')) {
         apiCalls.push({ url: String(url), body, signal: init.signal });
         if (body.message && options.sendFails) return Response.json({ error: { message: 'Missing permission' } }, { status: 403 });
-        if (body.message) return Response.json({ message_id: 'out-' + apiCalls.length });
+        if (body.sender_action === 'typing_on' && options.typingGate) await options.typingGate;
+        if (body.message) { options.onSend?.(); return Response.json({ message_id: 'out-' + apiCalls.length }); }
         if (String(url).endsWith('/replies')) return Response.json({ id: 'public-reply' });
         return Response.json({ username: 'customer' });
       }
@@ -193,4 +202,52 @@ test('a legacy unsupported auto-like cannot prevent the comment DM from sending'
   const rule = staticRule('comment'); rule.actions.unshift({ type: 'auto_like_comment' });
   const f = fixture([rule]); const r = await f.post(comment());
   assert.equal(r.body.sent, 1); assert.deepEqual(r.body.results[0].skipped_actions, ['auto_like_comment']);
+});
+
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+}
+async function withinDeadline(promise) {
+  let timer;
+  try { return await Promise.race([promise, new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Independent read/send did not start')), 1000);
+  })]); } finally { clearTimeout(timer); }
+}
+test('rules and usage start together, but typing waits for both successful checks', async () => {
+  const rules = deferred(), usage = deferred(), rulesStarted = deferred(), usageStarted = deferred();
+  const f = fixture([ai], { rulesGate: rules.promise, usageGate: usage.promise,
+    onRulesStart: rulesStarted.resolve, onUsageStart: usageStarted.resolve });
+  const request = f.post(dm());
+  try {
+    await withinDeadline(Promise.all([rulesStarted.promise, usageStarted.promise]));
+    assert.equal(f.apiCalls.length, 0);
+    rules.resolve(); await new Promise(done => setImmediate(done));
+    assert.equal(f.apiCalls.length, 0, 'Fresh quota must pass before typing');
+  } finally { rules.resolve(); usage.resolve(); }
+  assert.equal((await request).body.sent, 1);
+});
+test('slow typing acknowledgement cannot delay generating and sending the reply', async () => {
+  const typing = deferred(), sent = deferred();
+  const f = fixture([ai], { typingGate: typing.promise, onSend: sent.resolve });
+  const request = f.post(dm());
+  try { await withinDeadline(sent.promise); assert.equal(f.aiInputs.length, 1); }
+  finally { typing.resolve(); }
+  await request;
+  const log = f.writes.find(w => w.collection === 'webhook_events' && w.data.status === 'sent').data;
+  for (const field of ['meta_ingress_ms', 'verification_ms', 'rules_ms', 'quota_ms', 'eligibility_ms', 'typing_api_ms', 'typing_ack_ms', 'message_to_send_ack_ms']) {
+    assert.equal(typeof log[field], 'number', field);
+    assert.ok(log[field] >= 0, field);
+  }
+  assert.equal(log.typing_accepted, true);
+});
+test('unflagged outgoing event with a different business sender scope cannot trigger AI', async () => {
+  const f = fixture(); const event = dm('outgoing', 'AI reply');
+  event.entry[0].messaging[0].sender.id = 'business-in-another-scope';
+  event.entry[0].messaging[0].recipient.id = 'customer';
+  const r = await f.post(event);
+  assert.equal(r.body.results[0].reason, 'outgoing_message');
+  assert.equal(f.aiInputs.length, 0); assert.equal(f.apiCalls.length, 0);
 });
