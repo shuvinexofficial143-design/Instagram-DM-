@@ -1175,6 +1175,7 @@ async function executeStaticActions(admin: any, workspaceId: string, item: any, 
 
 Deno.serve(async (req: Request) => {
   const edgeReceivedAt = Date.now();
+  const verificationStart = performance.now();
   if (req.method === "GET") {
     const url = new URL(req.url);
     const mode = String(url.searchParams.get("hub.mode") || "");
@@ -1216,7 +1217,7 @@ Deno.serve(async (req: Request) => {
     if (url.searchParams.get("check") === "runtime") {
       try {
         await getPlanQuota(getAdminClient(), "__runtime_healthcheck__");
-        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-all-triggers" });
+        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-latency" });
       } catch {
         return reply(503, { ok: false, quotaReady: false });
       }
@@ -1289,6 +1290,8 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  const verificationMs = Math.round(performance.now() - verificationStart);
+
   // If OpenAI is unavailable, the configured fallback message is still sent.
   const messages = extractAutomationEvents(event);
   if (!messages.length) {
@@ -1309,6 +1312,11 @@ Deno.serve(async (req: Request) => {
     let contextSource = "supabase_runtime_context_v5";
     let typingOnDispatchedMs: number | null = null;
     let typingContextSource: "edge_memory" | "supabase_runtime_context" | "full_context" | null = null;
+    let typingAckMs: number | null = null;
+    let typingApiMs: number | null = null;
+    let typingAccepted = false;
+    const batchWaitMs = Math.max(0, Date.now() - edgeReceivedAt - verificationMs);
+    const metaIngressMs = Math.max(0, edgeReceivedAt - Number(item.timestamp || edgeReceivedAt));
     let typingStarted = false;
     let typingTask: Promise<any> = Promise.resolve(null);
 
@@ -1336,7 +1344,13 @@ Deno.serve(async (req: Request) => {
       typingContextSource = source;
       typingOnDispatchedMs = Math.round(performance.now() - totalStart);
 
-      typingTask = sendInstagramSenderAction(typingIgUserId, item.senderId, typingAccessToken, "typing_on");
+      const typingStart = performance.now();
+      typingTask = sendInstagramSenderAction(typingIgUserId, item.senderId, typingAccessToken, "typing_on").then(result => {
+        typingApiMs = Math.round(performance.now() - typingStart);
+        typingAccepted = result !== null;
+        if (typingAccepted) typingAckMs = Math.round(performance.now() - totalStart);
+        return result;
+      });
       runInBackground(typingTask);
     };
 
@@ -1362,16 +1376,6 @@ Deno.serve(async (req: Request) => {
 
     const workspaceId = String(context.user_id);
     const account = context.account;
-    const { data: automationRows, error: automationError } = await admin
-      .from("autoreply_documents").select("id,data,updated_at")
-      .eq("user_id", workspaceId).eq("collection", "automations")
-      .order("updated_at", { ascending: false });
-    if (automationError) {
-      results.push({ messageId: item.messageId, ok: false, reason: "automation_lookup_failed" });
-      continue;
-    }
-    const automation = matchAutomation((automationRows || []).map((r: any) => ({ ...r.data, id: r.id })), item);
-    context.automation = automation;
     const igUserId = String(
       account?.ig_user_id ||
         item.entryId ||
@@ -1405,6 +1409,42 @@ Deno.serve(async (req: Request) => {
       continue;
     }
 
+    // Meta can emit an outgoing event with a different scoped sender ID and
+    // without is_echo. Accept only events addressed to this business; never
+    // suppress a real customer's message just because its text matches a reply.
+    if (item.triggerType !== "comment" &&
+        item.recipientId !== String(item.entryId) && item.recipientId !== igUserId) {
+      results.push({ messageId: item.messageId, ok: true, ignored: true, reason: "outgoing_message" });
+      continue;
+    }
+
+    // Fresh rules and fresh allowance are independent once the workspace is
+    // resolved. Overlap both reads instead of adding their round-trip times.
+    const eligibilityStart = performance.now();
+    let rulesMs = 0, quotaMs = 0;
+    const [rulesResult, quotaResult] = await Promise.allSettled([
+      (async () => {
+        const started = performance.now();
+        try {
+          return await admin.from("autoreply_documents").select("id,data,updated_at")
+            .eq("user_id", workspaceId).eq("collection", "automations")
+            .order("updated_at", { ascending: false });
+        } finally { rulesMs = Math.round(performance.now() - started); }
+      })(),
+      (async () => {
+        const started = performance.now();
+        try { return await getPlanQuota(admin, workspaceId); }
+        finally { quotaMs = Math.round(performance.now() - started); }
+      })(),
+    ]);
+    const eligibilityMs = Math.round(performance.now() - eligibilityStart);
+    if (rulesResult.status === "rejected" || rulesResult.value.error) {
+      results.push({ messageId: item.messageId, ok: false, reason: "automation_lookup_failed" });
+      continue;
+    }
+    const automation = matchAutomation((rulesResult.value.data || []).map((r: any) => ({ ...r.data, id: r.id })), item);
+    context.automation = automation;
+
     // Profile/contact/inbox work is intentionally deferred until after the
     // Instagram Send API call so it cannot slow the visible reply.
 
@@ -1431,17 +1471,14 @@ Deno.serve(async (req: Request) => {
       continue;
     }
 
-    let quota;
-    try {
-      quota = await getPlanQuota(admin, workspaceId);
-    } catch {
-      if (typingStarted) runInBackground(sendInstagramSenderAction(igUserId, item.senderId, accessToken, "typing_off"));
+    if (quotaResult.status === "rejected") {
       runInBackground(logEvent(admin, workspaceId, item.messageId || crypto.randomUUID(), {
         status: "failed", reason: "quota_check_failed", sender_id: item.senderId,
       }));
       results.push({ messageId: item.messageId, ok: false, reason: "quota_check_failed" });
       continue;
     }
+    const quota = quotaResult.value;
     if (quota.totalUsed >= quota.totalLimit) {
       results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_message_limit_reached" });
       continue;
@@ -1494,7 +1531,8 @@ Instagram DM style rules:
 - For greetings/first-contact messages, write a fresh, short, human-sounding reply each time based on the business context.
 - If the business sells products, naturally guide the customer toward choosing/buying and ask one relevant next question when useful.
 - Use emojis generously and naturally in short replies, usually 2-4 suitable emojis, but avoid spammy emoji walls.
-- Keep simple greetings concise: usually 1-2 short sentences.
+- Keep greetings and straightforward answers concise: usually 1-2 short sentences and at most one relevant question.
+- Avoid repeating the customer's message, unnecessary introductions and extra sales questions. Give longer detail only when requested.
 - Match the customer's language/style when possible.`,
       12000
     );
@@ -1632,6 +1670,7 @@ Instagram DM style rules:
       await saveHistory(admin, workspaceId, item.senderId, nextHistory);
       runInBackground(
         (async () => {
+          await typingTask;
           let senderProfile = {
             username: item.senderId,
             avatar_url: "",
@@ -1678,6 +1717,13 @@ Instagram DM style rules:
               send_ms: sendMs,
               backend_pre_send_ms: backendPreSendMs,
               meta_delivery_ms: metaDeliveryMs,
+              meta_ingress_ms: metaIngressMs,
+              verification_ms: verificationMs,
+              batch_wait_ms: batchWaitMs,
+              rules_ms: rulesMs, quota_ms: quotaMs, eligibility_ms: eligibilityMs,
+              typing_api_ms: typingApiMs, typing_ack_ms: typingAckMs,
+              typing_accepted: typingAccepted,
+              message_to_send_ack_ms: metaDeliveryMs + sendMs,
               meta_to_relay_ms: metaToRelayMs,
               relay_to_edge_ms: relayToEdgeMs,
               fast_path: fastPath,
@@ -1737,6 +1783,10 @@ Instagram DM style rules:
           send_ms: sendMs,
           backend_pre_send_ms: backendPreSendMs,
           meta_delivery_ms: metaDeliveryMs,
+          meta_ingress_ms: metaIngressMs, verification_ms: verificationMs,
+          batch_wait_ms: batchWaitMs, rules_ms: rulesMs, quota_ms: quotaMs,
+          eligibility_ms: eligibilityMs, typing_api_ms: typingApiMs,
+          typing_ack_ms: typingAckMs, typing_accepted: typingAccepted,
           meta_to_relay_ms: metaToRelayMs,
           relay_to_edge_ms: relayToEdgeMs,
           typing_on_dispatched_ms: typingOnDispatchedMs,
