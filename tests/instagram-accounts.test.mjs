@@ -10,7 +10,8 @@ const owner='12345678-1234-4234-8234-123456789012';
 function fixture(){
   let handler, business='business-a', fetches=0;
   const tables={autoreply_instagram_memberships:[],autoreply_instagram_tokens:[],autoreply_documents:[]};
-  const admin={auth:{getUser:async jwt=>jwt==='session' ? {data:{user:{id:owner}}} : {data:null,error:{message:'Unauthorized'}}},from(table){
+  const uploadPaths=[];
+  const admin={storage:{getBucket:async()=>({data:{id:'catalog-images'},error:null}),from:()=>({createSignedUploadUrl:async path=>{uploadPaths.push(path);return {data:{token:'signed-upload'}};},getPublicUrl:path=>({data:{publicUrl:'https://example.supabase.co/storage/v1/object/public/catalog-images/'+path}})})},auth:{getUser:async jwt=>jwt==='session' ? {data:{user:{id:owner}}} : {data:null,error:{message:'Unauthorized'}}},from(table){
     let filters={},sets={},mutation;
     const q={select(){return q;},eq(k,v){filters[k]=v;return q;},in(k,v){sets[k]=v;return q;},order(){return q;},
       upsert(value){mutation=value;return q;},async maybeSingle(){return result(true);},then(resolve,reject){return Promise.resolve(result(false)).then(resolve,reject);}};
@@ -27,7 +28,7 @@ function fixture(){
     createClient:()=>admin,fetch:async()=>{fetches++;return Response.json({id:business,username:business,profile_picture_url:'photo-url',followers_count:3});},
     Deno:{env:{get:name=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'mock-service',INSTAGRAM_APP_SECRET:'oauth-secret'})[name]},serve:callback=>handler=callback}});
   vm.runInContext(compiled.code,context);
-  return {tables,setBusiness:value=>business=value,get fetches(){return fetches;},async post(body,headers={}){
+  return {tables,uploadPaths,setBusiness:value=>business=value,get fetches(){return fetches;},async post(body,headers={}){
     const response=await handler(new Request('https://example.supabase.co/functions/v1/instagram-account-store',{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)}));
     return {status:response.status,body:await response.json()};
   },save(workspaceId=owner){return this.post({action:'save',ownerId:owner,workspaceId,accessToken:'private-instagram-token'},{'x-autoreply-oauth-secret':'oauth-secret'});}};
@@ -71,4 +72,17 @@ test('reconnecting the same verified account preserves business sender scopes', 
   assert.deepEqual(f.tables.autoreply_instagram_tokens[0].account.own_sender_ids, ['1349115649944643']);
   f.setBusiness('business-b'); await f.save();
   assert.equal(f.tables.autoreply_instagram_tokens.find(r => r.account.ig_user_id === 'business-b').account.own_sender_ids, undefined);
+});
+
+test('catalog image uploads require a session and workspace ownership',async()=>{
+ const f=fixture();const body={action:'create_catalog_upload',workspaceId:owner,catalogId:'watches',mimeType:'image/jpeg',size:1000};
+ assert.equal((await f.post(body)).status,401);
+ assert.equal((await f.post({...body,workspaceId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},{Authorization:'Bearer session'})).status,403);
+ assert.equal(f.uploadPaths.length,0);
+ const uploaded=await f.post(body,{Authorization:'Bearer session'});assert.equal(uploaded.status,200);assert.ok(uploaded.body.path.startsWith(owner+'/watches/'));assert.ok(uploaded.body.path.endsWith('.jpg'));assert.ok(uploaded.body.publicUrl.includes(uploaded.body.path));
+});
+test('catalog uploads reject unsafe types, oversized files and path traversal',async()=>{
+ const f=fixture();for(const input of [{mimeType:'image/svg+xml'},{size:6*1024*1024},{size:0},{catalogId:'../foreign'}]){
+ const result=await f.post({action:'create_catalog_upload',workspaceId:owner,catalogId:'default',mimeType:'image/png',size:1000,...input},{Authorization:'Bearer session'});assert.equal(result.status,400);
+ }assert.equal(f.uploadPaths.length,0);
 });

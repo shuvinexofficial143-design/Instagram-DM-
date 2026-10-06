@@ -398,7 +398,7 @@ Deno.serve(async (req: Request) => {
       return {workspaceId:row.workspace_id,account:{...safeAccount(token?.account || row.profile),status:token ? "connected" : "disconnected"}};
     })});
   }
-  if (["load","delete","list_media","list_workspace_data","list_automations","save_automation","delete_automation","refresh_contact_profiles"].includes(action) && !String(workspaceId || "").startsWith("guest_")) {
+  if (["load","delete","list_media","list_workspace_data","list_automations","save_automation","delete_automation","refresh_contact_profiles","create_catalog_upload"].includes(action) && (action === "create_catalog_upload" || !String(workspaceId || "").startsWith("guest_"))) {
     const jwt = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
     const admin = getAdminClient();
     const {data:identity,error:authError} = await admin.auth.getUser(jwt);
@@ -502,6 +502,25 @@ Deno.serve(async (req: Request) => {
   const admin = getAdminClient();
 
   try {
+    if (action === "create_catalog_upload") {
+      const catalogId=String(payload.catalogId || ""), mimeType=String(payload.mimeType || ""), size=Number(payload.size);
+      if (!/^[a-zA-Z0-9_-]{1,100}$/.test(catalogId) || !["image/jpeg","image/png","image/webp"].includes(mimeType) || !Number.isInteger(size) || size <= 0 || size > 5*1024*1024)
+        return reply(400,{ok:false,error:"Use JPG, PNG or WebP images, up to 5 MB each."});
+      const bucket="catalog-images";
+      const found=await admin.storage.getBucket(bucket);
+      if (found.error) {
+        if (![404,"404"].includes(found.error.status) && !/not found/i.test(found.error.message || "")) throw found.error;
+        const created=await admin.storage.createBucket(bucket,{public:true,fileSizeLimit:5*1024*1024,allowedMimeTypes:["image/jpeg","image/png","image/webp"]});
+        // Concurrent first uploads may race to create the same bucket.
+        if (created.error && !/already exists|duplicate/i.test(created.error.message || "")) throw created.error;
+      }
+      const extension= mimeType === "image/jpeg" ? "jpg" : mimeType === "image/png" ? "png" : "webp";
+      const path=`${workspaceId}/${catalogId}/${crypto.randomUUID()}.${extension}`;
+      const {data,error}=await admin.storage.from(bucket).createSignedUploadUrl(path);
+      if(error || !data?.token) throw error || new Error("Could not create upload permission");
+      const publicUrl=admin.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+      return reply(200,{ok:true,path,token:data.token,publicUrl});
+    }
     if (action === "refresh_contact_profiles") {
       const { data, error } = await admin
         .from("autoreply_instagram_tokens")

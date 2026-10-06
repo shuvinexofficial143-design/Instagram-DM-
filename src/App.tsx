@@ -17,9 +17,7 @@ import { PublicLandingPage } from './components/Public/PublicLandingPage';
 const AnalyticsPage = lazy(() => import('./components/Analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 const ActivityLogsPage = lazy(() => import('./components/Activity/ActivityLogsPage').then((m) => ({ default: m.ActivityLogsPage })));
 const IntegrationsPage = lazy(() => import('./components/Integrations/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })));
-const KnowledgeBasePage = lazy(() => import('./components/Knowledge/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })));
 const CatalogPage = lazy(() => import('./components/Catalog/CatalogPage').then((m) => ({ default: m.CatalogPage })));
-const LeadFormsPage = lazy(() => import('./components/LeadForms/LeadFormsPage').then((m) => ({ default: m.LeadFormsPage })));
 const AutomationsPage = lazy(() => import('./components/Automations/AutomationsPage').then((m) => ({ default: m.AutomationsPage })));
 const AutomationBuilder = lazy(() => import('./components/Automations/AutomationBuilder').then((m) => ({ default: m.AutomationBuilder })));
 const ContactsPage = lazy(() => import('./components/Contacts/ContactsPage').then((m) => ({ default: m.ContactsPage })));
@@ -59,9 +57,7 @@ const MainContent: React.FC = () => {
           {activeTab === 'analytics' && <AnalyticsPage />}
           {activeTab === 'automations' && <AutomationsPage />}
           {activeTab === 'activity' && <ActivityLogsPage />}
-          {activeTab === 'knowledge' && <KnowledgeBasePage />}
-          {activeTab === 'catalog' && <CatalogPage />}
-          {activeTab === 'lead-forms' && <LeadFormsPage />}
+          {['catalog','knowledge','lead-forms'].includes(activeTab) && <CatalogPage />}
           {activeTab === 'contacts' && <ContactsPage />}
           {activeTab === 'crm' && <CrmPage />}
           {activeTab === 'inbox' && <InboxPage />}

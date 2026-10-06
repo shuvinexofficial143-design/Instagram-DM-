@@ -51,18 +51,20 @@ try {
       export {CustomerBadges,CustomerInsightPanel} from './src/components/Common/CustomerInsight';
       export {InstagramAccounts} from './src/components/Common/InstagramAccounts';
       export {ActivityLogsPage} from './src/components/Activity/ActivityLogsPage';
+      export {CatalogPreview} from './src/components/Catalog/CatalogPicker';
       export {workspaceNavigation,WorkspaceTabs} from './src/components/WorkspaceNavigation';
       export {publicSupportPage} from './src/lib/navigation';`,resolveDir:root,loader:'tsx'},
     bundle:true,platform:'node',format:'esm',outfile:path.join(tmp,'ui.mjs'),packages:'external',jsx:'automatic',
     plugins:[{name:'isolated-ui-fixtures',setup(builder){
       builder.onResolve({filter:/context\/AppContext$/},()=>({path:'context',namespace:'fixture'}));
-      builder.onResolve({filter:/lib\/supabase$/},()=>({path:'auth',namespace:'fixture'}));
+      builder.onResolve({filter:/(?:lib\/supabase|^\.\/supabase)$/},()=>({path:'auth',namespace:'fixture'}));
       builder.onLoad({filter:/.*/,namespace:'fixture'},args=>({loader:'js',contents:args.path==='context'
         ? `export const useApp=()=>globalThis.__uiFixture; export const AppProvider=({children})=>children;`
         : exportNames.map(name=>`export const ${name}=${name==='auth'?'{currentUser:null}':name==='supabase'||name==='db'?'{}':name==='isSupabaseInitialized'?'true':name==='googleProvider'?"{providerId:'google'}":'()=>{}'};`).join('\n')}));
     }}],
   });
   const ui = await import(pathToFileURL(path.join(tmp,'ui.mjs')));
+  const catalogHtml=renderToStaticMarkup(React.createElement(ui.CatalogPreview,{products:[{id:'p',name:'Watch',price:'₹399',description:'Steel',url:'https://shop.example',active:true,images:['https://img.example/1.jpg','https://img.example/2.jpg']}]}));assert.equal((catalogHtml.match(/<article/g)||[]).length,2);assert.ok(catalogHtml.includes('snap-mandatory'));assert.ok(catalogHtml.includes('₹399'));checks++;
   for (const [route,heading] of [
     ['/','More conversations.'],['/help','Help Center'],['/help/faq','Frequently Asked Questions'],
     ['/help/billing','Billing &amp; Subscription Help'],['/about','About'],['/privacy','Privacy Policy'],['/terms','Terms of Service'],
@@ -85,7 +87,7 @@ try {
   window.location.search='';
   for (const [tab,heading] of [
     ['home','Dashboard'],['inbox','Inbox'],['automations','Active Automations'],['contacts','Contact list'],['crm','Sales pipeline'],
-    ['knowledge','Knowledge Base'],['catalog','Catalogs'],['lead-forms','Lead &amp; Address Forms'],['analytics','Analytics'],
+    ['knowledge','Catalogs'],['catalog','Catalogs'],['lead-forms','Catalogs'],['analytics','Analytics'],
     ['settings','Settings'],['integrations','Integrations'],['activity','Activity'],['billing','Billing &amp; Usage'],
   ]) {
     globalThis.__uiFixture=fixture({firebaseUser:{uid:'test-user',displayName:'Sample owner'},activeTab:tab});
@@ -153,7 +155,7 @@ try {
   html=renderToStaticMarkup(React.createElement(ui.CustomerInsightPanel,{contact:{id:'canonical',ig_username:'customer',customer_insight:{stage:'support',priority:'high',source:'manual',reason:'Delivery complaint',summary:'Customer needs help',next_step:'Resolve delivery'}}}));
   for(const text of ['Needs support','High priority','Delivery complaint','Manual','Customer status','Customer priority','Resume automatic assessment'])assert.ok(html.includes(text));checks++;
   html=renderToStaticMarkup(React.createElement(ui.CustomerBadges,{insight:{stage:'ready',priority:'high',source:'automatic',reason:'Asked for payment'}}));assert.ok(html.includes('Ready to buy'));assert.ok(html.includes('bg-orange-100'));checks++;
-  assert.deepEqual(ui.workspaceNavigation.filter(item=>!['settings','help','billing'].includes(item.id)).map(item=>item.id),['home','knowledge','automations','inbox','contacts','analytics']);checks++;
+  assert.deepEqual(ui.workspaceNavigation.filter(item=>!['settings','help','billing'].includes(item.id)).map(item=>item.id),['home','automations','catalog','inbox','contacts','analytics']);checks++;
   const allTabs=ui.workspaceNavigation.flatMap(item=>item.tabs);
   for(const tab of ['contacts','crm','knowledge','catalog','lead-forms','settings','integrations','activity'])assert.ok(allTabs.includes(tab));
   assert.ok(ui.workspaceNavigation.length<15);checks++;

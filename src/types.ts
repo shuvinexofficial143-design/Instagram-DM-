@@ -76,6 +76,7 @@ export interface ActionButton {
 }
 
 export interface ActionItem {
+  catalog_id?: string;
   id: string;
   type: ActionType;
   message_text?: string;
@@ -125,6 +126,9 @@ export interface Contact {
 }
 
 export interface InboxMessage {
+  catalog_id?: string;
+  catalog_name?: string;
+  catalog_elements?: Array<{title:string;image_url:string;subtitle?:string;buttons?:Array<{url:string}>}>;
   id: string;
   from_ig_id: string;
   from_username: string;
