@@ -1,0 +1,14 @@
+import React from 'react';
+import { Package, X } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
+import { CatalogProduct, catalogCards, catalogProblem, useCatalogs } from '../../lib/catalogs';
+export function CatalogPreview({products}:{products:CatalogProduct[]}) {
+ const cards=catalogCards(products);
+ return <div><p className="mb-3 text-xs text-slate-500">Instagram carousel preview · Swipe to see images</p><div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3">{cards.map((card,i)=><article key={i} className="w-56 shrink-0 snap-start overflow-hidden rounded-2xl border border-slate-200 bg-white"><img src={card.image} alt={card.title} loading="lazy" className="aspect-square w-full object-cover"/><div className="p-3"><h3 className="text-sm font-bold text-slate-900">{card.title.slice(0,80)}</h3><p className="mt-1 text-xs text-slate-500">{card.subtitle.slice(0,80)}</p>{card.url&&<span className="mt-3 block rounded-lg bg-slate-100 py-2 text-center text-xs font-semibold">View product</span>}</div></article>)}</div></div>;
+}
+export function CatalogPicker({value,onChange,ai=false,readOnly=false}:{value:string;onChange:(id:string)=>void;ai?:boolean;readOnly?:boolean}) {
+ const {workspaceId}=useApp();const {catalogs,products}=useCatalogs(workspaceId);
+ const current=catalogs.find(c=>c.id===value);const items=products.filter(p=>(p.catalog_id||'default')===value);
+ const problem=value?catalogProblem(current,items):'';
+ return <section className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/30 p-5"><div className="flex items-center justify-between gap-3"><div><h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Package className="h-4 w-4 text-indigo-600"/>Catalog {current?'· '+current.name:''}</h3><p className="mt-1 text-xs leading-5 text-slate-500">{ai?'Allow AI to send this catalog when customers ask about products or photos.':'Send a swipeable product catalog instead of the text reply.'}</p></div>{!readOnly&&(value?<button aria-label="Remove catalog" onClick={()=>onChange('')}><X className="h-4 w-4"/></button>:<button onClick={()=>onChange(catalogs.find(c=>!catalogProblem(c,products.filter(p=>(p.catalog_id||'default')===c.id)))?.id||'default')} className="shrink-0 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white">Add catalog</button>)}</div>{value&&<div className="mt-4 space-y-4">{!readOnly&&<label className="block text-xs font-semibold text-slate-700">Catalog name<select value={value} onChange={e=>onChange(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">{!current&&<option value={value}>Unavailable catalog</option>}{catalogs.map(c=><option key={c.id} value={c.id}>{c.name}{!c.active?' (inactive)':''}</option>)}</select></label>}{problem?<p role="alert" className="text-xs text-rose-600">{problem} Open Catalogs to update it.</p>:<CatalogPreview products={items}/>}</div>}</section>;
+}

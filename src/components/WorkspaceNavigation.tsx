@@ -1,11 +1,11 @@
 import React from 'react';
-import { BarChart3, BookOpen, CreditCard, HelpCircle, Inbox, LayoutDashboard, Settings, Users, Zap, UserRound, Plug, History } from 'lucide-react';
+import { BarChart3, Package, CreditCard, HelpCircle, Inbox, LayoutDashboard, Settings, Users, Zap, UserRound, Plug, History } from 'lucide-react';
 import { ActiveTab, useApp } from '../context/AppContext';
 
 export const workspaceNavigation = [
   { id: 'home', label: 'Dashboard', icon: LayoutDashboard, tabs: ['home'] },
-  { id: 'knowledge', label: 'Business setup', icon: BookOpen, tabs: ['knowledge', 'catalog', 'lead-forms'] },
   { id: 'automations', label: 'Automations', icon: Zap, tabs: ['automations'] },
+  { id: 'catalog', label: 'Catalogs', icon: Package, tabs: ['catalog', 'knowledge', 'lead-forms'] },
   { id: 'inbox', label: 'Inbox', icon: Inbox, tabs: ['inbox'] },
   { id: 'contacts', label: 'Leads', icon: Users, tabs: ['contacts', 'crm'] },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, tabs: ['analytics'] },
@@ -16,7 +16,6 @@ export const workspaceNavigation = [
 
 const groups: Array<{title: string; items: Array<{id: ActiveTab; label: string}>}> = [
   { title: 'Leads', items: [{id:'contacts',label:'Contact list'},{id:'crm',label:'Sales pipeline'}] },
-  { title: 'Business setup', items: [{id:'knowledge',label:'Business knowledge'},{id:'catalog',label:'Products & catalogs'},{id:'lead-forms',label:'Lead forms'}] },
   { title: 'Settings', items: [{id:'settings',label:'Account'},{id:'integrations',label:'Integrations'},{id:'activity',label:'Activity logs'}] },
   { title: 'Help', items: [{id:'help',label:'Help center'},{id:'faq',label:'FAQ'},{id:'billing-help',label:'Billing help'}] },
 ];

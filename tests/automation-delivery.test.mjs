@@ -6,14 +6,14 @@ import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform(source + '\nglobalThis.helpers = { extractAutomationEvents, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage };', { loader: 'ts', format: 'esm' });
+const compiled = await transform(source + '\nglobalThis.helpers = { extractAutomationEvents, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
   actions: [{ type: 'send_dm', message_text: 'Static reply' }] });
 
 function fixture(automations = [ai], options = {}) {
-  const writes = [], apiCalls = [], aiInputs = [], claims = new Set(), history = new Map(), tasks = [];
+  const writes = [], apiCalls = [], aiInputs = [], rpcCalls = [], claims = new Set(), history = new Map(), tasks = [];
   const account = { ig_user_id: 'business', username: 'business_handle', access_token: 'test-token', own_sender_ids: options.ownSenderIds || [] };
   const admin = {
     from(table) {
@@ -48,12 +48,15 @@ function fixture(automations = [ai], options = {}) {
           if (options.inboundFails) return { data: null, error: { code: 'database' } };
           return { data: options.contacts || [] };
         }
+        if (table === 'autoreply_documents' && filters.collection === 'catalogs') { const c=(options.catalogs||[]).find(c=>c.id===filters.id);return {data:c?{id:c.id,data:c}:null}; }
+        if (table === 'autoreply_documents' && filters.collection === 'catalog_products') return {data:(options.products||[]).map(p=>({id:p.id,data:p}))};
         if (table === 'autoreply_documents') return { data: single ? null : [] };
         return { data: single ? null : [] };
       }
       return query;
     },
     async rpc(name, args) {
+      rpcCalls.push({name,args});
       if (name === 'autoreply_get_usage') {
         options.onUsageStart?.();
         if (options.usageGate) await options.usageGate;
@@ -82,9 +85,9 @@ function fixture(automations = [ai], options = {}) {
       const body = JSON.parse(init.body || '{}');
       if (String(url).includes('api.openai.com')) {
         aiInputs.push(body.messages);
-        options.onAIStart?.();
+        options.onAIStart?.(body);
         if (options.aiFails) return Response.json({ error: { message: 'AI outage' } }, { status: 503 });
-        return Response.json({ choices: [{ message: { content: 'AI: ' + body.messages.at(-1).content } }] });
+        return Response.json({ choices: [{ message: options.chooseCatalog ? {tool_calls:[{function:{name:'send_catalog',arguments:'{}'}}]} : { content: 'AI: ' + body.messages.at(-1).content } }] });
       }
       if (String(url).includes('graph.instagram.com')) {
         apiCalls.push({ url: String(url), body, signal: init.signal });
@@ -101,7 +104,7 @@ function fixture(automations = [ai], options = {}) {
   });
   vm.runInContext(compiled.code, context);
   return {
-    helpers: context.helpers, apiCalls, aiInputs, writes,
+    helpers: context.helpers, apiCalls, aiInputs, rpcCalls, writes,
     persist: (item, profile, count = true) => context.helpers.persistInboundMessage(admin, "workspace", item, profile, count),
     async post(event, secret = 'relay-secret') {
       const response = await handler(new Request('https://project.supabase.co/functions/v1/instagram-live-webhook', { method: 'POST',
@@ -431,4 +434,34 @@ test('verified own sender scopes are ignored before inbox, typing, AI and usage 
   assert.equal(f.aiInputs.length, 0);
   assert.equal(f.writes.some(w => ['contacts', 'inbox_messages'].includes(w.collection)), false);
   assert.equal((await f.post(dm('customer-after-self', 'A reply mirrored without is_echo'))).body.sent, 1);
+});
+
+const photoProducts=[{id:'watch',catalog_id:'watches',name:'Silver watch',price:'₹399',description:'Adjustable strap',url:'https://shop.example/watch',active:true,images:['https://images.example/front.jpg','https://images.example/back.jpg']}];
+const photoCatalog=[{id:'watches',name:'Watches',active:true}];
+test('normal DM sends one swipeable carousel with product photos and counts one confirmed message',async()=>{
+ const rule=staticRule('dm');rule.actions=[{type:'send_dm',catalog_id:'watches',message_text:''}];
+ const f=fixture([rule],{catalogs:photoCatalog,products:photoProducts});await f.post(dm('catalog-dm'));
+ const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,1);
+ const payload=sent[0].body.message.attachment.payload;assert.equal(payload.template_type,'generic');assert.equal(payload.elements.length,2);
+ assert.equal(payload.elements[0].title,'Silver watch');assert.equal(payload.elements[0].buttons[0].url,'https://shop.example/watch');
+ assert.ok(f.writes.some(w=>w.collection==='inbox_messages'&&w.data.catalog_id==='watches'));assert.equal(f.aiInputs.length,0);assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_increment_usage').length,1);
+});
+test('AI can select an approved catalog without a second AI request; normal questions remain text',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',ai_system_instruction:'Sell watches',catalog_id:'watches'}]};
+ for(const chooseCatalog of [true,false]){
+ const f=fixture([rule],{catalogs:photoCatalog,products:photoProducts,chooseCatalog,onAIStart:body=>assert.equal(body.tools[0].function.name,'send_catalog')});await f.post(dm('ai-catalog-'+chooseCatalog,'show product photos'));
+ const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,1);assert.equal(f.aiInputs.length,1);
+ assert.equal(Boolean(sent[0].body.message.attachment),chooseCatalog);assert.ok(f.apiCalls.some(c=>c.body.sender_action==='typing_off'));
+ }
+});
+test('missing, inactive, image-free and oversized catalogs cannot be sent',async()=>{
+ const rule=staticRule('dm');rule.actions=[{type:'send_dm',catalog_id:'watches'}];
+ for(const options of [{catalogs:[],products:photoProducts},{catalogs:[{...photoCatalog[0],active:false}],products:photoProducts},{catalogs:photoCatalog,products:[{...photoProducts[0],images:[]}]},{catalogs:photoCatalog,products:[{...photoProducts[0],images:Array.from({length:11},(_,i)=>'https://images.example/'+i+'.jpg')}]},{catalogs:photoCatalog,products:[{...photoProducts[0],images:['http://unsafe.example/image.jpg']}]}]){
+ const f=fixture([rule],options);await f.post(dm());assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
+ }
+});
+test('failed catalog delivery cannot create a sent catalog in the inbox',async()=>{
+ const rule=staticRule('dm');rule.actions=[{type:'send_dm',catalog_id:'watches'}];
+ const f=fixture([rule],{catalogs:photoCatalog,products:photoProducts,sendFails:true});await f.post(dm());
+ assert.ok(!f.writes.some(w=>w.collection==='inbox_messages'&&w.data.direction==='out'));
 });
