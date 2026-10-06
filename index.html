@@ -11,16 +11,17 @@
     <meta name="twitter:card" content="summary_large_image" />
     <style>
       html,body{margin:0;background:#f7f9fd;font-family:Arial,sans-serif}
-      #boot-screen{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;min-height:100dvh;background:radial-gradient(ellipse at 25% 25%,#ede4fb,transparent 65%),radial-gradient(ellipse at 80% 75%,#e1f5ee,transparent 65%),#f7f9fd;color:#0f172a;text-align:center}
-      .boot-logo{display:grid;place-items:center;margin:0 auto 28px;width:80px;height:80px;border-radius:26px;background:linear-gradient(140deg,#8b5cf6,#5533dc);color:white;font-size:48px;box-shadow:0 18px 48px #7c3aed30;animation:boot-float 2s ease-in-out infinite}
-      #boot-screen strong{font-size:30px;letter-spacing:-1px}#boot-screen p{color:#64748b;font-size:14px;margin:12px 24px 24px}
-      .boot-track{width:200px;height:5px;background:#e4def4;border-radius:20px;margin:auto;overflow:hidden}.boot-track span{display:block;width:45%;height:100%;background:linear-gradient(90deg,#8b5cf6,#10c981);border-radius:20px;animation:boot-progress 1.5s ease-in-out infinite}
-      @keyframes boot-float{50%{transform:translateY(-5px)}}@keyframes boot-progress{from{transform:translateX(-100%)}to{transform:translateX(325%)}}
-      @media(prefers-reduced-motion:reduce){.boot-logo,.boot-track span{animation:none}}
+      #boot-screen{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;min-height:100dvh;padding:24px;box-sizing:border-box;background:radial-gradient(ellipse at 25% 25%,rgba(124,58,237,.14),transparent 65%),radial-gradient(ellipse at 80% 75%,rgba(16,185,129,.12),transparent 65%),linear-gradient(180deg,#fbfcff,#f7f9fd);color:#0f172a;text-align:center}
+      .boot-content{width:min(580px,100%);display:flex;flex-direction:column;align-items:center}.boot-mark{width:126px;height:126px;display:grid;place-items:center;margin-bottom:24px}.boot-logo{display:grid;place-items:center;width:68px;height:68px;border-radius:22px;background:linear-gradient(145deg,#6d28d9,#7c3aed 48%,#5b21b6);color:white;box-shadow:0 20px 45px #5b21b633}.boot-logo svg{width:31px;height:31px}
+      #boot-screen strong{font-size:28px;line-height:1.1;font-weight:760;letter-spacing:-.9px}#boot-screen p{color:#64748b;font-size:14px;line-height:1.55;margin:9px 0 0;font-weight:500}
+      .boot-track{width:min(250px,72vw);height:4px;background:#e9edf4;border-radius:20px;margin-top:27px;overflow:hidden}.boot-track span{display:block;width:44%;height:100%;background:linear-gradient(90deg,#7c3aed,#8b5cf6 48%,#34d399);border-radius:20px;animation:boot-progress 1.8s linear infinite;will-change:transform}.boot-status{min-height:22px;margin-top:13px;color:#94a3b8;font-size:12px;font-weight:600;line-height:1.4;display:flex;align-items:center;gap:8px}.boot-status span{letter-spacing:2px}
+      @keyframes boot-progress{from{transform:translate3d(-110%,0,0)}to{transform:translate3d(340%,0,0)}}
+      @media(max-width:480px){.boot-mark{width:112px;height:112px;margin-bottom:21px}.boot-logo{width:62px;height:62px;border-radius:20px}.boot-logo svg{width:28px;height:28px}#boot-screen strong{font-size:25px}#boot-screen p{max-width:310px;font-size:13px}}
+      @media(prefers-reduced-motion:reduce){.boot-track span{animation:none}}
     </style>
   </head>
   <body>
-    <div id="boot-screen" role="status" aria-label="Auto Replies is loading"><div><div class="boot-logo" aria-hidden="true">ϟ</div><strong>Auto Replies</strong><p>Smart Instagram conversations, ready in a moment.</p><div class="boot-track" aria-hidden="true"><span></span></div></div></div>
+    <div id="boot-screen" role="status" aria-label="Auto Replies is loading"><div class="boot-content"><div class="boot-mark"><div class="boot-logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-3 8H4l7 12 3-8h6L13 2Z"/></svg></div></div><strong>Auto Replies</strong><p>Smart Instagram conversations, ready in a moment.</p><div class="boot-track" aria-hidden="true"><span></span></div><div class="boot-status"><span aria-hidden="true">···</span>Preparing your workspace</div></div></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

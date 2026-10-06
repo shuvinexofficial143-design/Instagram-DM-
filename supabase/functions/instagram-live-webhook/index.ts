@@ -695,7 +695,8 @@ async function persistInboundMessage(
   admin: any,
   workspaceId: string,
   item: any,
-  profile: { username: string; avatar_url: string }
+  profile: { username: string; avatar_url: string },
+  countInteraction = true
 ) {
   const nowIso = new Date(
     Number.isFinite(item?.timestamp) ? item.timestamp : Date.now()
@@ -723,9 +724,9 @@ async function persistInboundMessage(
     first_interaction_at: existing?.first_interaction_at || nowIso,
     last_interaction_at: nowIso,
     interactions: {
-      comments: Number(interactions?.comments || 0) + (item.triggerType === "comment" ? 1 : 0),
-      dms: Number(interactions?.dms || 0) + (item.triggerType === "dm" ? 1 : 0),
-      stories: Number(interactions?.stories || 0) + (item.triggerType === "story_reply" ? 1 : 0),
+      comments: Number(interactions?.comments || 0) + (countInteraction && item.triggerType === "comment" ? 1 : 0),
+      dms: Number(interactions?.dms || 0) + (countInteraction && item.triggerType === "dm" ? 1 : 0),
+      stories: Number(interactions?.stories || 0) + (countInteraction && item.triggerType === "story_reply" ? 1 : 0),
     },
     tags: Array.isArray(existing?.tags) ? existing.tags : [],
     status: existing?.status || "lead",
@@ -772,6 +773,7 @@ async function persistInboundMessage(
   }
   if (inboxResult.error) {
     console.error("[LIVE_DM_INBOX_IN_SAVE_FAILED]", inboxResult.error);
+    throw new Error("Could not save incoming message");
   }
 
   return { contact, inbox, messageId };
@@ -1472,14 +1474,26 @@ Deno.serve(async (req: Request) => {
       continue;
     }
 
+    // Receiving a message is independent of reply rules, quota and Send API success.
+    // Persist before every automation eligibility branch, without charging usage.
+    try {
+      await persistInboundMessage(admin, workspaceId, item, { username: item.senderId, avatar_url: "" });
+    } catch {
+      results.push({ messageId: item.messageId, ok: false, reason: "inbox_save_failed" });
+      continue;
+    }
+    runInBackground((async () => {
+      const profile = await getSenderProfile(item.senderId, accessToken);
+      await persistInboundMessage(admin, workspaceId, item, profile, false);
+    })());
+
     // The service-only RPC returns a single fresh snapshot. No additional
     // network reads stand between the durable claim and starting typing/AI.
     const eligibilityMs = 0, rulesMs = 0, quotaMs = 0;
     const automation = matchAutomation(context.automations || [], item);
     context.automation = automation;
 
-    // Profile/contact/inbox work is intentionally deferred until after the
-    // Instagram Send API call so it cannot slow the visible reply.
+    // Reply execution starts only after the incoming message is safely recorded.
 
 
 
@@ -1712,12 +1726,6 @@ Instagram DM style rules:
           }
 
           await Promise.all([
-            persistInboundMessage(
-              admin,
-              workspaceId,
-              item,
-              senderProfile
-            ),
             persistOutboundMessage(
               admin,
               workspaceId,

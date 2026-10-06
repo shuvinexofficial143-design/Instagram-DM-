@@ -328,3 +328,20 @@ test('long replies refresh typing and stopping cancels the scheduled refresh', a
   await session.stop();
   assert.equal(timers.size,0);assert.deepEqual(calls,['typing_on','typing_on','typing_off']);
 });
+
+
+test('inbox receives messages with every automation off and no usage or typing', async () => {
+  const f = fixture([{ ...ai, status: 'paused' }]);
+  const r = await f.post(dm('paused-inbound'));
+  assert.equal(r.body.sent, 0);
+  assert.ok(f.writes.some(row => row.collection === 'inbox_messages' && row.id === 'paused-inbound' && row.data.direction === 'in'));
+  assert.equal(f.apiCalls.filter(call => call.body?.sender_action || call.body?.message).length, 0);
+  assert.equal(f.writes.filter(row => row.collection === 'inbox_messages' && row.data.direction === 'out').length, 0);
+});
+test('inbox receives messages when quota is exhausted or a keyword does not match', async () => {
+  for (const f of [fixture([ai], {quotaUsed:1500}), fixture([staticRule('dm',{all_or_keywords:'keywords',keywords:['buy']})])]) {
+    const r = await f.post(dm('unreplied-inbound','hello'));
+    assert.equal(r.body.sent,0);
+    assert.ok(f.writes.some(row => row.collection === 'inbox_messages' && row.id === 'unreplied-inbound'));
+  }
+});
