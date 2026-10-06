@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto';
-import { authenticatedUser, cleanEnvironment, normalizeAppUrl, UpstreamError } from '../../src/server/supabaseConfig.js';
+import { authenticatedUser, authenticatedWorkspace, cleanEnvironment, normalizeAppUrl, UpstreamError } from '../../src/server/supabaseConfig.js';
 
 const PROD_ORIGIN = normalizeAppUrl(process.env.APP_URL || 'https://autoreplys.vercel.app');
 const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
@@ -67,13 +67,13 @@ function getOrCreateWorkspaceId(req: any, res: any): string {
   return workspaceId;
 }
 
-function createState(workspaceId: string, secret: string): string {
+function createState(workspaceId: string, secret: string, ownerId = ''): string {
   const ts = Date.now();
   const sig = createHmac('sha256', secret)
-    .update(`${workspaceId}:${ts}`)
+    .update(ownerId ? `${workspaceId}:${ownerId}:${ts}` : `${workspaceId}:${ts}`)
     .digest('hex');
 
-  return JSON.stringify({ workspaceId, ts, sig });
+  return JSON.stringify({ workspaceId, ownerId, ts, sig });
 }
 
 export default async function handler(req: any, res: any) {
@@ -121,9 +121,13 @@ export default async function handler(req: any, res: any) {
     if (req.headers?.authorization && !authenticatedUid) {
       return res.status(401).json({ ok: false, code: "SESSION_EXPIRED", error: "Your login session expired. Sign in again before connecting Instagram." });
     }
-    const workspaceId = authenticatedUid || getOrCreateWorkspaceId(req, res);
+    let workspaceId = authenticatedUid || getOrCreateWorkspaceId(req,res);
+    if (authenticatedUid && req.query?.intent === 'add') workspaceId = randomUUID();
+    else if (authenticatedUid && (req.headers?.['x-autoreply-workspace'] || String(req.headers?.cookie || '').includes('autoreply_active_workspace=')))
+      workspaceId = (await authenticatedWorkspace(req))?.id || authenticatedUid;
+
     const redirectUri = getRedirectUri(req);
-    const state = createState(workspaceId, stateSecret);
+    const state = createState(workspaceId, stateSecret, authenticatedUid);
 
     const scopes = [
       'instagram_business_basic',
@@ -147,7 +151,7 @@ export default async function handler(req: any, res: any) {
     });
   } catch (error: any) {
     console.error('[INSTAGRAM_OAUTH_START_FAILED]', error);
-    return res.status(error instanceof UpstreamError ? 503 : 500).json({
+    return res.status(error?.status || (error instanceof UpstreamError ? 503 : 500)).json({
       ok: false,
       code: error instanceof UpstreamError ? 'AUTH_SERVICE_UNAVAILABLE' : 'OAUTH_START_FAILED',
       error: error?.message || String(error) || 'Instagram OAuth could not start.',

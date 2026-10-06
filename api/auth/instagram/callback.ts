@@ -83,6 +83,8 @@ function verifyOAuthState(rawState: unknown): string {
   }
 
   const workspaceId = String(parsed?.workspaceId || '');
+  const ownerId = String(parsed?.ownerId || '');
+  if (ownerId && !isWorkspaceId(ownerId)) return '';
   const ts = Number(parsed?.ts || 0);
   const sig = String(parsed?.sig || '');
 
@@ -90,7 +92,7 @@ function verifyOAuthState(rawState: unknown): string {
   if (Math.abs(Date.now() - ts) > 15 * 60 * 1000) return '';
 
   const expected = createHmac('sha256', OAUTH_STATE_SECRET)
-    .update(`${workspaceId}:${ts}`)
+    .update(ownerId ? `${workspaceId}:${ownerId}:${ts}` : `${workspaceId}:${ts}`)
     .digest('hex');
 
   try {
@@ -138,15 +140,17 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000)
 
 async function persistInstagramAccount(
   workspaceId: string,
-  account: StoredInstagramAccount
-): Promise<void> {
+  account: StoredInstagramAccount,
+  ownerId = ''
+): Promise<string> {
   const response = await fetchWithTimeout(
     `${SUPABASE_URL}/functions/v1/instagram-account-store`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Autoreply-OAuth-Secret': META_APP_SECRET },
       body: JSON.stringify({
         action: 'save',
+        ownerId,
         workspaceId,
         accessToken: account.access_token,
       }),
@@ -168,6 +172,7 @@ async function persistInstagramAccount(
         `Instagram account storage failed (HTTP ${response.status})`
     );
   }
+  return String(payload.workspaceId || workspaceId);
 }
 async function subscribeInstagramApp(igUserId: string, accessToken: string): Promise<void> {
   const token = sanitizeAccessToken(accessToken);
@@ -374,7 +379,9 @@ export default async function handler(req: any, res: any) {
     };
 
     try {
-      await persistInstagramAccount(workspaceId, account);
+      const parsedState = JSON.parse(typeof state === 'string' ? state : '{}');
+      const savedWorkspace = await persistInstagramAccount(workspaceId, account, String(parsedState.ownerId || ''));
+      if (parsedState.ownerId) res.setHeader('Set-Cookie',`autoreply_active_workspace=${encodeURIComponent(savedWorkspace)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`);
     } catch (err: any) {
       console.error('[INSTAGRAM_PERSIST_FAILED]', err);
       return renderError(
@@ -425,7 +432,7 @@ export default async function handler(req: any, res: any) {
         }
       } catch (e) {}
       setTimeout(function () {
-        window.location.replace('/?tab=settings&status=ig_connected');
+        window.location.replace('/settings?status=ig_connected');
       }, 1200);
     })();
   </script>

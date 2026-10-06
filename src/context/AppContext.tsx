@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, startTransition } from 'react';
+import { normalizeActivityLog } from '../lib/activityLogs';
 import {
   UserProfile,
   InstagramAccount,
@@ -64,6 +65,14 @@ interface AppContextType {
   logout: () => Promise<void>;
   
   instagramAccount: InstagramAccount | null;
+  instagramAccounts: {workspaceId:string;account:InstagramAccount}[];
+  workspaceId: string;
+  accountSwitching: boolean;
+  accountError: string;
+  refreshInstagramAccounts: (followCookie?:boolean) => Promise<void>;
+  switchInstagramAccount: (id:string) => Promise<void>;
+  startInstagramConnection: (mode?:'add'|'reconnect') => void;
+  instagramConnectMode: 'add'|'reconnect';
   automations: Automation[];
   contacts: Contact[];
   inboxMessages: InboxMessage[];
@@ -223,22 +232,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     created_at: new Date().toISOString(),
   });
 
-  const [instagramAccount, setInstagramAccountState] = useState<InstagramAccount | null>(() => {
-    try {
-      const activeUid = auth?.currentUser?.uid;
-      if (activeUid) {
-        const saved = localStorage.getItem(`autoreply_connected_instagram_account_${activeUid}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed && parsed.username) {
-            const { access_token: _legacyToken, ...safeParsed } = parsed;
-            return safeParsed as InstagramAccount;
-          }
-        }
-      }
-    } catch {}
-    return null;
-  });
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [instagramAccounts, setInstagramAccounts] = useState<{workspaceId:string;account:InstagramAccount}[]>([]);
+  const [accountSwitching,setAccountSwitching] = useState(false);
+  const [accountError,setAccountError] = useState('');
+  const [instagramConnectMode,setInstagramConnectMode] = useState<'add'|'reconnect'>('reconnect');
+  const [instagramAccount, setInstagramAccountState] = useState<InstagramAccount | null>(null);
 
   const setInstagramAccount = (acc: InstagramAccount | null) => {
     const clientSafeAccount = (() => {
@@ -249,7 +248,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setInstagramAccountState(clientSafeAccount);
     try {
-      const activeUid = firebaseUser?.uid || auth?.currentUser?.uid;
+      const activeUid = workspaceId || firebaseUser?.uid || auth?.currentUser?.uid;
       if (activeUid) {
         if (clientSafeAccount && clientSafeAccount.username) {
           localStorage.setItem(
@@ -455,7 +454,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    const uid = firebaseUser?.uid;
+    const uid = workspaceId || firebaseUser?.uid;
+    if (firebaseUser?.uid && !workspaceId) {setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);return;}
     if (!uid) {
       // Guest workspaces use the same secure HttpOnly cookie as Instagram OAuth.
       // Poll the server-side workspace feed so live webhook DMs appear in Inbox
@@ -589,7 +589,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Immediately reset collection state for this session
     setAutomations([]);
     setContacts([]);
-    setInboxMessages([]);
+    setInboxMessages([]);setLogs([]);setPausedAiUsers([]);
     const loadAutomationsFromServer = async () => {
       try {
         const token = await auth.currentUser?.getIdToken().catch(() => '');
@@ -597,7 +597,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           method: 'GET',
           credentials: 'same-origin',
           cache: 'no-store',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: token ? { Authorization: `Bearer ${token}`, 'X-Autoreply-Workspace':uid } : {},
         });
         const payload = await response.json().catch(() => null);
         if (!response.ok || !payload?.ok) {
@@ -659,7 +659,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const token = await auth.currentUser?.getIdToken();
             if (!token) return;
             const result = await fetch('/api/instagram/refresh-contacts', { method: 'POST',
-              credentials: 'same-origin', headers: { Authorization: `Bearer ${token}` } });
+              credentials: 'same-origin', headers: { Authorization: `Bearer ${token}`, 'X-Autoreply-Workspace':uid } });
             if (!result.ok) console.warn('[IG_CONTACT_PROFILE_REFRESH_WARN]', result.status);
           })().catch((error) => console.warn('[IG_CONTACT_PROFILE_REFRESH_WARN]', error?.message));
         }
@@ -689,10 +689,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    const unsubscribeLogs = subscribeToUserCollection<WebhookLogEvent>(uid, 'webhook_logs', (data) => {
-      const items = Array.isArray(data) ? [...data] : [];
-      setLogs(items.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
-    });
+    let legacyLogs: WebhookLogEvent[] = [], liveLogs: WebhookLogEvent[] = [];
+    const refreshLogs = () => setLogs([...liveLogs, ...legacyLogs].sort((a,b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)));
+    const unsubscribeLogs = subscribeToUserCollection<WebhookLogEvent>(uid, 'webhook_logs', (data) => { legacyLogs = (data || []).map(normalizeActivityLog); refreshLogs(); });
+    const unsubscribeEvents = subscribeToUserCollection<WebhookLogEvent>(uid, 'webhook_events', (data) => { liveLogs = (data || []).map(row=>normalizeActivityLog({...row,id:'event:'+row.id})); refreshLogs(); });
 
     const unsubscribeAccount = subscribeToUserCollection<InstagramAccount>(uid, 'instagram_account', (data) => {
       if (data && data.length > 0 && data[0]?.username) {
@@ -708,9 +708,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribeContacts();
       unsubscribeInbox();
       unsubscribeLogs();
+      unsubscribeEvents();
       unsubscribeAccount();
     };
-  }, [firebaseUser?.uid, isSupabaseInitialized]);
+  }, [firebaseUser?.uid, workspaceId, isSupabaseInitialized]);
 
   // AI Human Takeover state
   const isAiPausedForUser = (username: string): boolean => {
@@ -749,8 +750,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 3. Handle OAuth callback parameters, window postMessage events, and initial account load.
   // When there is no app login, the backend uses a secure HttpOnly guest-workspace cookie.
   useEffect(() => {
-    const uid = firebaseUser?.uid;
+    const uid = workspaceId || firebaseUser?.uid;
 
+    if (firebaseUser?.uid && !workspaceId) {setInstagramAccountState(null);return;}
+    let cancelled = false;
     const fetchAccountData = async () => {
       if (!uid) {
         setInstagramAccountState(null);
@@ -763,6 +766,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const saved = await import('../lib/supabase').then(({ getUserDocument }) =>
           getUserDocument<InstagramAccount>(uid, 'instagram_account', 'primary')
         );
+        if (cancelled) return;
         if (saved?.username) {
           const { access_token: _serverOnlyToken, ...safeAccount } = saved as any;
           setInstagramAccountState(safeAccount as InstagramAccount);
@@ -770,6 +774,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setInstagramAccountState(null);
         }
       } catch (err) {
+        if (cancelled) return;
         console.warn('[FETCH_USER_IG_ACCOUNT_ERR]', err);
         setInstagramAccountState(null);
       }
@@ -797,8 +802,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [firebaseUser?.uid]);
+    return () => {cancelled=true;window.removeEventListener('message', handleMessage);};
+  }, [firebaseUser?.uid, workspaceId]);
+
+  const refreshInstagramAccounts = async (followCookie=false) => {
+    if (!firebaseUser?.uid) return;
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/instagram/account', {credentials:'same-origin',cache:'no-store',headers:{Authorization:`Bearer ${token}`,...(!followCookie && workspaceId ? {'X-Autoreply-Workspace':workspaceId} : {})}});
+      const payload = await response.json();
+      if (auth.currentUser?.uid !== firebaseUser?.uid) return;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Could not load Instagram accounts.');
+      setInstagramAccounts(payload.accounts || []);
+      const target = payload.activeWorkspaceId || firebaseUser.uid;
+      if (target !== (workspaceId || firebaseUser.uid)) {setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);setPausedAiUsers([]);setInstagramAccountState(null);setEditingAutomation(null);setIsBuilderOpen(false);}
+      setWorkspaceId(target); setIsConnectModalOpen(false); setInstagramConnectMode('reconnect');
+      setAccountError('');
+    } catch(error:any) {setAccountError(error?.message || 'Could not load Instagram accounts.');}
+  };
+  const switchInstagramAccount = async (id:string) => {
+    if (accountSwitching || id === (workspaceId || firebaseUser?.uid)) return;
+    setAccountSwitching(true); setAccountError('');
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/instagram/account', {method:'POST',credentials:'same-origin',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({workspaceId:id})});
+      const payload = await response.json();
+      if (auth.currentUser?.uid !== firebaseUser?.uid) return;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Could not switch Instagram account.');
+      setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);setPausedAiUsers([]);setInstagramAccountState(null);setEditingAutomation(null);setIsBuilderOpen(false);
+      setWorkspaceId(payload.activeWorkspaceId);setInstagramAccounts(payload.accounts || []);
+    } catch(error:any) {setAccountError(error?.message || 'Could not switch Instagram account.');}
+    finally {setAccountSwitching(false);}
+  };
+  const startInstagramConnection = (mode:'add'|'reconnect'='reconnect') => {setInstagramConnectMode(mode);setIsConnectModalOpen(true);};
+  useEffect(()=>{
+    setWorkspaceId('');setInstagramAccounts([]);
+    if (!firebaseUser?.uid) return;
+    void refreshInstagramAccounts();
+    const onConnected = (event:MessageEvent)=>{if(event.origin===window.location.origin && (event.data==='ig_connected'||event.data?.type==='ig_connected'))void refreshInstagramAccounts(true);};
+    window.addEventListener('message',onConnected);
+    return ()=>window.removeEventListener('message',onConnected);
+  },[firebaseUser?.uid]);
+
+  useEffect(()=>{if (!isConnectModalOpen) setInstagramConnectMode('reconnect');},[isConnectModalOpen]);
+  useEffect(()=>{
+    if (!firebaseUser?.uid || workspaceId || !accountError) return;
+    const timer=window.setInterval(()=>void refreshInstagramAccounts(),15000);
+    return ()=>window.clearInterval(timer);
+  },[firebaseUser?.uid,workspaceId,accountError]);
 
   // Logout Handler
   const logout = async () => {
@@ -832,7 +883,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // guarantees the same validation/cache-sync path used by the live webhook engine.
   const automationAuthHeaders = async () => {
     const token = await auth.currentUser?.getIdToken().catch(() => '');
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    return token ? { Authorization: `Bearer ${token}`, 'X-Autoreply-Workspace':workspaceId || firebaseUser?.uid || '' } : {};
   };
 
   const automationRequest = async (
@@ -1085,7 +1136,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Simulator & Webhook Engine implementation
   const simulateWebhookEvent = async (triggerType: TriggerType, username: string, incomingText: string): Promise<WebhookLogEvent> => {
-    const uid = firebaseUser?.uid;
+    const uid = workspaceId || firebaseUser?.uid;
     const cleanUser = username.replace(/^@/, '').toLowerCase();
     const upperText = incomingText.toUpperCase();
     const nowIso = new Date().toISOString();
@@ -1101,7 +1152,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         timestamp: nowIso,
       };
       setInboxMessages((prev) => [newInMsg, ...prev]);
-      if (firebaseUser?.uid) saveUserDocument(firebaseUser.uid, 'inbox_messages', newInMsg);
+      if (firebaseUser?.uid) saveUserDocument(workspaceId || firebaseUser.uid, 'inbox_messages', newInMsg);
 
       const logEntry: WebhookLogEvent = {
         id: `log_${Date.now()}`,
@@ -1113,7 +1164,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         response_sent: `AI Auto-Response stopped (Human Interference / Takeover Active for @${cleanUser}).`,
       };
       setLogs((prev) => [logEntry, ...prev]);
-      if (firebaseUser?.uid) saveUserDocument(firebaseUser.uid, 'webhook_logs', logEntry);
+      if (firebaseUser?.uid) saveUserDocument(workspaceId || firebaseUser.uid, 'webhook_logs', logEntry);
       return logEntry;
     }
 
@@ -1138,7 +1189,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         response_sent: 'No active automation keywords matched.',
       };
       setLogs((prev) => [logEntry, ...prev]);
-      if (firebaseUser?.uid) saveUserDocument(firebaseUser.uid, 'webhook_logs', logEntry);
+      if (firebaseUser?.uid) saveUserDocument(workspaceId || firebaseUser.uid, 'webhook_logs', logEntry);
       return logEntry;
     }
 
@@ -1221,7 +1272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       is_test: true,
     };
 
-    const userUid = uid || firebaseUser?.uid;
+    const userUid = uid || workspaceId || firebaseUser?.uid;
     if (userUid) {
       saveUserDocument(userUid, 'inbox_messages', inMsg);
       saveUserDocument(userUid, 'inbox_messages', outMsg);
@@ -1301,7 +1352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const sendManualReply = async (fromUsername: string, text: string) => {
     if (!text.trim()) return;
-    const uid = firebaseUser?.uid;
+    const uid = workspaceId || firebaseUser?.uid;
     if (!uid) return;
     const cleanUser = fromUsername.replace(/^@/, '').toLowerCase();
     const nowIso = new Date().toISOString();
@@ -1359,7 +1410,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const clean = String(username || '').replace(/^@/, '').toLowerCase();
     if (!clean) return;
     const now = new Date().toISOString();
-    const uid = firebaseUser?.uid;
+    const uid = workspaceId || firebaseUser?.uid;
     const affected = inboxMessages.filter(
       (m) =>
         m.direction === 'in' &&
@@ -1392,7 +1443,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Contacts & Inbox Deletion (Scoped strictly by user UID)
   const deleteContact = async (contactId: string, username?: string) => {
     if (!contactId && !username) return;
-    const uid = firebaseUser?.uid;
+    const uid = workspaceId || firebaseUser?.uid;
     if (!uid) return;
 
     await removeUserDocument(uid, 'contacts', contactId);
@@ -1426,7 +1477,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteContactsBulk = async (contactIds: string[], usernames: string[] = []) => {
     if (!contactIds || contactIds.length === 0) return;
-    const uid = firebaseUser?.uid;
+    const uid = workspaceId || firebaseUser?.uid;
     if (!uid) return;
 
     for (const cid of contactIds) {
@@ -1465,7 +1516,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteInboxThread = async (username: string) => {
     if (!username) return;
-    const uid = firebaseUser?.uid;
+    const uid = workspaceId || firebaseUser?.uid;
     if (!uid) return;
     const cleanUname = username.toLowerCase();
 
@@ -1493,7 +1544,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteInboxThreadsBulk = async (usernames: string[]) => {
     if (!usernames || usernames.length === 0) return;
-    const uid = firebaseUser?.uid;
+    const uid = workspaceId || firebaseUser?.uid;
     if (!uid) return;
     const targets = new Set(usernames.map((u) => u.toLowerCase()));
 
@@ -1520,11 +1571,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const reauthorizeChannel = () => {
-    setIsConnectModalOpen(true);
+    startInstagramConnection('reconnect');
   };
 
   const disconnectChannel = async () => {
-    const uid = firebaseUser?.uid || user?.id || '';
+    const uid = workspaceId || firebaseUser?.uid || user?.id || '';
     setInstagramAccount(null);
     try {
       localStorage.removeItem('autoreply_connected_instagram_account');
@@ -1539,13 +1590,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await fetch('/api/instagram/account', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await automationAuthHeaders()) },
         credentials: 'same-origin',
         body: JSON.stringify({ account: null }),
       });
     } catch (err) {
       console.warn('[DISCONNECT_CHANNEL_ERR]', err);
     }
+    await refreshInstagramAccounts();
   };
 
   const connectChannel = async (_accountInput: Partial<InstagramAccount> | string) => {
@@ -1588,6 +1640,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsGuestMode,
         logout,
         instagramAccount,
+        instagramAccounts, workspaceId:workspaceId || firebaseUser?.uid || '', accountSwitching, accountError,
+        refreshInstagramAccounts, switchInstagramAccount, startInstagramConnection, instagramConnectMode,
         automations,
         contacts,
         inboxMessages,

@@ -8,7 +8,7 @@ type Product={id:string;catalog_id?:string;name:string;price:string;description:
 const DEFAULT_ID='default';
 
 export const CatalogPage:React.FC=()=>{
- const{setActiveTab,setIsBuilderOpen}=useApp();
+ const{setActiveTab,setIsBuilderOpen,workspaceId}=useApp();
  const[catalogs,setCatalogs]=useState<Catalog[]>([]);
  const[products,setProducts]=useState<Product[]>([]);
  const[selected,setSelected]=useState(DEFAULT_ID);
@@ -18,16 +18,16 @@ export const CatalogPage:React.FC=()=>{
  const[draft,setDraft]=useState<Omit<Product,'id'>>({catalog_id:DEFAULT_ID,name:'',price:'',description:'',url:'',active:true});
  const[saving,setSaving]=useState(false);
 
- useEffect(()=>{const uid=auth.currentUser?.uid;if(!uid)return;const a=subscribeToUserCollection<Catalog>(uid,'catalogs',setCatalogs);const b=subscribeToUserCollection<Product>(uid,'catalog_products',setProducts);return()=>{a?.();b?.()}},[]);
+ useEffect(()=>{setCatalogs([]);setProducts([]);setSelected(DEFAULT_ID);setDraft({catalog_id:DEFAULT_ID,name:'',price:'',description:'',url:'',active:true});const uid=workspaceId||auth.currentUser?.uid;if(!uid)return;const a=subscribeToUserCollection<Catalog>(uid,'catalogs',setCatalogs);const b=subscribeToUserCollection<Product>(uid,'catalog_products',setProducts);return()=>{a?.();b?.()}},[workspaceId]);
  const allCatalogs=useMemo(()=>[{id:DEFAULT_ID,name:'Main Catalog',description:'Your default product collection',active:true} as Catalog,...catalogs.filter(x=>x.id!==DEFAULT_ID)],[catalogs]);
  const current=allCatalogs.find(x=>x.id===selected)||allCatalogs[0];
  const visible=products.filter(p=>(p.catalog_id||DEFAULT_ID)===selected);
 
- const createCatalog=async()=>{const uid=auth.currentUser?.uid;const name=catalogName.trim();if(!uid||!name)return;const item={id:'catalog_'+Date.now(),name,description:catalogDesc.trim(),active:true,updated_at:new Date().toISOString()};await saveUserDocument(uid,'catalogs',item);setSelected(item.id);setDraft(p=>({...p,catalog_id:item.id}));setCatalogName('');setCatalogDesc('');setNewCatalog(false)};
- const addProduct=async()=>{const uid=auth.currentUser?.uid;if(!uid||!draft.name.trim())return;setSaving(true);try{await saveUserDocument(uid,'catalog_products',{id:'product_'+Date.now(),...draft,catalog_id:selected,name:draft.name.trim(),updated_at:new Date().toISOString()});setDraft({catalog_id:selected,name:'',price:'',description:'',url:'',active:true})}finally{setSaving(false)}};
- const saveProduct=async(p:Product)=>{const uid=auth.currentUser?.uid;if(uid)await saveUserDocument(uid,'catalog_products',{...p,catalog_id:p.catalog_id||DEFAULT_ID,updated_at:new Date().toISOString()})};
- const removeProduct=async(p:Product)=>{const uid=auth.currentUser?.uid;if(uid&&window.confirm('Delete '+p.name+'?'))await removeUserDocument(uid,'catalog_products',p.id)};
- const deleteCatalog=async()=>{const uid=auth.currentUser?.uid;if(!uid||selected===DEFAULT_ID)return;if(!window.confirm('Delete this catalog? Products inside it will also be deleted.'))return;for(const p of visible)await removeUserDocument(uid,'catalog_products',p.id);await removeUserDocument(uid,'catalogs',selected);setSelected(DEFAULT_ID);setDraft(d=>({...d,catalog_id:DEFAULT_ID}))};
+ const createCatalog=async()=>{const uid=workspaceId||auth.currentUser?.uid;const name=catalogName.trim();if(!uid||!name)return;const item={id:'catalog_'+Date.now(),name,description:catalogDesc.trim(),active:true,updated_at:new Date().toISOString()};await saveUserDocument(uid,'catalogs',item);setSelected(item.id);setDraft(p=>({...p,catalog_id:item.id}));setCatalogName('');setCatalogDesc('');setNewCatalog(false)};
+ const addProduct=async()=>{const uid=workspaceId||auth.currentUser?.uid;if(!uid||!draft.name.trim())return;setSaving(true);try{await saveUserDocument(uid,'catalog_products',{id:'product_'+Date.now(),...draft,catalog_id:selected,name:draft.name.trim(),updated_at:new Date().toISOString()});setDraft({catalog_id:selected,name:'',price:'',description:'',url:'',active:true})}finally{setSaving(false)}};
+ const saveProduct=async(p:Product)=>{const uid=workspaceId||auth.currentUser?.uid;if(uid)await saveUserDocument(uid,'catalog_products',{...p,catalog_id:p.catalog_id||DEFAULT_ID,updated_at:new Date().toISOString()})};
+ const removeProduct=async(p:Product)=>{const uid=workspaceId||auth.currentUser?.uid;if(uid&&window.confirm('Delete '+p.name+'?'))await removeUserDocument(uid,'catalog_products',p.id)};
+ const deleteCatalog=async()=>{const uid=workspaceId||auth.currentUser?.uid;if(!uid||selected===DEFAULT_ID)return;if(!window.confirm('Delete this catalog? Products inside it will also be deleted.'))return;for(const p of visible)await removeUserDocument(uid,'catalog_products',p.id);await removeUserDocument(uid,'catalogs',selected);setSelected(DEFAULT_ID);setDraft(d=>({...d,catalog_id:DEFAULT_ID}))};
  const useInAi=()=>{const lines=visible.filter(p=>p.active).map(p=>'- '+p.name+(p.price?' | Price: '+p.price:'')+(p.description?' | '+p.description:'')+(p.url?' | Link: '+p.url:''));sessionStorage.setItem('autoreply:prefill-ai-prompt','# PRODUCT CATALOG: '+current.name+'\n'+(lines.join('\n')||'No active products.')+'\n\nOnly recommend products from this catalog. Never invent price, stock or links.');setActiveTab('automations');setIsBuilderOpen(true)};
 
  return <div className="min-h-full bg-[#F7FAFF] px-4 py-6 sm:px-6 lg:px-8"><div className="mx-auto max-w-6xl space-y-6">

@@ -41,3 +41,13 @@ export function automationSummary(auto: Automation) {
   });
   return { isAi, channel, trigger, scope, reply, actionLabels, buttons: dm?.buttons || [] };
 }
+
+export function uniqueAutomationName(base: string, automations: { name: string }[]): string {
+  const names = new Set(automations.map(auto => auto.name.trim().toLowerCase()));
+  let candidate = base, suffix = 2;
+  while (names.has(candidate.toLowerCase())) candidate = `${base} ${suffix++}`;
+  return candidate;
+}
+export function matchesPreviewMessage(text: string, mode: string, keywords: string[]): boolean {
+  return mode !== 'keywords' || keywords.some(keyword => keyword.trim() && text.toLocaleLowerCase().includes(keyword.trim().toLocaleLowerCase()));
+}

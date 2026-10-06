@@ -27,19 +27,20 @@ const emptyKnowledge: KnowledgeDoc = {
 };
 
 export const KnowledgeBasePage: React.FC = () => {
-  const { setActiveTab, setIsBuilderOpen } = useApp();
+  const { setActiveTab, setIsBuilderOpen, workspaceId } = useApp();
   const [value, setValue] = useState<KnowledgeDoc>(emptyKnowledge);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
+    setValue(emptyKnowledge); setSaved(false);
+    const uid = workspaceId || auth.currentUser?.uid;
     if (!uid) return;
     return subscribeToUserCollection<KnowledgeDoc>(uid, 'knowledge_base', (rows) => {
       const current = rows.find((row) => row.id === 'primary');
       if (current) setValue({ ...emptyKnowledge, ...current });
     });
-  }, []);
+  }, [workspaceId]);
 
   const prompt = useMemo(() => [
     '# BUSINESS IDENTITY',
@@ -68,7 +69,7 @@ export const KnowledgeBasePage: React.FC = () => {
   ].join('\n'), [value]);
 
   const save = async () => {
-    const uid = auth.currentUser?.uid;
+    const uid = workspaceId || auth.currentUser?.uid;
     if (!uid) return;
     setSaving(true);
     setSaved(false);

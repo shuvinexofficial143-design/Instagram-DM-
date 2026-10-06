@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Automation, TriggerType } from '../../types';
-import { automationSummary, relativeAutomationTime } from '../../lib/automationPresentation';
+import { automationSummary, relativeAutomationTime, uniqueAutomationName } from '../../lib/automationPresentation';
 
 export const AutomationsPage: React.FC = () => {
   const {
@@ -160,7 +160,7 @@ export const AutomationsPage: React.FC = () => {
     } else {
       const newAuto: Automation = {
         id: `auto_${Date.now()}`,
-        name: tpl.title,
+        name: uniqueAutomationName(tpl.title, automations),
         trigger_type: tpl.trigger_type,
         trigger_config: {
           all_or_keywords: tpl.keywords.length > 0 ? 'keywords' : 'all',
@@ -190,7 +190,7 @@ export const AutomationsPage: React.FC = () => {
 
   const handleDuplicate = (auto: Automation) => {
     createAutomation({
-      name: `${auto.name} (Copy)`,
+      name: uniqueAutomationName(`${auto.name} (Copy)`, automations),
       trigger_type: auto.trigger_type,
       trigger_config: { ...auto.trigger_config },
       actions: [...auto.actions],

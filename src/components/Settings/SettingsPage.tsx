@@ -1,3 +1,4 @@
+import { InstagramAccounts } from '../Common/InstagramAccounts';
 import React, { useEffect, useState } from 'react';
 import {
   CheckCircle2,
@@ -32,6 +33,7 @@ export const SettingsPage: React.FC = () => {
     firebaseUser,
     logout,
     instagramAccount,
+    startInstagramConnection,
     automations,
     contacts,
     inboxMessages,
@@ -116,6 +118,8 @@ export const SettingsPage: React.FC = () => {
         </div>
       </header>
 
+      <InstagramAccounts />
+
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5 sm:p-6">
           <div>
@@ -191,7 +195,7 @@ export const SettingsPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => setIsConnectModalOpen(true)}
+                onClick={() => startInstagramConnection('reconnect')}
                 className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-bold text-indigo-700 hover:bg-indigo-100 sm:w-auto"
               >
                 <RefreshCw className="h-4 w-4" />
@@ -209,7 +213,7 @@ export const SettingsPage: React.FC = () => {
               <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">Connect the Instagram business or creator profile that should receive and automate customer messages.</p>
               <button
                 type="button"
-                onClick={() => setIsConnectModalOpen(true)}
+                onClick={() => startInstagramConnection('reconnect')}
                 className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white hover:bg-indigo-700"
               >
                 <Instagram className="h-4 w-4" />

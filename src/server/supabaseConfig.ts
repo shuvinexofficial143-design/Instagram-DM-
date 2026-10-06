@@ -76,3 +76,21 @@ export async function authenticatedUser(req: any): Promise<{ id: string } | null
   const user: any = await response.json();
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(user?.id || '')) ? user : null;
 }
+
+/** Validate the selected Instagram workspace against memberships using the user's RLS session. */
+export async function authenticatedWorkspace(req: any): Promise<{id:string;ownerId:string}|null> {
+  const user = await authenticatedUser(req);
+  if (!user) return null;
+  const explicit = String(req.headers?.['x-autoreply-workspace'] || '').trim();
+  const raw = String(req.headers?.cookie || '').match(/(?:^|;\s*)autoreply_active_workspace=([^;]+)/)?.[1];
+  let selected = explicit; try { if(!selected) selected = raw ? decodeURIComponent(raw) : ''; } catch {}
+  if (!selected || selected === user.id) return { id:user.id, ownerId:user.id };
+  if (!/^[a-f0-9-]{36}$/i.test(selected)) throw new Error('Invalid selected Instagram account.');
+  const url = `${SUPABASE_URL}/rest/v1/autoreply_instagram_memberships?workspace_id=eq.${encodeURIComponent(selected)}&owner_user_id=eq.${encodeURIComponent(user.id)}&select=workspace_id`;
+  const response = await upstreamFetch(url, { headers: { apikey:SUPABASE_PUBLISHABLE_KEY, Authorization:String(req.headers.authorization) } }, 'Instagram account ownership');
+  if (!response.ok) throw new UpstreamError('Instagram account ownership');
+  const rows = await response.json();
+  // A stale cookie from another login never grants access to that user's workspace.
+  if (explicit && !rows?.[0]?.workspace_id) throw Object.assign(new Error('This Instagram account does not belong to your login.'), {status:403});
+  return { id:rows?.[0]?.workspace_id || user.id, ownerId:user.id };
+}

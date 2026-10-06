@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { normalizeAppUrl, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, authenticatedUser, cleanEnvironment, upstreamFetch, UpstreamError } from '../src/server/supabaseConfig.js';
+import { normalizeAppUrl, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, authenticatedUser, authenticatedWorkspace, cleanEnvironment, upstreamFetch, UpstreamError } from '../src/server/supabaseConfig.js';
 
 const env = (key: string) => cleanEnvironment(process.env[key]);
 const site = () => normalizeAppUrl(env('APP_URL') || 'https://autoreplys.vercel.app');
@@ -49,7 +49,9 @@ async function accessToken(connection: any) {
 
 export default async function handler(req: any, res: any) {
   const action = String(req.query?.action || '');
-  const fail = (message: string) => res.redirect(302, site() + '/?sheets=error&resume=ai-sheets&message=' + encodeURIComponent(message));
+  let returnTo = req.query?.returnTo === 'integrations' ? 'integrations' : 'ai-sheets';
+  const destination = () => returnTo === 'integrations' ? '/integrations?' : '/?resume=ai-sheets&';
+  const fail = (message: string) => res.redirect(302, site() + destination() + 'sheets=error&message=' + encodeURIComponent(message));
   res.setHeader('Cache-Control', 'private, no-store');
   try {
     if (!['connect', 'callback', 'status', 'create-sheet', 'append-lead'].includes(action)) return res.status(404).json({ ok: false, error: 'Unknown Google Sheets action.' });
@@ -61,14 +63,17 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'callback') {
+      const [returnRaw,returnSignature] = String(req.query?.state || '').split('.');
+      if (validSignature(returnRaw,returnSignature)) {try {const signed=JSON.parse(Buffer.from(returnRaw,'base64url').toString());returnTo=signed.returnTo==='integrations'?'integrations':'ai-sheets';}catch{}}
       if (req.query?.error) return fail(req.query.error === 'access_denied' ? 'Google authorization was cancelled. You can connect again.' : 'Google could not authorize the connection.');
       const code = String(req.query?.code || ''), [raw, signature] = String(req.query?.state || '').split('.');
       if (!code || !validSignature(raw, signature)) return fail('Invalid Google authorization response. Please connect again.');
       const state = JSON.parse(Buffer.from(raw, 'base64url').toString());
+      returnTo = state.returnTo === 'integrations' ? 'integrations' : 'ai-sheets';
       const age = Date.now() - Number(state.at);
       if (!state.uid || !Number.isFinite(age) || age < 0 || age > 600000) return fail('Google authorization expired. Please connect again.');
       const token = cookieToken(req);
-      const user = await authenticatedUser({ headers: { authorization: 'Bearer ' + token } });
+      const user = await authenticatedWorkspace({ headers: { authorization: 'Bearer ' + token, cookie:'autoreply_active_workspace='+encodeURIComponent(state.uid) } });
       if (!user?.id || user.id !== state.uid) return fail('Your login session expired. Sign in again and reconnect Google Sheets.');
       const tokens = await googleJson('https://oauth2.googleapis.com/token', {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -80,16 +85,16 @@ export default async function handler(req: any, res: any) {
       try { profile = await googleJson('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: 'Bearer ' + tokens.access_token } }, 'Google profile'); } catch {}
       const previous = await readConnection(user.id, token);
       await saveConnection(user.id, token, { ...previous, connected: true, email: profile.email || previous.email || '', google_user_id: profile.id || previous.google_user_id || '', access_token: tokens.access_token, refresh_token: tokens.refresh_token || previous.refresh_token || '', expires_at: Date.now() + Number(tokens.expires_in || 3600) * 1000, scope: tokens.scope || '', updated_at: new Date().toISOString() });
-      res.setHeader('Set-Cookie', 'gs_oauth_session=; Path=/api/google-sheets; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
-      return res.redirect(302, site() + '/?sheets=connected&resume=ai-sheets');
+      res.setHeader('Set-Cookie', ['gs_oauth_session=; Path=/api/google-sheets; HttpOnly; Secure; SameSite=Lax; Max-Age=0', `autoreply_active_workspace=${encodeURIComponent(user.id)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`]);
+      return res.redirect(302, site() + destination() + 'sheets=connected');
     }
 
-    const user = await authenticatedUser(req);
+    const user = await authenticatedWorkspace(req);
     if (!user) return res.status(401).json({ ok: false, code: 'SESSION_EXPIRED', error: 'Your login session expired. Sign in again before connecting Google Sheets.' });
     const token = bearer(req);
     if (action === 'connect') {
       res.setHeader('Set-Cookie', 'gs_oauth_session=' + encodeURIComponent(token) + '; Path=/api/google-sheets; HttpOnly; Secure; SameSite=Lax; Max-Age=600');
-      const raw = Buffer.from(JSON.stringify({ uid: user.id, at: Date.now(), n: crypto.randomBytes(16).toString('hex') })).toString('base64url');
+      const raw = Buffer.from(JSON.stringify({ uid: user.id, ownerId:user.ownerId, returnTo, at: Date.now(), n: crypto.randomBytes(16).toString('hex') })).toString('base64url');
       const params = new URLSearchParams({ client_id: env('GOOGLE_SHEETS_CLIENT_ID'), redirect_uri: redirectUri(), response_type: 'code', access_type: 'offline', prompt: 'consent select_account', include_granted_scopes: 'true', scope: 'openid email profile https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file', state: raw + '.' + sign(raw) });
       const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
       return req.query?.format === 'json' ? res.status(200).json({ ok: true, url }) : res.redirect(302, url);
@@ -117,6 +122,6 @@ export default async function handler(req: any, res: any) {
   } catch (error: any) {
     const message = error?.message || 'Google Sheets connection failed. Please retry.';
     if (action === 'callback') return fail(message);
-    return res.status(error instanceof UpstreamError ? 503 : 500).json({ ok: false, code: error instanceof UpstreamError ? error.code : 'SHEETS_REQUEST_FAILED', error: message });
+    return res.status(error?.status || (error instanceof UpstreamError ? 503 : 500)).json({ ok: false, code: error instanceof UpstreamError ? error.code : 'SHEETS_REQUEST_FAILED', error: message });
   }
 }

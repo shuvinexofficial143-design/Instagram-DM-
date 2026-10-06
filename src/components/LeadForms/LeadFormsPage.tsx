@@ -7,7 +7,7 @@ type LeadForm = { id: string; name: string; fields: string[]; required: string[]
 const defaults = ['Name', 'Phone', 'Address', 'City', 'Pincode'];
 
 export const LeadFormsPage: React.FC = () => {
-  const { setActiveTab, setIsBuilderOpen } = useApp();
+  const { setActiveTab, setIsBuilderOpen, workspaceId } = useApp();
   const [forms, setForms] = useState<LeadForm[]>([]);
   const [name, setName] = useState('Customer Address Form');
   const [fields, setFields] = useState<string[]>(defaults);
@@ -15,20 +15,21 @@ export const LeadFormsPage: React.FC = () => {
   const [custom, setCustom] = useState('');
 
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
+    setForms([]);
+    const uid = workspaceId || auth.currentUser?.uid;
     if (!uid) return;
     return subscribeToUserCollection<LeadForm>(uid, 'lead_forms', setForms);
-  }, []);
+  }, [workspaceId]);
 
   const create = async () => {
-    const uid = auth.currentUser?.uid;
+    const uid = workspaceId || auth.currentUser?.uid;
     if (!uid || !name.trim() || !fields.length) return;
     const form: LeadForm = { id: 'form_' + Date.now(), name: name.trim(), fields, required, sheet_enabled: true, updated_at: new Date().toISOString() };
     await saveUserDocument(uid, 'lead_forms', form);
   };
 
   const remove = async (form: LeadForm) => {
-    const uid = auth.currentUser?.uid;
+    const uid = workspaceId || auth.currentUser?.uid;
     if (!uid || !window.confirm('Delete ' + form.name + '?')) return;
     await removeUserDocument(uid, 'lead_forms', form.id);
   };

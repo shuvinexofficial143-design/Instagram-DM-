@@ -8,7 +8,7 @@ export const ActivityLogsPage: React.FC = () => {
   const [status, setStatus] = useState<'all' | 'triggered' | 'success' | 'ignored' | 'error'>('all');
 
   const logs = useMemo(() => (webhookLogs || []).filter((log) => {
-    const haystack = ((log.from_username || '') + ' ' + (log.incoming_text || '') + ' ' + (log.matched_automation_name || '')).toLowerCase();
+    const haystack = ((log.from_username || '') + ' ' + (log.incoming_text || '') + ' ' + (log.matched_automation_name || '') + ' ' + (log.reason || '') + ' ' + (log.error_message || '')).toLowerCase();
     return (!search.trim() || haystack.includes(search.trim().toLowerCase())) && (status === 'all' || log.status === status);
   }), [webhookLogs, search, status]);
 
@@ -40,7 +40,7 @@ export const ActivityLogsPage: React.FC = () => {
             <div className="p-12 text-center">
               <Activity className="mx-auto h-9 w-9 text-slate-300" />
               <h2 className="mt-3 text-sm font-bold text-slate-800">No matching activity</h2>
-              <p className="mt-1 text-xs text-slate-500">Live webhook events and automation test events will appear here.</p>
+              <p className="mt-1 text-xs text-slate-500">New Instagram events will appear here. Try changing the filters if you expected an earlier event.</p>
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
@@ -57,6 +57,9 @@ export const ActivityLogsPage: React.FC = () => {
                         <span className="rounded-full border border-slate-200 px-2 py-0.5 text-xs font-bold uppercase text-slate-500">{log.status}</span>
                       </div>
                       <p className="mt-1 truncate text-xs text-slate-600">{log.incoming_text || 'No message text'}</p>
+                      {log.reason && <p className="mt-2 text-xs text-amber-700">Reason: {log.reason.replace(/_/g,' ')}</p>}
+                      {log.error_message && <p className="mt-2 break-words text-xs text-rose-700">Error: {log.error_message}</p>}
+                      {log.response_sent && <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer font-semibold text-indigo-600">Reply sent</summary><p className="mt-1 whitespace-pre-wrap break-words">{log.response_sent}</p></details>}
                       {log.matched_automation_name && <p className="mt-1 text-xs font-semibold text-indigo-600">{log.matched_automation_name}</p>}
                     </div>
                     <div className="text-left md:text-right">

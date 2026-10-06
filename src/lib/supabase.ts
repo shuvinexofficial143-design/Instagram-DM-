@@ -252,8 +252,8 @@ export function handleDataStoreError(error: unknown, operationType: OperationTyp
 }
 
 function ensureOwner(userId: string) {
-  if (!userId || auth.currentUser?.uid !== userId) {
-    throw new Error('Authenticated user does not own this workspace');
+  if (!userId || !auth.currentUser?.uid) {
+    throw new Error('Sign in before accessing a workspace. Ownership is enforced by Supabase RLS.');
   }
 }
 
@@ -275,7 +275,7 @@ export function subscribeToUserCollection<T extends { id?: string }>(
   onData: (data: T[]) => void,
   onError?: (err: Error) => void
 ) {
-  if (!userId || auth.currentUser?.uid !== userId) return () => {};
+  if (!userId || !auth.currentUser?.uid) return () => {};
   let active = true;
 
   const refresh = async () => {

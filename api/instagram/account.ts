@@ -1,3 +1,4 @@
+import { authenticatedUser } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
@@ -67,6 +68,37 @@ async function callStore(action: 'load' | 'delete', workspaceId: string) {
 // acts as the browser's private workspace capability.
 export default async function handler(req: any, res: any) {
   try {
+    const owner = await authenticatedUser(req);
+    if (req.headers?.authorization && !owner) return res.status(401).json({ success:false,error:'Sign in again to manage Instagram accounts.' });
+    if (owner) {
+      const response = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/instagram-account-store`, {
+        method:'POST', headers:{'Content-Type':'application/json',Authorization:String(req.headers.authorization)},
+        body:JSON.stringify({action:'list_accounts'})
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload?.ok) return res.status(response.status).json(payload);
+      const accounts = payload.accounts || [];
+      const explicit = String(req.headers?.['x-autoreply-workspace'] || '');
+      const selected = explicit || getRequestCookie(req,'autoreply_active_workspace');
+      if (explicit && explicit !== owner.id && !accounts.some((item:any)=>item.workspaceId===explicit)) return res.status(403).json({ok:false,error:'This Instagram account does not belong to your login.'});
+      const current = accounts.find((item:any)=>item.workspaceId===selected)?.workspaceId || owner.id;
+      if (req.method === 'POST' && req.body?.workspaceId) {
+        const target = String(req.body.workspaceId);
+        if (!accounts.some((item:any)=>item.workspaceId===target)) return res.status(403).json({ok:false,error:'This Instagram account does not belong to your login.'});
+        res.setHeader('Set-Cookie',`autoreply_active_workspace=${encodeURIComponent(target)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`);
+        return res.status(200).json({ok:true,activeWorkspaceId:target,accounts});
+      }
+      if (req.method === 'POST' && req.body?.account === null) {
+        const result = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/instagram-account-store`, {
+          method:'POST',headers:{'Content-Type':'application/json',Authorization:String(req.headers.authorization)},
+          body:JSON.stringify({action:'delete',workspaceId:current})
+        });
+        const data = await result.json(); return res.status(result.status).json(data);
+      }
+      if (req.method !== 'GET') return res.status(405).json({ok:false,error:'Method Not Allowed'});
+      res.setHeader('Cache-Control','private, no-store');
+      return res.status(200).json({ok:true,success:true,accounts,activeWorkspaceId:current,account:accounts.find((item:any)=>item.workspaceId===current)?.account || null});
+    }
     const workspaceId = getGuestWorkspaceId(req);
 
     if (req.method === 'GET') {
@@ -101,7 +133,7 @@ export default async function handler(req: any, res: any) {
     return res.status(405).send('Method Not Allowed');
   } catch (err: any) {
     console.error('[INSTAGRAM_ACCOUNT_FATAL]', err);
-    return res.status(500).json({
+    return res.status(err?.status || 500).json({
       success: false,
       account: null,
       error: err?.message || 'Instagram account request failed',

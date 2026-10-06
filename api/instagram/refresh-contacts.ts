@@ -1,4 +1,5 @@
 import { resolveAiIdentity } from '../_auth.js';
+import { authenticatedWorkspace } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
 
 async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 20000) {
@@ -18,7 +19,7 @@ export default async function handler(req: any, res: any) {
   }
 
   const identity = await resolveAiIdentity(req, true);
-  const workspaceId = identity?.userId || identity?.workspaceId;
+  const workspaceId = identity?.userId ? (await authenticatedWorkspace(req))?.id : identity?.workspaceId;
   if (!workspaceId) {
     return res.status(401).json({ ok: false, error: 'Workspace not found.' });
   }
@@ -50,7 +51,7 @@ export default async function handler(req: any, res: any) {
       refreshed: Number(payload?.refreshed || 0),
     });
   } catch (err: any) {
-    return res.status(500).json({
+    return res.status(err?.status || 500).json({
       ok: false,
       error:
         err?.name === 'AbortError'

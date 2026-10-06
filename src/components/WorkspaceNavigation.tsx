@@ -4,10 +4,10 @@ import { ActiveTab, useApp } from '../context/AppContext';
 
 export const workspaceNavigation = [
   { id: 'home', label: 'Dashboard', icon: LayoutDashboard, tabs: ['home'] },
-  { id: 'inbox', label: 'Inbox', icon: Inbox, tabs: ['inbox'] },
-  { id: 'automations', label: 'Automations', icon: Zap, tabs: ['automations'] },
-  { id: 'contacts', label: 'Leads', icon: Users, tabs: ['contacts', 'crm'] },
   { id: 'knowledge', label: 'Business setup', icon: BookOpen, tabs: ['knowledge', 'catalog', 'lead-forms'] },
+  { id: 'automations', label: 'Automations', icon: Zap, tabs: ['automations'] },
+  { id: 'inbox', label: 'Inbox', icon: Inbox, tabs: ['inbox'] },
+  { id: 'contacts', label: 'Leads', icon: Users, tabs: ['contacts', 'crm'] },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, tabs: ['analytics'] },
   { id: 'settings', label: 'Settings', icon: Settings, tabs: ['settings', 'integrations', 'activity'] },
   { id: 'billing', label: 'Billing & usage', icon: CreditCard, tabs: ['billing'] },

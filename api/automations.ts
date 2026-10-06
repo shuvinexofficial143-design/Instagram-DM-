@@ -1,4 +1,4 @@
-import { SUPABASE_URL, authenticatedUser, UpstreamError } from '../src/server/supabaseConfig.js';
+import { SUPABASE_URL, authenticatedWorkspace, UpstreamError } from '../src/server/supabaseConfig.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
@@ -23,7 +23,7 @@ function isWorkspaceId(value: string): boolean {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-async function callStore(body: Record<string, unknown>, timeoutMs = 18000) {
+async function callStore(body: Record<string, unknown>, authorization: string, timeoutMs = 18000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -31,7 +31,7 @@ async function callStore(body: Record<string, unknown>, timeoutMs = 18000) {
       `${SUPABASE_URL}/functions/v1/instagram-account-store`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(authorization ? {Authorization:authorization} : {}) },
         body: JSON.stringify(body),
         signal: controller.signal,
       }
@@ -45,7 +45,7 @@ async function callStore(body: Record<string, unknown>, timeoutMs = 18000) {
 
 export default async function handler(req: any, res: any) {
   try {
-    const authenticatedUid = (await authenticatedUser(req))?.id || "";
+    const authenticatedUid = (await authenticatedWorkspace(req))?.id || "";
     if (req.headers?.authorization && !authenticatedUid) return res.status(401).json({ ok: false, error: "Your login session expired. Please sign in again." });
     const workspaceId = authenticatedUid || getCookie(req, GUEST_COOKIE);
 
@@ -60,7 +60,7 @@ export default async function handler(req: any, res: any) {
       const { response, payload } = await callStore({
         action: 'list_automations',
         workspaceId,
-      });
+      }, String(req.headers?.authorization || ''));
 
       if (!response.ok || !payload?.ok) {
         return res.status(response.status >= 400 ? response.status : 500).json({
@@ -86,7 +86,7 @@ export default async function handler(req: any, res: any) {
         action: 'save_automation',
         workspaceId,
         automation,
-      });
+      }, String(req.headers?.authorization || ''));
 
       if (!response.ok || !payload?.ok) {
         return res.status(response.status >= 400 ? response.status : 500).json({
@@ -115,7 +115,7 @@ export default async function handler(req: any, res: any) {
         action: 'delete_automation',
         workspaceId,
         automationId,
-      });
+      }, String(req.headers?.authorization || ''));
 
       if (!response.ok || !payload?.ok) {
         return res.status(response.status >= 400 ? response.status : 500).json({
@@ -131,7 +131,7 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   } catch (err: any) {
     console.error('[AUTOMATIONS_API_FATAL]', err);
-    return res.status(err instanceof UpstreamError ? 503 : 500).json({
+    return res.status(err instanceof UpstreamError ? 503 : err?.status || 500).json({
       ok: false,
       error:
         err?.name === 'AbortError'

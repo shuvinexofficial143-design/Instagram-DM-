@@ -96,3 +96,28 @@ test('OAuth URLs normalize pasted schemes and reject unsafe configuration', () =
   assert.throws(() => normalizeAppUrl('javascript:alert(1)'));
   assert.throws(() => normalizeAppUrl('https://user:password@example.com'));
 });
+
+test('Instagram add-account state keeps login owner separate from the new workspace', async () => {
+  globalThis.fetch = async () => json({ id: uid });
+  const req:any=request('');req.query.intent='add';const res=response();await instagram(req,res);
+  assert.equal(res.statusCode,200);const state=JSON.parse(new URL(res.body.url).searchParams.get('state')!);
+  assert.equal(state.ownerId,uid);assert.notEqual(state.workspaceId,uid);
+});
+test('selected workspace header cannot choose an account belonging to another login', async () => {
+  const { authenticatedWorkspace }=await import('../src/server/supabaseConfig');
+  globalThis.fetch=async url=>String(url).includes('/auth/v1/user')?json({id:uid}):json([]);
+  await assert.rejects(authenticatedWorkspace({headers:{authorization:'Bearer session','x-autoreply-workspace':'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}}),/does not belong/);
+  const stale=await authenticatedWorkspace({headers:{authorization:'Bearer session',cookie:'autoreply_active_workspace=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}});
+  assert.equal(stale?.id,uid);
+});
+test('owned Instagram workspace selection keeps the login owner unchanged', async () => {
+ const { authenticatedWorkspace }=await import('../src/server/supabaseConfig');const selected='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ globalThis.fetch=async url=>String(url).includes('/auth/v1/user')?json({id:uid}):json([{workspace_id:selected}]);
+ assert.deepEqual(await authenticatedWorkspace({headers:{authorization:'Bearer session','x-autoreply-workspace':selected}}),{id:selected,ownerId:uid});
+});
+test('Sheets connection launched from Integrations returns there when authorization is cancelled',async()=>{
+ globalThis.fetch=async()=>json({id:uid});const req:any=request('connect');req.query.returnTo='integrations';const connected=response();await sheets(req,connected);
+ assert.equal(connected.statusCode,200);const state=new URL(connected.body.url).searchParams.get('state');
+ const callback:any=request('callback');callback.query={action:'callback',error:'access_denied',state};const cancelled=response();await sheets(callback,cancelled);
+ assert.ok(cancelled.location.includes('/integrations?sheets=error'));assert.ok(!cancelled.location.includes('resume=ai-sheets'));
+});

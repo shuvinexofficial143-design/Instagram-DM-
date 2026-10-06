@@ -147,6 +147,8 @@ export interface MetaConfig {
 }
 
 export interface WebhookLogEvent {
+  reason?: string;
+  error_message?: string;
   id: string;
   timestamp: string;
   trigger_type: TriggerType | 'app_subscription';

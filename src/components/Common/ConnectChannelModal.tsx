@@ -14,7 +14,7 @@ import { UserAvatar } from './UserAvatar';
 export const ConnectChannelModal: React.FC = () => {
   const {
     isConnectModalOpen,
-    setIsConnectModalOpen,
+    setIsConnectModalOpen, instagramConnectMode, workspaceId,
     instagramAccount,
     disconnectChannel,
   } = useApp();
@@ -71,12 +71,12 @@ export const ConnectChannelModal: React.FC = () => {
       const token = await (await import('../../lib/supabase')).auth.currentUser?.getIdToken();
       if (!token) throw new Error('Your login session is missing. Please sign in with Google again.');
 
-      const response = await fetch('/api/auth/instagram', {
+      const response = await fetch('/api/auth/instagram?intent=' + (instagramConnectMode || 'reconnect'), {
         method: 'GET',
         credentials: 'same-origin',
         headers: {
           Accept: 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${token}`, 'X-Autoreply-Workspace':workspaceId,
         },
       });
       const payload = await response.json().catch(() => null);

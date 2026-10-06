@@ -16,7 +16,7 @@ const noop = () => {};
 const empty = {
   user:{id:'test-workspace',name:'Sample owner',email:'owner@example.test',plan:'free',created_at:'2026-10-01',trial_expires_at:'2026-11-01'},
   firebaseUser:null,authLoading:false,isAdmin:false,isGuestMode:false,activeTab:'home',
-  instagramAccount:null,automations:[],contacts:[],inboxMessages:[],webhookLogs:[],pausedAiUsers:[],
+  instagramAccount:null,instagramAccounts:[],workspaceId:'test-workspace',accountSwitching:false,accountError:'',instagramConnectMode:'reconnect',automations:[],contacts:[],inboxMessages:[],webhookLogs:[],pausedAiUsers:[],
   isBuilderOpen:false,isConnectModalOpen:false,isRenewModalOpen:false,editingAutomation:null,
   isAiPausedForUser:()=>false,
 };
@@ -45,7 +45,11 @@ try {
       export {AiAssistantSetup} from './src/components/Automations/AiAssistantSetup';
       export {AutomationBuilder} from './src/components/Automations/AutomationBuilder';
       export {AutomationsPage} from './src/components/Automations/AutomationsPage';
-      export {relativeAutomationTime} from './src/lib/automationPresentation';
+      export {relativeAutomationTime, matchesPreviewMessage, uniqueAutomationName} from './src/lib/automationPresentation';
+      export {normalizeActivityLog} from './src/lib/activityLogs';
+      export {AutomationReviewPhone} from './src/components/Automations/AutomationReviewPhone';
+      export {InstagramAccounts} from './src/components/Common/InstagramAccounts';
+      export {ActivityLogsPage} from './src/components/Activity/ActivityLogsPage';
       export {workspaceNavigation,WorkspaceTabs} from './src/components/WorkspaceNavigation';
       export {publicSupportPage} from './src/lib/navigation';`,resolveDir:root,loader:'tsx'},
     bundle:true,platform:'node',format:'esm',outfile:path.join(tmp,'ui.mjs'),packages:'external',jsx:'automatic',
@@ -128,6 +132,24 @@ try {
   globalThis.__uiFixture=fixture({activeTab:'settings'});
   html=renderToStaticMarkup(React.createElement(ui.WorkspaceTabs));
   assert.ok(html.includes('workspace-settings-tabs'));for(const text of ['Account','Integrations','Activity logs'])assert.ok(html.includes(text));assert.ok(html.includes('aria-current="page"'));checks++;
+  assert.equal(ui.matchesPreviewMessage('please send PRICE','keywords',['price']),true);
+  assert.equal(ui.matchesPreviewMessage('hello','keywords',['price']),false);
+  assert.equal(ui.matchesPreviewMessage('hello','all',[]),true);
+  assert.equal(ui.uniqueAutomationName('DM Reply',[{name:'DM Reply'},{name:'dm reply 2'}]),'DM Reply 3');checks++;
+  for(const type of ['comment','story_reply','dm']) {
+    globalThis.__uiFixture=fixture();
+    html=renderToStaticMarkup(React.createElement(ui.AutomationReviewPhone,{type,message:'Reply should only appear after testing',buttons:[],mode:'keywords',keywords:['PRICE']}));
+    assert.ok(html.includes('Test customer message'));assert.ok(html.includes('Send test message'));assert.ok(html.includes('Start by typing below'));
+    assert.ok(!html.includes('Reply should only appear after testing'));assert.ok(!html.includes('Sent you a DM'));checks++;
+  }
+  const log=ui.normalizeActivityLog({id:'real-event',status:'failed',sender_id:'customer',trigger_type:'dm',incoming_text:'price',send_error:'Permission denied',updated_at:'2026-10-06T12:00:00Z',total_ms:120});
+  assert.equal(log.status,'error');assert.equal(log.error_message,'Permission denied');assert.equal(log.timestamp,'2026-10-06T12:00:00Z');
+  globalThis.__uiFixture=fixture({webhookLogs:[log]});html=renderToStaticMarkup(React.createElement(ui.ActivityLogsPage));
+  assert.ok(html.includes('Permission denied'));assert.ok(html.includes('120 ms'));checks++;
+  globalThis.__uiFixture=fixture({workspaceId:'account-b',instagramAccounts:[{workspaceId:'account-a',account:{username:'first_business',status:'connected'}},{workspaceId:'account-b',account:{username:'second_business',status:'connected'}}]});
+  html=renderToStaticMarkup(React.createElement(ui.InstagramAccounts));for(const label of ['first_business','second_business','Current account','Add Instagram account','Switch account'])assert.ok(html.includes(label));checks++;
+  html=renderToStaticMarkup(React.createElement(ui.Sidebar));assert.ok(html.includes('sidebar-account-switch'));assert.ok(html.includes('value="account-b" selected=""'));checks++;
+  assert.deepEqual(ui.workspaceNavigation.filter(item=>!['settings','help','billing'].includes(item.id)).map(item=>item.id),['home','knowledge','automations','inbox','contacts','analytics']);checks++;
   const allTabs=ui.workspaceNavigation.flatMap(item=>item.tabs);
   for(const tab of ['contacts','crm','knowledge','catalog','lead-forms','settings','integrations','activity'])assert.ok(allTabs.includes(tab));
   assert.ok(ui.workspaceNavigation.length<15);checks++;

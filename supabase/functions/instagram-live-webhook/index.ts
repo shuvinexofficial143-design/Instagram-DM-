@@ -1526,7 +1526,7 @@ Deno.serve(async (req: Request) => {
       runInBackground(
         logEvent(admin, workspaceId, item.messageId || crypto.randomUUID(), {
           status: "ignored",
-          trigger_type: "dm_ai_conversation",
+          trigger_type: item.triggerType,
           sender_id: item.senderId,
           incoming_text: item.text,
           reason: "No matching active automation",
@@ -1552,10 +1552,12 @@ Deno.serve(async (req: Request) => {
     }
     const quota = context.quota;
     if (quota.totalUsed >= quota.totalLimit) {
+      runInBackground(logEvent(admin, workspaceId, item.messageId, {status:"ignored", reason:"monthly_message_limit_reached", sender_id:item.senderId, incoming_text:item.text, trigger_type:item.triggerType}));
       results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_message_limit_reached" });
       continue;
     }
     if (automation.trigger_type === "dm_ai_conversation" && quota.aiUsed >= quota.aiLimit) {
+      runInBackground(logEvent(admin, workspaceId, item.messageId, {status:"ignored", reason:"monthly_ai_limit_reached", sender_id:item.senderId, incoming_text:item.text, trigger_type:item.triggerType}));
       results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_ai_limit_reached" });
       continue;
     }
@@ -1565,6 +1567,8 @@ Deno.serve(async (req: Request) => {
       const outcome = await executeStaticActions(admin, workspaceId, item, automation, account);
       runInBackground(logEvent(admin, workspaceId, item.messageId, {
         ...outcome, status: outcome.ok ? "sent" : "failed", trigger_type: item.triggerType,
+        sender_id: item.senderId, incoming_text: item.text,
+        reply_text: (automation.actions || []).find((action:any)=>action.type === "send_dm")?.message_text || "",
         automation_id: automation.id, automation_name: automation.name,
         context_ms: contextMs, action_ms: Math.round(performance.now() - actionStart),
         total_ms: Math.round(performance.now() - totalStart),

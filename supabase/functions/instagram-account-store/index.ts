@@ -382,11 +382,32 @@ Deno.serve(async (req: Request) => {
 
   const action = String(payload?.action || "");
   let workspaceId = payload?.workspaceId;
-  if (action === "refresh_contact_profiles" && !String(workspaceId || "").startsWith("guest_")) {
+  if (action === "list_accounts") {
+    const admin = getAdminClient();
     const jwt = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
-    const { data, error } = await getAdminClient().auth.getUser(jwt);
-    if (error || !data?.user) return reply(401, { ok: false, error: "Authentication required" });
-    workspaceId = data.user.id;
+    const { data: identity, error: authError } = await admin.auth.getUser(jwt);
+    if (authError || !identity?.user) return reply(401, {ok:false,error:"Authentication required"});
+    const { data: memberships, error } = await admin.from("autoreply_instagram_memberships")
+      .select("workspace_id,profile,created_at").eq("owner_user_id",identity.user.id).order("created_at");
+    if (error) throw error;
+    const ids = (memberships || []).map((row:any)=>row.workspace_id);
+    const {data:tokens,error:tokenError} = ids.length ? await admin.from("autoreply_instagram_tokens").select("user_id,account").in("user_id",ids) : {data:[],error:null};
+    if (tokenError) throw tokenError;
+    return reply(200,{ok:true,accounts:(memberships||[]).map((row:any)=>{
+      const token = (tokens||[]).find((item:any)=>item.user_id===row.workspace_id);
+      return {workspaceId:row.workspace_id,account:{...safeAccount(token?.account || row.profile),status:token ? "connected" : "disconnected"}};
+    })});
+  }
+  if (["load","delete","list_media","list_workspace_data","list_automations","save_automation","delete_automation","refresh_contact_profiles"].includes(action) && !String(workspaceId || "").startsWith("guest_")) {
+    const jwt = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    const admin = getAdminClient();
+    const {data:identity,error:authError} = await admin.auth.getUser(jwt);
+    if (authError || !identity?.user) return reply(401,{ok:false,error:"Authentication required"});
+    if (workspaceId !== identity.user.id) {
+      const {data:membership,error} = await admin.from("autoreply_instagram_memberships").select("workspace_id")
+        .eq("workspace_id",workspaceId).eq("owner_user_id",identity.user.id).maybeSingle();
+      if (error || !membership) return reply(403,{ok:false,error:"This Instagram account does not belong to your login"});
+    }
   }
 
   // Admin V2: return only aggregate/platform-safe data after verifying the
@@ -755,6 +776,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "save") {
+      const registrationSecret = String(Deno.env.get("INSTAGRAM_APP_SECRET") || "").trim();
+      if (!registrationSecret || req.headers.get("x-autoreply-oauth-secret") !== registrationSecret)
+        return reply(401,{ok:false,error:"Account registration requires a verified OAuth callback"});
       const accessToken = String(payload?.accessToken || "").trim();
       if (!accessToken) {
         return reply(400, { ok: false, error: "Instagram access token is missing" });
@@ -781,6 +805,26 @@ Deno.serve(async (req: Request) => {
         status: "connected",
       };
 
+      const ownerId = String(payload?.ownerId || "");
+      if (ownerId) {
+        const secret = String(Deno.env.get("INSTAGRAM_APP_SECRET") || "").trim();
+        if (!secret || req.headers.get("x-autoreply-oauth-secret") !== secret || !isWorkspaceId(ownerId))
+          return reply(401,{ok:false,error:"Invalid account registration authorization"});
+        const {data:existing,error:lookupError} = await admin.from("autoreply_instagram_memberships")
+          .select("workspace_id,owner_user_id").eq("ig_user_id",account.ig_user_id).maybeSingle();
+        if (lookupError) throw lookupError;
+        if (existing && existing.owner_user_id !== ownerId) return reply(409,{ok:false,error:"This Instagram account is already connected to another login."});
+        if (existing) workspaceId = existing.workspace_id;
+        else {
+          const {data:occupied,error} = await admin.from("autoreply_instagram_memberships").select("workspace_id,owner_user_id").eq("workspace_id",workspaceId).maybeSingle();
+          if (error) throw error;
+          if (occupied) workspaceId = crypto.randomUUID();
+        }
+        const {error:registerError} = await admin.from("autoreply_instagram_memberships").upsert({
+          workspace_id:workspaceId,owner_user_id:ownerId,ig_user_id:account.ig_user_id,profile:safeAccount(account)
+        },{onConflict:"workspace_id"});
+        if (registerError) throw registerError;
+      }
       const { error: tokenError } = await admin
         .from("autoreply_instagram_tokens")
         .upsert({ user_id: workspaceId, account }, { onConflict: "user_id" });
@@ -815,7 +859,7 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      return reply(200, { ok: true, account: safeAccount(account) });
+      return reply(200, { ok: true, workspaceId, account: safeAccount(account) });
     }
 
     if (action === "load") {

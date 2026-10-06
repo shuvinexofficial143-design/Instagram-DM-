@@ -1,3 +1,4 @@
+import { authenticatedWorkspace } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
@@ -25,30 +26,11 @@ function isWorkspaceId(value: string): boolean {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-async function getAuthenticatedUserId(req: any): Promise<string> {
-  const authHeader = String(req?.headers?.authorization || '').trim();
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-  if (!token) return '';
+async function getAuthenticatedUserId(req:any) { return (await authenticatedWorkspace(req))?.id || ''; }
 
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      apikey: 'sb_publishable_gEZYQWqesZH1iFysqk5sHA_fTZLQQ08',
-    },
-  });
-  if (!response.ok) return '';
-  const user: any = await response.json().catch(() => null);
-  return isWorkspaceId(String(user?.id || '')) ? String(user.id) : '';
-}
-
-async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 18000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ms);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
+async function fetchWithTimeout(url:string,init:RequestInit={},ms=15000) {
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),ms);
+  try{return await fetch(url,{...init,signal:controller.signal});}finally{clearTimeout(timer);}
 }
 
 export default async function handler(req: any, res: any) {
@@ -74,7 +56,7 @@ export default async function handler(req: any, res: any) {
       `${SUPABASE_URL}/functions/v1/instagram-account-store`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(req.headers?.authorization ? {Authorization:String(req.headers.authorization)} : {}) },
         body: JSON.stringify({
           action: 'list_media',
           workspaceId,
@@ -110,7 +92,7 @@ export default async function handler(req: any, res: any) {
     });
   } catch (err: any) {
     console.error('[INSTAGRAM_MEDIA_API_FATAL]', err);
-    return res.status(500).json({
+    return res.status(err?.status || 500).json({
       ok: false,
       error: err?.name === 'AbortError'
         ? 'Instagram media request timed out. Please try again.'
