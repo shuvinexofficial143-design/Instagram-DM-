@@ -6,7 +6,7 @@ import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform(source + '\nglobalThis.helpers = { extractAutomationEvents, matchAutomation, executeStaticActions };', { loader: 'ts', format: 'esm' });
+const compiled = await transform(source + '\nglobalThis.helpers = { extractAutomationEvents, matchAutomation, executeStaticActions, createTypingSession };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
@@ -68,7 +68,7 @@ function fixture(automations = [ai], options = {}) {
   };
   let handler;
   const context = vm.createContext({
-    console: { log() {}, warn() {}, error() {} }, Request, Response, URL, TextEncoder, AbortController, AbortSignal, setTimeout, clearTimeout, performance, crypto: globalThis.crypto,
+    console: { log() {}, warn() {}, error() {} }, Request, Response, URL, TextEncoder, AbortController, AbortSignal, setTimeout: options.setTimeout || setTimeout, clearTimeout: options.clearTimeout || clearTimeout, performance, crypto: globalThis.crypto,
     createClient: () => admin,
     EdgeRuntime: { waitUntil: task => tasks.push(task) },
     Deno: { env: { get: key => ({ SUPABASE_URL: 'https://project.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'service', INSTAGRAM_APP_SECRET: 'relay-secret', OPENAI_API_KEY: options.noAI ? '' : 'ai-key' })[key] }, serve: value => { handler = value; } },
@@ -82,7 +82,9 @@ function fixture(automations = [ai], options = {}) {
       if (String(url).includes('graph.instagram.com')) {
         apiCalls.push({ url: String(url), body, signal: init.signal });
         if (body.message && options.sendFails) return Response.json({ error: { message: 'Missing permission' } }, { status: 403 });
+        if (body.sender_action === 'typing_on') options.onTypingAttempt?.(apiCalls.filter(c=>c.body.sender_action==='typing_on').length);
         if (body.sender_action === 'typing_on' && options.typingGate) await options.typingGate;
+        if (body.sender_action === 'typing_on' && options.typingFailure && apiCalls.filter(c=>c.body.sender_action==='typing_on').length===1) return Response.json({error:{message:'Temporary error'}},{status:options.typingFailure});
         if (body.message) { options.onSend?.(); if (options.sendGate) await options.sendGate; return Response.json({ message_id: 'out-' + apiCalls.length }); }
         if (String(url).endsWith('/replies')) return Response.json({ id: 'public-reply' });
         return Response.json({ username: 'customer' });
@@ -278,4 +280,51 @@ test('typing stays active throughout a slow Send API request and stops after con
   } finally { delivery.resolve(); }
   assert.equal((await request).body.sent, 1);
   assert.equal(f.apiCalls.filter(c => c.body.sender_action === 'typing_off').length, 1);
+});
+
+
+test('transient typing failure retries independently while AI sends one reply', async () => {
+  const gate=deferred(),retried=deferred();
+  const f = fixture([ai], { typingFailure: 500,sendGate:gate.promise,onTypingAttempt:n=>{if(n===2)retried.resolve();} });
+  const request=f.post(dm('retry-typing'));
+  try { await retried.promise; } finally { gate.resolve(); }
+  await request;
+  assert.equal(f.aiInputs.length, 1);
+  assert.equal(f.apiCalls.filter(c=>c.body.message).length, 1);
+  assert.equal(f.apiCalls.filter(c=>c.body.sender_action==='typing_on').length, 2);
+});
+
+test('a stale turn cannot turn off the next turn while the first typing request is pending', async () => {
+  const f = fixture(), pending = deferred(), entered = deferred(), calls=[];
+  const first=f.helpers.createTypingSession('conversation',async(action)=>{calls.push('old:'+action);entered.resolve();await pending.promise;return {};},()=>{});
+  await entered.promise;
+  const oldStop=first.stop();
+  const second=f.helpers.createTypingSession('conversation',async(action)=>{calls.push('new:'+action);return {};},()=>{});
+  pending.resolve();
+  await Promise.all([first.first,oldStop,second.first]);
+  assert.deepEqual(calls,['old:typing_on','new:typing_on']);
+  await second.stop();
+  assert.deepEqual(calls,['old:typing_on','new:typing_on','new:typing_off']);
+});
+
+test('permanent typing errors do not retry or prevent the text reply', async()=>{
+  const f=fixture([ai],{typingFailure:403});
+  await f.post(dm('denied-typing'));
+  assert.equal(f.apiCalls.filter(c=>c.body.sender_action==='typing_on').length,1);
+  assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);
+});
+
+
+test('long replies refresh typing and stopping cancels the scheduled refresh', async()=>{
+  const timers=new Map();let next=0;const calls=[];
+  const f=fixture([ai],{setTimeout:(callback,ms)=>{const id=++next;timers.set(id,{callback,ms});return id;},clearTimeout:id=>timers.delete(id)});
+  const session=f.helpers.createTypingSession('refresh-conversation',async action=>{calls.push(action);return {};},()=>{});
+  await session.first;
+  assert.equal(timers.size,1);
+  const [id,timer]=[...timers.entries()][0];assert.equal(timer.ms,4000);
+  timers.delete(id);timer.callback();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(calls,['typing_on','typing_on']);assert.equal(timers.size,1);
+  await session.stop();
+  assert.equal(timers.size,0);assert.deepEqual(calls,['typing_on','typing_on','typing_off']);
 });

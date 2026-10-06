@@ -105,3 +105,12 @@ Typing and AI still run concurrently. Off never blocks delivery. A controlled
 slow-send regression test proves no typing-off request runs while send is pending.
 Meta acceptance does not expose a customer-visible display timestamp, so exact
 visual simultaneity cannot be promised.
+
+
+## Typing lifecycle (2026-10-06)
+
+Successful customer events at 10:31–10:32 UTC had typing accepted by Meta, with preparation taking 555–1175 ms and sender-action acknowledgement taking another 603–1717 ms. Separate failed events returned Meta 500 errors; these do not establish the reason typing was absent on the customer's screen. API acceptance is not a client visibility timestamp.
+
+Sender actions now share a conversation-specific queue within each edge worker. A newer turn supersedes the older turn's cleanup; pending actions finish in order, and stale off actions are skipped. Long-running turns refresh typing every four seconds. Transient sender-action failures get at most one retry while the turn is still active; permission errors do not retry. AI and message generation remain parallel with typing. Refresh timers stop after confirmed message acceptance or send failure.
+
+This queue is worker-local, not a distributed conversation lock. It prevents local action ordering races but cannot guarantee ordering of separate workers or Meta's app rendering. No artificial wait is added to the reply merely to keep the indicator visible. The earliest permitted start remains after fresh automation/quota checks and a durable message claim.

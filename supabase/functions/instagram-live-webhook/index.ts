@@ -941,56 +941,96 @@ async function generateReply(
   }
 }
 
+// Serialize sender actions per conversation in this worker. A new turn owns the
+// indicator; stale cleanup must never switch off a newer turn. No AI work waits here.
+const typingConversations = new Map<string, { owner: symbol; tail: Promise<any> }>();
+function createTypingSession(key: string, send: (action: "typing_on" | "typing_off", valid: () => boolean) => Promise<any>, onFirst: (result: any) => void) {
+  const previous = typingConversations.get(key);
+  const state = { owner: Symbol(key), tail: previous?.tail || Promise.resolve(null) };
+  typingConversations.set(key, state);
+  let active = true;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const owns = () => typingConversations.get(key) === state;
+  const queue = (action: "typing_on" | "typing_off") => {
+    const valid = () => owns() && (action === "typing_off" || active);
+    state.tail = state.tail.catch(() => null).then(() => valid() ? send(action, valid) : null);
+    return state.tail;
+  };
+  const refresh = () => {
+    if (!active || !owns()) return;
+    timer = setTimeout(() => {
+      timer = null;
+      if (!active || !owns()) return;
+      runInBackground(queue("typing_on").then(refresh));
+    }, 4000);
+  };
+  const first = queue("typing_on").then(result => { onFirst(result); refresh(); return result; });
+  return { first, stop() {
+    if (!active) return Promise.resolve(null);
+    active = false;
+    if (timer) clearTimeout(timer);
+    timer = null;
+    return queue("typing_off").finally(() => { if (owns()) typingConversations.delete(key); });
+  } };
+}
+
 async function sendInstagramSenderAction(
   igUserId: string,
   recipientId: string,
   accessToken: string,
-  action: "typing_on" | "typing_off"
+  action: "typing_on" | "typing_off",
+  valid: () => boolean = () => true
 ) {
   if (!igUserId || !recipientId || !accessToken) return null;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2500);
+  for (let attempt = 0; attempt < 2 && valid(); attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
 
-  try {
-    const response = await fetch(
-      `https://graph.instagram.com/${GRAPH_VERSION}/${encodeURIComponent(
-        igUserId
-      )}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          recipient: { id: recipientId },
-          sender_action: action,
-        }),
-        signal: controller.signal,
+    try {
+      const response = await fetch(
+        `https://graph.instagram.com/${GRAPH_VERSION}/${encodeURIComponent(
+          igUserId
+        )}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            recipient: { id: recipientId },
+            sender_action: action,
+          }),
+          signal: controller.signal,
+        }
+      );
+
+      if (!response.ok) {
+        const payload: any = await response.json().catch(() => null);
+        console.warn("[LIVE_DM_SENDER_ACTION_WARN]", {
+          action,
+          status: response.status,
+          error: payload?.error?.message || null,
+        });
+        // Only retry transient failures while this turn still owns the indicator.
+        if (attempt === 0 && (response.status >= 500 || response.status === 429) && valid()) continue;
+        return null;
       }
-    );
 
-    if (!response.ok) {
-      const payload: any = await response.json().catch(() => null);
-      console.warn("[LIVE_DM_SENDER_ACTION_WARN]", {
+      return await response.json().catch(() => ({}));
+    } catch (err) {
+      console.warn("[LIVE_DM_SENDER_ACTION_ERROR]", {
         action,
-        status: response.status,
-        error: payload?.error?.message || null,
+        error: err instanceof Error ? err.message : String(err),
       });
+      if (attempt === 0 && valid()) continue;
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return await response.json().catch(() => ({}));
-  } catch (err) {
-    console.warn("[LIVE_DM_SENDER_ACTION_ERROR]", {
-      action,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return null;
-  } finally {
-    clearTimeout(timeout);
   }
+  return null;
 }
 
 async function sendInstagramText(
@@ -1219,7 +1259,7 @@ Deno.serve(async (req: Request) => {
           p_candidates: [], p_message_id: "", p_sender_id: "",
         });
         if (error || !data?.runtime_ready) throw new Error("Automation preparation unavailable");
-        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-typing-handoff" });
+        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-typing-lifecycle" });
       } catch {
         return reply(503, { ok: false, quotaReady: false });
       }
@@ -1321,6 +1361,7 @@ Deno.serve(async (req: Request) => {
     const metaIngressMs = Math.max(0, edgeReceivedAt - Number(item.timestamp || edgeReceivedAt));
     let typingStarted = false;
     let typingTask: Promise<any> = Promise.resolve(null);
+    let typingSession: ReturnType<typeof createTypingSession> | null = null;
 
     const startTyping = (runtime: any, source: "edge_memory" | "supabase_runtime_context" | "full_context") => {
       if (typingStarted) return;
@@ -1347,12 +1388,13 @@ Deno.serve(async (req: Request) => {
       typingOnDispatchedMs = Math.round(performance.now() - totalStart);
 
       const typingStart = performance.now();
-      typingTask = sendInstagramSenderAction(typingIgUserId, item.senderId, typingAccessToken, "typing_on").then(result => {
+      typingSession = createTypingSession(`${typingIgUserId}:${item.senderId}`,
+        (action, valid) => sendInstagramSenderAction(typingIgUserId, item.senderId, typingAccessToken, action, valid), result => {
         typingApiMs = Math.round(performance.now() - typingStart);
         typingAccepted = result !== null;
         if (typingAccepted) typingAckMs = Math.round(performance.now() - totalStart);
-        return result;
       });
+      typingTask = typingSession.first;
       runInBackground(typingTask);
     };
 
@@ -1360,13 +1402,10 @@ Deno.serve(async (req: Request) => {
     const stopTyping = () => {
       if (!typingStarted || typingStopRequested) return;
       typingStopRequested = true;
-      // Keep typing active until the Send API confirms a message ID.
-      // Never wait for off before sending text; if on is pending, sequence off behind it.
-      runInBackground(typingAccepted
-        ? sendInstagramSenderAction(igUserIdForTyping(), item.senderId, cleanToken(context?.account?.access_token), "typing_off")
-        : typingTask.then(() => sendInstagramSenderAction(igUserIdForTyping(), item.senderId, cleanToken(context?.account?.access_token), "typing_off")));
+      // Called after confirmed delivery or failure. The session suppresses stale
+      // cleanup, serializes pending on/off, and cancels all refresh/retry work.
+      if (typingSession) runInBackground(typingSession.stop());
     };
-    const igUserIdForTyping = () => String(context?.account?.ig_user_id || item.entryId || item.recipientId || "");
 
     try {
       context = await loadDmContext(admin, [item.entryId, item.recipientId], item.messageId, "", item.senderId, true);
