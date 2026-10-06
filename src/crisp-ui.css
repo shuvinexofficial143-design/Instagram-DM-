@@ -429,13 +429,17 @@ img,video,canvas { max-width:100%; }
   min-height:100dvh;
   padding:24px;
   background:
-    radial-gradient(circle at 50% 42%,rgba(124,58,237,.065),transparent 34%),
+    radial-gradient(ellipse at 25% 25%,rgba(124,58,237,.14),transparent 65%),
+    radial-gradient(ellipse at 80% 75%,rgba(16,185,129,.12),transparent 65%),
     linear-gradient(180deg,#fbfcff 0%,#f7f9fd 100%);
   color:#0f172a;
   opacity:1;
   transform:scale(1);
   transition:opacity .42s cubic-bezier(.22,1,.36,1),transform .42s cubic-bezier(.22,1,.36,1);
 }
+.app-splash-flow { position:absolute; inset:-8%; opacity:.18; pointer-events:none; animation:appSplashGlow 4s ease-in-out infinite alternate; }
+.app-splash-flow svg { width:100%; height:100%; fill:none; stroke:#8b5cf6; stroke-width:2; }
+.app-splash-flow path + path { stroke:#10c981; }
 .app-splash-screen.is-exiting {
   opacity:0;
   transform:scale(1.012);
@@ -466,12 +470,12 @@ img,video,canvas { max-width:100%; }
 }
 .app-splash-content {
   position:relative;
-  width:min(430px,100%);
+  width:min(580px,100%);
   display:flex;
   flex-direction:column;
   align-items:center;
   text-align:center;
-  animation:appSplashEnter .72s cubic-bezier(.16,1,.3,1) both;
+  animation:appSplashLogoFloat 3s ease-in-out infinite;
 }
 .app-splash-mark {
   position:relative;
@@ -659,7 +663,7 @@ img,video,canvas { max-width:100%; }
   to { opacity:1; transform:translateY(0) scale(1); }
 }
 @keyframes appSplashCopy {
-  from { opacity:0; transform:translateY(8px); }
+  from { opacity:1; transform:translateY(0); }
   to { opacity:1; transform:translateY(0); }
 }
 @keyframes appSplashLogoFloat {
@@ -699,6 +703,7 @@ img,video,canvas { max-width:100%; }
   .app-splash-copy p { max-width:310px; font-size:13px; }
 }
 @media(prefers-reduced-motion:reduce) {
+  .app-splash-flow,
   .app-splash-glow,
   .app-splash-logo,
   .app-splash-orbit,

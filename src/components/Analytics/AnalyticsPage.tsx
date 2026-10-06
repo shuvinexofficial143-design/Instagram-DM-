@@ -37,15 +37,11 @@ const smoothPath = (points: ChartPoint[]) => {
   if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
   let path = `M ${points[0].x} ${points[0].y}`;
   for (let index = 0; index < points.length - 1; index += 1) {
-    const p0 = points[index - 1] || points[index];
     const p1 = points[index];
     const p2 = points[index + 1];
-    const p3 = points[index + 2] || p2;
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    path += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+    // Horizontal handles stay between each pair: no negative counts or overshoot.
+    const midpoint = (p1.x + p2.x) / 2;
+    path += ` C ${midpoint.toFixed(2)} ${p1.y.toFixed(2)}, ${midpoint.toFixed(2)} ${p2.y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
   }
   return path;
 };
@@ -341,7 +337,15 @@ export const AnalyticsPage: React.FC = () => {
   const chartStep = niceStepMultiplier * magnitude;
   const chartMax = Math.max(4, chartStep * 4);
   const chartTicks = [chartMax, chartMax - chartStep, chartMax - chartStep * 2, chartMax - chartStep * 3, 0];
-  const chartPoints = (field: 'incoming' | 'outgoing') => analytics.daily.map((day, index) => ({
+  // Trailing three-day means soften sparse daily spikes without inventing activity.
+  const trendDays = analytics.daily.map((day, index, days) => {
+    const window = days.slice(Math.max(0, index - 2), index + 1);
+    return { ...day,
+      incoming: window.reduce((sum, item) => sum + item.incoming, 0) / window.length,
+      outgoing: window.reduce((sum, item) => sum + item.outgoing, 0) / window.length,
+    };
+  });
+  const chartPoints = (field: 'incoming' | 'outgoing') => trendDays.map((day, index) => ({
     x: analytics.daily.length <= 1 ? 0.6 : 0.6 + (index / (analytics.daily.length - 1)) * 98.8,
     y: 98 - (day[field] / chartMax) * 94,
   }));
@@ -583,13 +587,14 @@ export const AnalyticsPage: React.FC = () => {
 
             {analytics.current.incoming.length || analytics.current.outgoing.length ? (
               <div className="mt-7">
+                <p className="mb-4 text-xs leading-relaxed text-slate-400">3-day average trend · Daily counts are available on each point. Matching totals share a curve, with both colors visible.</p>
                 <div className="grid grid-cols-[34px_minmax(0,1fr)] gap-3">
                   <div className="flex h-[235px] flex-col justify-between pb-[1px] text-right text-xs font-medium text-slate-400 sm:h-[285px]">
                     {chartTicks.map((tick) => <span key={tick}>{Number.isInteger(tick) ? tick : tick.toFixed(1)}</span>)}
                   </div>
                   <div>
                     <div className="relative h-[235px] w-full sm:h-[285px]">
-                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img" aria-label="Incoming and outgoing message activity">
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img" aria-label="Incoming and replies: three-day average trend">
                         <defs>
                           <linearGradient id="message-incoming-fill" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#12B6B8" stopOpacity="0.30" />
@@ -619,8 +624,8 @@ export const AnalyticsPage: React.FC = () => {
                         <path d={outgoingAreaPath} fill="#10C981" opacity="0.055" filter="url(#message-soft-shadow)" />
                         <path d={incomingAreaPath} fill="url(#message-incoming-fill)" />
                         <path d={outgoingAreaPath} fill="url(#message-replies-fill)" />
-                        <path d={incomingPath} fill="none" stroke="#12B6B8" strokeWidth="3" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
-                        <path d={outgoingPath} fill="none" stroke="#10C981" strokeWidth="3" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+                        <path d={incomingPath} fill="none" stroke="#12B6B8" strokeWidth="6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+                        <path d={outgoingPath} fill="none" stroke="#10C981" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
 
                         {analytics.daily.map((day, index) => {
                           const incomingPoint = incomingPoints[index];

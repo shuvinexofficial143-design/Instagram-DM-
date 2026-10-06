@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect } from 'react';
 import { MessageCircle, Sparkles, Zap } from 'lucide-react';
 
 type AppSplashScreenProps = {
@@ -6,6 +6,10 @@ type AppSplashScreenProps = {
 };
 
 export const AppSplashScreen: React.FC<AppSplashScreenProps> = ({ exiting = false }) => {
+  useLayoutEffect(() => {
+    // Remove the initial HTML loader only after its React replacement has committed.
+    document.getElementById('boot-screen')?.remove();
+  }, []);
   return (
     <div
       className={`app-splash-screen${exiting ? ' is-exiting' : ''}`}
@@ -13,6 +17,12 @@ export const AppSplashScreen: React.FC<AppSplashScreenProps> = ({ exiting = fals
       aria-live="polite"
       aria-label="Auto Replies is loading"
     >
+      <div className="app-splash-flow" aria-hidden="true">
+        <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
+          <path d="M-100 670 C180 100 430 920 780 400 S1220 50 1540 300" />
+          <path d="M-100 750 C230 220 440 1020 810 520 S1270 130 1540 420" />
+        </svg>
+      </div>
       <div className="app-splash-glow app-splash-glow-a" aria-hidden="true" />
       <div className="app-splash-glow app-splash-glow-b" aria-hidden="true" />
 

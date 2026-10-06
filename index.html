@@ -9,8 +9,18 @@
     <meta property="og:description" content="Answer Instagram DMs, respond to comments and organize leads with Auto Replies. Set up your assistant, test replies and stay in control." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <style>
+      html,body{margin:0;background:#f7f9fd;font-family:Arial,sans-serif}
+      #boot-screen{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;min-height:100dvh;background:radial-gradient(ellipse at 25% 25%,#ede4fb,transparent 65%),radial-gradient(ellipse at 80% 75%,#e1f5ee,transparent 65%),#f7f9fd;color:#0f172a;text-align:center}
+      .boot-logo{display:grid;place-items:center;margin:0 auto 28px;width:80px;height:80px;border-radius:26px;background:linear-gradient(140deg,#8b5cf6,#5533dc);color:white;font-size:48px;box-shadow:0 18px 48px #7c3aed30;animation:boot-float 2s ease-in-out infinite}
+      #boot-screen strong{font-size:30px;letter-spacing:-1px}#boot-screen p{color:#64748b;font-size:14px;margin:12px 24px 24px}
+      .boot-track{width:200px;height:5px;background:#e4def4;border-radius:20px;margin:auto;overflow:hidden}.boot-track span{display:block;width:45%;height:100%;background:linear-gradient(90deg,#8b5cf6,#10c981);border-radius:20px;animation:boot-progress 1.5s ease-in-out infinite}
+      @keyframes boot-float{50%{transform:translateY(-5px)}}@keyframes boot-progress{from{transform:translateX(-100%)}to{transform:translateX(325%)}}
+      @media(prefers-reduced-motion:reduce){.boot-logo,.boot-track span{animation:none}}
+    </style>
   </head>
   <body>
+    <div id="boot-screen" role="status" aria-label="Auto Replies is loading"><div><div class="boot-logo" aria-hidden="true">ϟ</div><strong>Auto Replies</strong><p>Smart Instagram conversations, ready in a moment.</p><div class="boot-track" aria-hidden="true"><span></span></div></div></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
