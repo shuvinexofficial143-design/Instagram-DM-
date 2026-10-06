@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
 import {
   Activity,
   AlertCircle,
@@ -28,22 +28,6 @@ type DailyPoint = {
   outgoing: number;
   ai: number;
   leads: number;
-};
-
-type ChartPoint = { x: number; y: number };
-
-const smoothPath = (points: ChartPoint[]) => {
-  if (!points.length) return '';
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-  let path = `M ${points[0].x} ${points[0].y}`;
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const p1 = points[index];
-    const p2 = points[index + 1];
-    // Horizontal handles stay between each pair: no negative counts or overshoot.
-    const midpoint = (p1.x + p2.x) / 2;
-    path += ` C ${midpoint.toFixed(2)} ${p1.y.toFixed(2)}, ${midpoint.toFixed(2)} ${p2.y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
-  }
-  return path;
 };
 
 const DAY = 86400000;
@@ -325,44 +309,6 @@ export const AnalyticsPage: React.FC = () => {
     ? Math.round(((analytics.avgResponseMs - analytics.previousAvgResponseMs) / analytics.previousAvgResponseMs) * 100)
     : 0;
 
-  const maxDaily = Math.max(1, ...analytics.daily.flatMap((day) => [day.incoming, day.outgoing]));
-  const roughStep = maxDaily / 4;
-  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(roughStep, 1))));
-  const normalizedStep = roughStep / magnitude;
-  const niceStepMultiplier =
-    normalizedStep <= 1 ? 1 :
-    normalizedStep <= 2 ? 2 :
-    normalizedStep <= 2.5 ? 2.5 :
-    normalizedStep <= 5 ? 5 : 10;
-  const chartStep = niceStepMultiplier * magnitude;
-  const chartMax = Math.max(4, chartStep * 4);
-  const chartTicks = [chartMax, chartMax - chartStep, chartMax - chartStep * 2, chartMax - chartStep * 3, 0];
-  // Trailing three-day means soften sparse daily spikes without inventing activity.
-  const trendDays = analytics.daily.map((day, index, days) => {
-    const window = days.slice(Math.max(0, index - 2), index + 1);
-    return { ...day,
-      incoming: window.reduce((sum, item) => sum + item.incoming, 0) / window.length,
-      outgoing: window.reduce((sum, item) => sum + item.outgoing, 0) / window.length,
-    };
-  });
-  const chartPoints = (field: 'incoming' | 'outgoing') => trendDays.map((day, index) => ({
-    x: analytics.daily.length <= 1 ? 0.6 : 0.6 + (index / (analytics.daily.length - 1)) * 98.8,
-    y: 98 - (day[field] / chartMax) * 94,
-  }));
-  const incomingPoints = chartPoints('incoming');
-  const outgoingPoints = chartPoints('outgoing');
-  const incomingPath = smoothPath(incomingPoints);
-  const outgoingPath = smoothPath(outgoingPoints);
-  const incomingAreaPath = incomingPoints.length
-    ? incomingPath + ` L ${incomingPoints[incomingPoints.length - 1].x} 98 L ${incomingPoints[0].x} 98 Z`
-    : '';
-  const outgoingAreaPath = outgoingPoints.length
-    ? outgoingPath + ` L ${outgoingPoints[outgoingPoints.length - 1].x} 98 L ${outgoingPoints[0].x} 98 Z`
-    : '';
-  const chartLabelIndexes = analytics.daily.length
-    ? Array.from(new Set(Array.from({ length: 6 }, (_, index) => Math.round((index / 5) * (analytics.daily.length - 1)))))
-    : [];
-
   const aiHandleRate = analytics.current.outgoing.length
     ? Math.round((analytics.current.ai.length / analytics.current.outgoing.length) * 100)
     : 0;
@@ -568,106 +514,7 @@ export const AnalyticsPage: React.FC = () => {
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[1.55fr_.85fr]">
-          <article className="rounded-[22px] border border-slate-200/80 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,.055)] sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-500">
-                  <Activity className="h-6 w-6 stroke-[2.4]" />
-                </span>
-                <div>
-                  <h2 className="text-lg font-bold tracking-tight text-slate-950">Message activity</h2>
-                  <p className="mt-0.5 text-sm text-slate-500">Incoming DMs compared with replies sent.</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-5 text-sm font-medium text-slate-500">
-                <span className="inline-flex items-center gap-2"><i className="h-3 w-3 rounded-full bg-[#12B6B8]" /> Incoming</span>
-                <span className="inline-flex items-center gap-2"><i className="h-3 w-3 rounded-full bg-[#10C981]" /> Replies</span>
-              </div>
-            </div>
-
-            {analytics.current.incoming.length || analytics.current.outgoing.length ? (
-              <div className="mt-7">
-                <p className="mb-4 text-xs leading-relaxed text-slate-400">3-day average trend · Daily counts are available on each point. Matching totals share a curve, with both colors visible.</p>
-                <div className="grid grid-cols-[34px_minmax(0,1fr)] gap-3">
-                  <div className="flex h-[235px] flex-col justify-between pb-[1px] text-right text-xs font-medium text-slate-400 sm:h-[285px]">
-                    {chartTicks.map((tick) => <span key={tick}>{Number.isInteger(tick) ? tick : tick.toFixed(1)}</span>)}
-                  </div>
-                  <div>
-                    <div className="relative h-[235px] w-full sm:h-[285px]">
-                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img" aria-label="Incoming and replies: three-day average trend">
-                        <defs>
-                          <linearGradient id="message-incoming-fill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#12B6B8" stopOpacity="0.30" />
-                            <stop offset="42%" stopColor="#12B6B8" stopOpacity="0.17" />
-                            <stop offset="78%" stopColor="#12B6B8" stopOpacity="0.08" />
-                            <stop offset="100%" stopColor="#12B6B8" stopOpacity="0.025" />
-                          </linearGradient>
-                          <linearGradient id="message-replies-fill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#10C981" stopOpacity="0.27" />
-                            <stop offset="45%" stopColor="#10C981" stopOpacity="0.14" />
-                            <stop offset="82%" stopColor="#10C981" stopOpacity="0.06" />
-                            <stop offset="100%" stopColor="#10C981" stopOpacity="0.02" />
-                          </linearGradient>
-                          <filter id="message-soft-shadow" x="-10%" y="-10%" width="120%" height="130%">
-                            <feGaussianBlur stdDeviation="1.8" />
-                          </filter>
-                        </defs>
-
-                        {[4, 27.5, 51, 74.5, 98].map((y) => (
-                          <line key={'h-' + y} x1="0" x2="100" y1={y} y2={y} stroke="#dfe5ea" strokeWidth="0.8" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
-                        ))}
-                        {[0, 20, 40, 60, 80, 100].map((x) => (
-                          <line key={'v-' + x} x1={x} x2={x} y1="4" y2="98" stroke="#e4e9ee" strokeWidth="0.7" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
-                        ))}
-
-                        <path d={incomingAreaPath} fill="#12B6B8" opacity="0.07" filter="url(#message-soft-shadow)" />
-                        <path d={outgoingAreaPath} fill="#10C981" opacity="0.055" filter="url(#message-soft-shadow)" />
-                        <path d={incomingAreaPath} fill="url(#message-incoming-fill)" />
-                        <path d={outgoingAreaPath} fill="url(#message-replies-fill)" />
-                        <path d={incomingPath} fill="none" stroke="#12B6B8" strokeWidth="6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
-                        <path d={outgoingPath} fill="none" stroke="#10C981" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
-
-                        {analytics.daily.map((day, index) => {
-                          const incomingPoint = incomingPoints[index];
-                          const outgoingPoint = outgoingPoints[index];
-                          if (!incomingPoint || !outgoingPoint) return null;
-                          return (
-                            <React.Fragment key={day.label + index}>
-                              <circle cx={incomingPoint.x} cy={incomingPoint.y} r="3.4" fill="transparent">
-                                <title>{day.label + ': ' + day.incoming + ' incoming DMs'}</title>
-                              </circle>
-                              <circle cx={outgoingPoint.x} cy={outgoingPoint.y} r="3.4" fill="transparent">
-                                <title>{day.label + ': ' + day.outgoing + ' replies'}</title>
-                              </circle>
-                            </React.Fragment>
-                          );
-                        })}
-                      </svg>
-                    </div>
-
-                    <div className="mt-3 grid text-xs font-medium text-slate-400" style={{ gridTemplateColumns: `repeat(${chartLabelIndexes.length || 1}, minmax(0, 1fr))` }}>
-                      {chartLabelIndexes.map((dayIndex, index) => (
-                        <span
-                          key={dayIndex}
-                          className={index === 0 ? 'text-left' : index === chartLabelIndexes.length - 1 ? 'text-right' : 'text-center'}
-                        >
-                          {analytics.daily[dayIndex]?.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-7 flex min-h-[300px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-6 text-center">
-                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-500">
-                  <Activity className="h-6 w-6" />
-                </span>
-                <h3 className="mt-3 text-sm font-bold text-slate-800">No message activity in this period</h3>
-                <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">Incoming Instagram DMs and replies will appear here automatically as conversations are recorded.</p>
-              </div>
-            )}
-          </article>
+          <MessageActivityChart days={analytics.daily} />
 
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex items-center justify-between gap-3">
@@ -936,4 +783,75 @@ export const AnalyticsPage: React.FC = () => {
       </div>
     </div>
   );
+};
+
+
+// Independent daily chart. Curves interpolate actual counts without averaging or overshoot.
+const MessageActivityChart = ({ days }: { days: DailyPoint[] }) => {
+  const id = useId().replace(/:/g, '');
+  const [active, setActive] = useState<number | null>(null);
+  const width = 800, height = 320, top = 12, bottom = 308;
+  const peak = Math.max(0, ...days.flatMap(day => [day.incoming, day.outgoing]));
+  const targetStep = Math.max(1, peak * 1.1 / 4);
+  const magnitude = 10 ** Math.floor(Math.log10(targetStep));
+  const normalized = targetStep / magnitude;
+  const step = Math.ceil((normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10) * magnitude);
+  const maximum = step * 4;
+  const ticks = [maximum, step * 3, step * 2, step, 0];
+  const indexes = Array.from(new Set(Array.from({length: Math.min(6, days.length)}, (_, i) => Math.round(i * (days.length - 1) / Math.max(1, Math.min(6, days.length) - 1)))));
+  const x = (i: number) => days.length > 1 ? 4 + i / (days.length - 1) * (width - 8) : width / 2;
+  const y = (count: number) => bottom - count / maximum * (bottom - top);
+  const curve = (field: 'incoming' | 'outgoing') => {
+    if (!days.length) return '';
+    let path = `M ${x(0)} ${y(days[0][field])}`;
+    for (let i = 1; i < days.length; i++) {
+      const mid = (x(i - 1) + x(i)) / 2;
+      path += ` C ${mid} ${y(days[i - 1][field])} ${mid} ${y(days[i][field])} ${x(i)} ${y(days[i][field])}`;
+    }
+    return path;
+  };
+  const incoming = curve('incoming'), replies = curve('outgoing');
+  const area = (path: string) => path ? `${path} L ${x(days.length - 1)} ${bottom} L ${x(0)} ${bottom} Z` : '';
+  const equal = days.length > 0 && days.every(day => day.incoming === day.outgoing);
+  const selected = active === null ? null : days[active];
+  const selectPoint = (event: React.PointerEvent<SVGSVGElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setActive(Math.max(0, Math.min(days.length - 1, Math.round((event.clientX - bounds.left) / bounds.width * (days.length - 1)))));
+  };
+  return <article className="min-w-0 rounded-[26px] border border-slate-100 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,.05)] sm:p-8" aria-labelledby={`${id}-title`}>
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+      <div className="flex min-w-0 items-center gap-4">
+        <span className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] bg-emerald-50 text-[#10C981]"><Activity className="h-8 w-8" strokeWidth={2.5}/></span>
+        <div><h2 id={`${id}-title`} className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">Message activity</h2><p className="mt-1 text-sm leading-6 text-slate-500 sm:text-base">Incoming DMs compared with replies sent.</p></div>
+      </div>
+      <div className="flex items-center gap-6 text-sm font-medium text-slate-500 sm:text-base" aria-label="Chart legend">
+        <span className="inline-flex items-center gap-2.5"><i className="h-3.5 w-3.5 rounded-full bg-[#12B6B8]"/>Incoming</span>
+        <span className="inline-flex items-center gap-2.5"><i className="h-3.5 w-3.5 rounded-full bg-[#10C981]"/>Replies</span>
+      </div>
+    </div>
+    <div className="mt-8 grid min-w-0 grid-cols-[32px_minmax(0,1fr)] gap-3 sm:mt-10 sm:grid-cols-[40px_minmax(0,1fr)] sm:gap-4">
+      <div className="relative h-[260px] text-right text-sm font-medium text-slate-500 sm:h-[320px]">{ticks.map((tick,i)=><span key={tick} className="absolute right-0 -translate-y-1/2" style={{top:`${(top + i * (bottom - top) / 4) / height * 100}%`}}>{tick}</span>)}</div>
+      <div className="min-w-0">
+        <div className="relative h-[260px] sm:h-[320px]">
+          <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full overflow-visible" role="img" aria-label="Daily incoming Instagram DMs and replies" tabIndex={days.length?0:undefined} onPointerMove={days.length?selectPoint:undefined} onPointerDown={days.length?selectPoint:undefined} onPointerLeave={()=>setActive(null)} onBlur={()=>setActive(null)} onKeyDown={event=>{if(!days.length)return;if(event.key==='ArrowRight'||event.key==='ArrowLeft'){event.preventDefault();setActive(current=>Math.max(0,Math.min(days.length-1,(current??0)+(event.key==='ArrowRight'?1:-1))));}if(event.key==='Escape')setActive(null);}}>
+            <title>Message activity</title><desc>Actual daily counts. Teal represents incoming DMs and green represents replies. Use left and right arrow keys to inspect dates.</desc>
+            <defs>
+              <linearGradient id={`${id}-incoming`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#12B6B8" stopOpacity=".24"/><stop offset="100%" stopColor="#12B6B8" stopOpacity=".025"/></linearGradient>
+              <linearGradient id={`${id}-replies`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10C981" stopOpacity=".20"/><stop offset="100%" stopColor="#10C981" stopOpacity=".025"/></linearGradient>
+            </defs>
+            {ticks.map((tick)=><line key={tick} x1="4" x2={width-4} y1={y(tick)} y2={y(tick)} stroke="#e7ebef" strokeDasharray="4 5" vectorEffect="non-scaling-stroke"/>)}
+            {indexes.map(i=><line key={i} x1={x(i)} x2={x(i)} y1={top} y2={bottom} stroke="#e7ebef" strokeDasharray="4 5" vectorEffect="non-scaling-stroke"/>)}
+            <path d={area(incoming)} fill={`url(#${id}-incoming)`}/><path d={area(replies)} fill={`url(#${id}-replies)`}/>
+            <path d={incoming} fill="none" stroke="#12B6B8" strokeWidth="3" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
+            <path d={replies} fill="none" stroke="#10C981" strokeWidth="3" strokeDasharray={equal?'7 7':undefined} strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
+            {days.length===1&&<><ellipse cx={x(0)} cy={y(days[0].incoming)} rx="4" ry="4" fill="#12B6B8"/><ellipse cx={x(0)} cy={y(days[0].outgoing)} rx="3" ry="3" fill="#10C981"/></>}
+            {selected&&active!==null&&<><line x1={x(active)} x2={x(active)} y1={top} y2={bottom} stroke="#94a3b8" strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/><ellipse cx={x(active)} cy={y(selected.incoming)} rx="5" ry="4" fill="#12B6B8" stroke="white" vectorEffect="non-scaling-stroke"/><ellipse cx={x(active)} cy={y(selected.outgoing)} rx="4" ry="3" fill="#10C981" stroke="white" vectorEffect="non-scaling-stroke"/></>}
+          </svg>
+          {selected&&active!==null&&<div role="status" className="pointer-events-none absolute top-2 z-10 max-w-full rounded-xl border border-slate-100 bg-white px-3 py-2 text-xs shadow-lg" style={{left:`${Math.min(74, Math.max(0, x(active)/width*100))}%`,transform:active>days.length/2?'translateX(-100%)':undefined}}><p className="mb-1 font-bold text-slate-800">{selected.label}</p><p className="text-[#0e9295]">Incoming: {selected.incoming}</p><p className="text-emerald-600">Replies: {selected.outgoing}</p></div>}
+          {peak===0&&<p className="absolute inset-x-0 top-1/2 -translate-y-1/2 px-4 text-center text-sm text-slate-500">No message activity in this period.</p>}
+        </div>
+        <div className="relative mt-3 h-6 text-xs font-medium text-slate-500 sm:text-sm">{indexes.map((index,i)=><span key={index} className="absolute whitespace-nowrap" style={{left:`${x(index)/width*100}%`,transform:i===0?'none':i===indexes.length-1?'translateX(-100%)':'translateX(-50%)'}}>{days[index].label}</span>)}</div>
+      </div>
+    </div>
+  </article>;
 };

@@ -92,11 +92,15 @@ try {
   // Equal series must keep both colors visible; sparse activity cannot dip below zero.
   globalThis.__uiFixture=fixture({inboxMessages:['in','out'].map((direction,index)=>({id:String(index),direction,timestamp:new Date().toISOString(),ig_user_id:'sample'}))});
   html=renderToStaticMarkup(React.createElement(ui.AnalyticsPage));
-  assert.ok(html.includes('3-day average trend'));
+  assert.ok(html.includes('Daily incoming Instagram DMs and replies'));
+  assert.ok(!html.includes('3-day average trend'));
+  assert.ok(html.includes('stroke-dasharray="7 7"'),'equal series retain both colors without shifting counts');
   const lines=[...html.matchAll(/<path d="([^"]+)" fill="none" stroke="(#[^"]+)" stroke-width="([^"]+)"/g)];
   assert.equal(lines.length,2);assert.equal(lines[0][1],lines[1][1]);
-  assert.ok(Number(lines[0][3])>Number(lines[1][3]),'incoming edges remain visible underneath equal replies');
-  for(const [,,y] of lines[0][1].matchAll(/(?:M |, )(\d+(?:\.\d+)?) (\d+(?:\.\d+)?)/g))assert.ok(Number(y)<=98 && Number(y)>=4,'curve stays inside count bounds');
+  assert.equal(lines[0][3],lines[1][3],'both series use the same line weight');
+  const coordinates=lines[0][1].match(/\d+(?:\.\d+)?/g).map(Number);
+  for(let i=1;i<coordinates.length;i+=2)assert.ok(coordinates[i]<=308 && coordinates[i]>=12,'curve stays inside count bounds');
+  assert.ok(lines[0][1].endsWith('234'),'one message is plotted at one on the 0–4 scale without averaging');
   checks++;
   globalThis.__uiFixture=fixture({isBuilderOpen:true});
   html=renderToStaticMarkup(React.createElement(ui.AutomationBuilder));
