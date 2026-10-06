@@ -1219,7 +1219,7 @@ Deno.serve(async (req: Request) => {
           p_candidates: [], p_message_id: "", p_sender_id: "",
         });
         if (error || !data?.runtime_ready) throw new Error("Automation preparation unavailable");
-        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-id-compatibility" });
+        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-typing-handoff" });
       } catch {
         return reply(503, { ok: false, quotaReady: false });
       }
@@ -1360,8 +1360,8 @@ Deno.serve(async (req: Request) => {
     const stopTyping = () => {
       if (!typingStarted || typingStopRequested) return;
       typingStopRequested = true;
-      // Dispatch off as soon as the reply is ready. Never wait for the typing
-      // API before sending text; if on is pending, sequence off behind it.
+      // Keep typing active until the Send API confirms a message ID.
+      // Never wait for off before sending text; if on is pending, sequence off behind it.
       runInBackground(typingAccepted
         ? sendInstagramSenderAction(igUserIdForTyping(), item.senderId, cleanToken(context?.account?.access_token), "typing_off")
         : typingTask.then(() => sendInstagramSenderAction(igUserIdForTyping(), item.senderId, cleanToken(context?.account?.access_token), "typing_off")));
@@ -1611,7 +1611,6 @@ Instagram DM style rules:
       )
     );
 
-    stopTyping();
     const sendStartEpoch = Date.now();
     const metaDeliveryMs = Math.max(
       0,

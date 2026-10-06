@@ -94,3 +94,14 @@ different ID scope was validated inside a rolled-back transaction.
 
 Batch-result and unresolved-account diagnostics now expose safe reason/latency
 fields in function logs without message text, replies or tokens.
+
+
+## Typing handoff correction
+
+The previous stop-before-send ordering could leave a visible empty interval while
+Instagram accepted the outgoing message. Typing off is now requested only after
+the Send API returns a confirmed message ID (or after a failed send for cleanup).
+Typing and AI still run concurrently. Off never blocks delivery. A controlled
+slow-send regression test proves no typing-off request runs while send is pending.
+Meta acceptance does not expose a customer-visible display timestamp, so exact
+visual simultaneity cannot be promised.
