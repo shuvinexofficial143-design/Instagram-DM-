@@ -1363,7 +1363,7 @@ Deno.serve(async (req: Request) => {
           p_candidates: [], p_message_id: "", p_sender_id: "",
         });
         if (error || !data?.runtime_ready) throw new Error("Automation preparation unavailable");
-        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-typing-lifecycle" });
+        return reply(200, { ok: true, quotaReady: true, engineVersion: "2026-10-06-typing-fast-start" });
       } catch {
         return reply(503, { ok: false, quotaReady: false });
       }
@@ -1576,15 +1576,27 @@ Deno.serve(async (req: Request) => {
       continue;
     }
 
-    // Receiving a message is independent of reply rules, quota and Send API success.
-    // Persist before every automation eligibility branch, without charging usage.
-    try {
-      await persistInboundMessage(admin, workspaceId, item, { username: item.senderId, avatar_url: "" });
-    } catch {
-      results.push({ messageId: item.messageId, ok: false, reason: "inbox_save_failed" });
-      continue;
-    }
+    // The RPC has already durably claimed this event. Inbox/contact writes must
+    // not delay typing or AI. Keep persistence alive for ignored events too, and
+    // require successful inbound persistence before any customer-facing reply.
+    const inboundSaveStart = performance.now();
+    let inboundSaveMs = 0;
+    const inboundSaved = persistInboundMessage(admin, workspaceId, item,
+      { username: item.senderId, avatar_url: "" }).then(() => true, () => false)
+      .then(saved => {
+        inboundSaveMs = Math.round(performance.now() - inboundSaveStart);
+        if (!saved) {
+          stopTyping();
+          runInBackground(logEvent(admin, workspaceId, item.messageId, {
+            status: "failed", reason: "inbox_save_failed", inbound_save_ms: inboundSaveMs,
+          }));
+        }
+        return saved;
+      });
+    runInBackground(inboundSaved);
     runInBackground((async () => {
+      // Serialize enrichment after the base write to avoid overwriting it.
+      if (!await inboundSaved) return;
       const profile = await getSenderProfile(item.senderId, accessToken);
       await persistInboundMessage(admin, workspaceId, item, profile, false);
     })());
@@ -1595,9 +1607,15 @@ Deno.serve(async (req: Request) => {
     const automation = matchAutomation(context.automations || [], item);
     context.automation = automation;
 
-    // Reply execution starts only after the incoming message is safely recorded.
-
-
+    // Keep non-AI/ignored events ordered within this batch, including their
+    // contact updates. Only an eligible AI turn benefits from parallel storage.
+    const canStartAi = automation?.trigger_type === "dm_ai_conversation" &&
+      context.quota && context.quota.totalUsed < context.quota.totalLimit &&
+      context.quota.aiUsed < context.quota.aiLimit;
+    if (!canStartAi && !await inboundSaved) {
+      results.push({ messageId: item.messageId, ok: false, reason: "inbox_save_failed" });
+      continue;
+    }
 
     if (!automation) {
       runInBackground(
@@ -1656,12 +1674,13 @@ Deno.serve(async (req: Request) => {
     const extraDelay = (automation.actions || []).filter((a: any) => a.type === "add_delay")
       .reduce((sum: number, a: any) => sum + Number(a.delay_seconds || 0), 0);
     if (!Number.isFinite(extraDelay) || extraDelay < 0 || extraDelay > 20) {
+      await inboundSaved;
       runInBackground(logEvent(admin, workspaceId, item.messageId, { status: "failed", reason: "configured_delay_exceeds_20_seconds" }));
       results.push({ messageId: item.messageId, ok: false, reason: "configured_delay_exceeds_20_seconds" });
       continue;
     }
-    if (extraDelay) await new Promise(resolve => setTimeout(resolve, extraDelay * 1000));
     startTyping(context, "full_context");
+    if (extraDelay) await new Promise(resolve => setTimeout(resolve, extraDelay * 1000));
 
     const aiAction = (automation?.actions || []).find(
       (a: any) => a?.type === "ai_chatbot"
@@ -1752,6 +1771,12 @@ Instagram DM style rules:
           )
         );
       }
+    }
+
+    if (!await inboundSaved) {
+      stopTyping();
+      results.push({ messageId: item.messageId, ok: false, reason: "inbox_save_failed" });
+      continue;
     }
 
     const outgoingTextKey = normalizeReplyCacheKey(responseText);
@@ -1855,6 +1880,7 @@ Instagram DM style rules:
               ai_error: aiError || null,
               instagram_message_id: instagramMessageId || null,
               context_ms: contextMs,
+              inbound_save_ms: inboundSaveMs,
               history_ms: historyMs,
               ai_ms: aiMs,
               send_ms: sendMs,
@@ -1885,6 +1911,7 @@ Instagram DM style rules:
         sent: true,
         fallbackUsed: Boolean(aiError),
         contextMs,
+        inboundSaveMs,
         historyMs,
         aiMs,
         sendMs,
@@ -1917,6 +1944,7 @@ Instagram DM style rules:
           ai_error: aiError || null,
           send_error: sendError,
           context_ms: contextMs,
+          inbound_save_ms: inboundSaveMs,
           history_ms: historyMs,
           ai_ms: aiMs,
           send_ms: sendMs,
@@ -1939,6 +1967,7 @@ Instagram DM style rules:
         reason: "instagram_send_failed",
         error: sendError,
         contextMs,
+        inboundSaveMs,
         historyMs,
         aiMs,
         sendMs,

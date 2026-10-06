@@ -114,3 +114,33 @@ Successful customer events at 10:31–10:32 UTC had typing accepted by Meta, wit
 Sender actions now share a conversation-specific queue within each edge worker. A newer turn supersedes the older turn's cleanup; pending actions finish in order, and stale off actions are skipped. Long-running turns refresh typing every four seconds. Transient sender-action failures get at most one retry while the turn is still active; permission errors do not retry. AI and message generation remain parallel with typing. Refresh timers stop after confirmed message acceptance or send failure.
 
 This queue is worker-local, not a distributed conversation lock. It prevents local action ordering races but cannot guarantee ordering of separate workers or Meta's app rendering. No artificial wait is added to the reply merely to keep the indicator visible. The earliest permitted start remains after fresh automation/quota checks and a durable message claim.
+
+
+## Fast typing start with durable inbox (2026-10-06)
+
+The current inbox implementation performed contact lookup, contact writes and
+message writes before typing/AI. Those writes now run alongside typing and AI,
+after the authenticated preparation RPC has durably claimed the message and
+fresh rules/quota have passed. Reply delivery still waits for successful inbound
+storage. Persistence failure blocks both AI and static delivery; AI typing is
+cleaned up. Ignored/quota-limited inbound events remain registered as background
+tasks so their inbox writes are retained. Profile enrichment waits for base
+persistence to avoid overwriting the initial contact.
+
+Configured AI reply delays now begin after typing is dispatched; the configured
+reply delay remains respected. AI generation never waits for typing acceptance.
+The existing refresh, transient retry and send-confirmation-before-off behavior
+remains. `inbound_save_ms` measures persistence independently of `context_ms`.
+
+History remains in the same preparation SQL transaction: splitting it would add
+a network round trip and risk stale cross-worker conversation state. No stale
+account/rule/quota cache is used to start typing. No region change was guessed:
+Mumbai database/function placement already exists and requires measured A/B tests
+against automatic routing before altering the live Meta callback. Early webhook
+acknowledgment requires durable processing/recovery design, not untracked
+fire-and-forget work, and is not introduced in this patch.
+
+Controlled storage-gate tests prove typing and AI begin before storage completes,
+while sends wait for durable storage. These establish the scheduling improvement,
+not a customer-visible subsecond latency guarantee. Existing ingress/API timings
+are historical observations, not fresh measurements of this version.
