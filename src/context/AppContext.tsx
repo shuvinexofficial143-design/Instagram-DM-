@@ -24,7 +24,7 @@ import {
   isSupabaseInitialized,
 } from '../lib/supabase';
 
-export type ActiveTab = 'home' | 'analytics' | 'automations' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'crm' | 'inbox' | 'integrations' | 'billing' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
+export type ActiveTab = 'home' | 'analytics' | 'automations' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'crm' | 'inbox' | 'integrations' | 'billing' | 'checkout' | 'contact' | 'refunds' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
 
 const TAB_PATHS: Record<ActiveTab, string> = {
   home: '/',
@@ -39,6 +39,9 @@ const TAB_PATHS: Record<ActiveTab, string> = {
   inbox: '/inbox',
   integrations: '/integrations',
   billing: '/billing',
+  checkout: '/billing/checkout',
+  contact: '/contact',
+  refunds: '/refunds',
   settings: '/settings',
   about: '/about',
   help: '/help',
@@ -1609,29 +1612,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const renewPlan = (nextPlan: 'free' | 'starter' | 'pro' | 'business' = 'pro') => {
-    const limits = {
-      free: { messages: 1500, ai: 1000 },
-      starter: { messages: 7500, ai: 5000 },
-      pro: { messages: 25000, ai: 15000 },
-      business: { messages: 75000, ai: 40000 },
-    };
-    setUser((prev) => {
-      const currentPlan = String(prev.plan || 'free') as keyof typeof limits;
-      const current = limits[currentPlan] || limits.free;
-      const isFirstFreeUpgrade = currentPlan === 'free' && nextPlan !== 'free';
-      return {
-        ...prev,
-        plan: nextPlan,
-        message_usage: 0,
-        ai_reply_usage: 0,
-        carry_forward_messages: isFirstFreeUpgrade ? Math.max(0, current.messages - Number(prev.message_usage || 0)) : Number(prev.carry_forward_messages || 0),
-        carry_forward_ai_replies: isFirstFreeUpgrade ? Math.max(0, current.ai - Number(prev.ai_reply_usage || 0)) : Number(prev.carry_forward_ai_replies || 0),
-        carry_forward_expires_at: isFirstFreeUpgrade ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : prev.carry_forward_expires_at,
-        trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      };
-    });
     setIsRenewModalOpen(false);
+    if (nextPlan === 'free') { setActiveTab('billing'); return; }
+    window.location.assign('/billing/checkout?plan=' + encodeURIComponent(nextPlan));
   };
+
+  // Display only the server-issued entitlement. Never grant paid access from local state.
+  useEffect(() => {
+    if (!firebaseUser?.uid) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const { billingRequest } = await import('../lib/billing');
+        const result = await billingRequest('subscription');
+        if (!cancelled) setUser(prev => ({ ...prev, plan: result.subscription.plan, trial_expires_at: result.subscription.expiresAt || prev.trial_expires_at }));
+      } catch { /* Do not fabricate an entitlement while payment storage is unavailable. */ }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 60000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [firebaseUser?.uid]);
 
   const enrichedContacts=useMemo(()=>{const insights=new Map(customerInsights.map(item=>[item.id,item]));return contacts.map(contact=>({...contact,customer_insight:insights.get(contact.id)}));},[contacts,customerInsights]);
 

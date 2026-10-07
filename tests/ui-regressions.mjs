@@ -67,7 +67,7 @@ try {
   const catalogHtml=renderToStaticMarkup(React.createElement(ui.CatalogPreview,{products:[{id:'p',name:'Watch',price:'₹399',description:'Steel',url:'https://shop.example',active:true,images:['https://img.example/1.jpg','https://img.example/2.jpg']}]}));assert.equal((catalogHtml.match(/<article/g)||[]).length,2);assert.ok(catalogHtml.includes('snap-mandatory'));assert.ok(catalogHtml.includes('₹399'));checks++;
   for (const [route,heading] of [
     ['/','More conversations.'],['/help','Help Center'],['/help/faq','Frequently Asked Questions'],
-    ['/help/billing','Billing &amp; Subscription Help'],['/about','About'],['/privacy','Privacy Policy'],['/terms','Terms of Service'],
+    ['/help/billing','Billing &amp; Payment Help'],['/about','About'],['/privacy','Privacy Policy'],['/terms','Terms of Service'],
   ]) {
     window.location.pathname=route;globalThis.__uiFixture=fixture();
     const html=await streamRender(React.createElement(ui.App));
@@ -83,7 +83,7 @@ try {
   for(const text of ['Plans, payments and cancellation','Recommended workflow','Open billing guide']) assert.ok(html.includes(text),text);
   window.location.pathname='/help/billing';
   html=await streamRender(React.createElement(ui.App));
-  for(const text of ['Buy or upgrade a plan','Cancel a paid plan','Confirm with the payment provider','Safe pre-launch behavior']) assert.ok(html.includes(text),text);
+  for(const text of ['Buy or renew a plan','Renewal, cancellation and refunds','Wait for verified activation','one-time purchase']) assert.ok(html.includes(text),text);
   checks++;
   window.location.pathname='/';
   html=await streamRender(React.createElement(ui.App));
@@ -177,12 +177,12 @@ try {
     assert.ok(html.includes('aria-controls="reply-top-ups"'));
     assert.ok(html.includes('Compare plans in detail'));
     for(const price of ['₹0','₹299','₹599','₹1,299']) assert.ok(html.includes(price));
-    assert.ok(html.includes('Billing history is not connected yet'));
+    assert.ok(html.includes('Loading payment history'));
     assert.ok(!html.includes('No payments yet'));
     assert.ok(html.includes('scope="row">Instagram accounts'));
     assert.ok(html.includes('billing-special-plan'));
     assert.ok(html.includes('Manage subscription'));
-    assert.ok(html.includes(currentPlan==='free'?'No paid subscription':'Cancel plan'));
+    assert.ok(html.includes('Refund &amp; cancellation policy'));
     checks++;
   }
   globalThis.__uiFixture=fixture();

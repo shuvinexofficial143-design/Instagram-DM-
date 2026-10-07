@@ -14,24 +14,18 @@ function runtime(fetch = globalThis.fetch, env = {}) {
   return context.helpers;
 }
 
-test('quota uses real plan columns and starts plan and usage reads concurrently', async () => {
-  let finishProfile;
-  let usageStarted = false;
-  const profile = new Promise(resolve => { finishProfile = resolve; });
-  const admin = { from: table => { assert.equal(table, 'autoreply_plans'); return { select: columns => { assert.equal(columns, 'id,total_messages,ai_replies'); return { eq: (key, value) => { assert.equal(key, 'id'); assert.equal(value, 'free'); return { maybeSingle: () => profile }; } }; } }; },
-    rpc: async () => { usageStarted = true; return { data: { total_messages: 8, ai_replies: 3 } }; } };
-  const pending = runtime().getPlanQuota(admin, 'workspace');
-  assert.equal(usageStarted, true);
-  finishProfile({ data: { id: 'free', total_messages: 1500, ai_replies: 1000 } });
-  const quota = await pending;
-  assert.equal(quota.totalLimit, 1500);
-  assert.equal(quota.totalUsed, 8);
+test('quota uses a single verified entitlement RPC for a paid workspace', async () => {
+  const admin = {rpc: async (name,args) => {
+    assert.equal(name,'autoreply_billing_entitlement');
+    assert.equal(args.p_workspace_id,'workspace');
+    return {data:{plan:'pro',totalUsed:8,aiUsed:3,totalLimit:25000,aiLimit:15000}};
+  }};
+  const quota=await runtime().getPlanQuota(admin,'workspace');
+  assert.equal(quota.plan,'pro');assert.equal(quota.totalLimit,25000);assert.equal(quota.totalUsed,8);
 });
-
 test('failed quota reads cannot grant a fresh allowance', async () => {
-  const admin = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ error: new Error('unavailable') }) }) }) }),
-    rpc: async () => ({ data: {} }) };
-  await assert.rejects(runtime().getPlanQuota(admin, 'workspace'), /allowance/);
+  const admin={rpc:async()=>({error:{code:'unavailable'},data:null})};
+  await assert.rejects(runtime().getPlanQuota(admin,'workspace'),/allowance/);
 });
 
 test('shared replies are only used for first-contact nongreetings', () => {

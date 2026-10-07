@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BarChart3, Bot, Check, CreditCard, Instagram, Plus, Zap, ArrowUpRight, ShieldCheck, ReceiptText, XCircle, CalendarClock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { BillingHistory } from './BillingHistory';
 import { PLAN_CATALOG } from '../../lib/planUsage';
 import { useWorkspaceUsage } from '../../hooks/useWorkspaceUsage';
 
@@ -32,9 +33,7 @@ export const BillingUsagePage:React.FC=()=>{
   const{instagramAccount,setIsRenewModalOpen}=useApp();
   const usage=useWorkspaceUsage();
   const [showTopUps,setShowTopUps]=useState(false);
-  const [showCancellation,setShowCancellation]=useState(false);
   const plan=usage.plan;
-  const isPaidPlan=plan.id!=='free';
   const autoLimit=usage.automationLimit===null?Math.max(usage.automationUsed,1):usage.automationLimit;
 
   return <div className="min-h-full bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
@@ -72,39 +71,11 @@ export const BillingUsagePage:React.FC=()=>{
         <p className="mt-3 text-xs text-slate-500">This is a preview. No payment is taken and no balance or reply allowance changes here.</p>
       </section>}
 
-      <section id="manage-subscription" className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-[0_5px_18px_rgba(15,23,42,.035)] sm:p-6" aria-labelledby="manage-subscription-heading">
+      <section id="manage-subscription" className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-[0_5px_18px_rgba(15,23,42,.035)] sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl">
-            <div className="flex items-start gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarClock className="h-5 w-5"/></span>
-              <div>
-                <h2 id="manage-subscription-heading" className="text-base font-bold text-slate-950">Manage subscription</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">Manage renewal and cancellation from the same billing workspace. Payment-provider status will become the source of truth when the gateway is connected.</p>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
-              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">{plan.name} plan</span>
-              <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800">Payment gateway pending</span>
-            </div>
-          </div>
-          <button type="button" disabled={!isPaidPlan} onClick={()=>setShowCancellation(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400">
-            <XCircle className="h-4 w-4"/>{isPaidPlan?'Cancel plan':'No paid subscription'}
-          </button>
+          <div><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarClock className="h-5 w-5"/></span><div><h2 className="text-base font-bold text-slate-950">Manage subscription</h2><p className="mt-1 text-sm leading-6 text-slate-600">Paid access lasts 30 days per purchase. Renew manually when you need it; no automatic charges.</p>{usage.expiresAt&&<p className="mt-2 text-xs font-semibold text-slate-500">Access until {new Date(usage.expiresAt).toLocaleString()}</p>}</div></div></div>
+          <a href="/refunds" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700">Refund & cancellation policy</a>
         </div>
-
-        {showCancellation&&isPaidPlan&&<div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50/60 p-5" role="region" aria-label="Cancel subscription confirmation">
-          <div className="flex items-start gap-3"><XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600"/><div><h3 className="font-bold text-slate-950">Cancel {plan.name} plan</h3><p className="mt-1 text-sm leading-6 text-slate-600">This screen is ready for self-service cancellation. Final cancellation is intentionally unavailable until a real payment gateway is connected.</p></div></div>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <div className="rounded-xl border border-white bg-white/80 p-4"><strong className="text-sm text-slate-900">1. Review</strong><p className="mt-1 text-xs leading-5 text-slate-600">Show the renewal date, remaining access and any provider-specific terms.</p></div>
-            <div className="rounded-xl border border-white bg-white/80 p-4"><strong className="text-sm text-slate-900">2. Confirm</strong><p className="mt-1 text-xs leading-5 text-slate-600">Send one authenticated cancellation request to the payment provider.</p></div>
-            <div className="rounded-xl border border-white bg-white/80 p-4"><strong className="text-sm text-slate-900">3. Verify</strong><p className="mt-1 text-xs leading-5 text-slate-600">Only show Cancelled after the provider confirms renewal has stopped.</p></div>
-          </div>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <button type="button" onClick={()=>setShowCancellation(false)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700">Keep plan</button>
-            <button type="button" disabled className="min-h-10 rounded-xl bg-slate-300 px-4 text-sm font-semibold text-white">Confirm cancellation · gateway required</button>
-          </div>
-          <p className="mt-3 text-xs leading-5 text-slate-500">No subscription, payment or workspace entitlement is changed by this preview.</p>
-        </div>}
       </section>
 
       <section>
@@ -124,7 +95,7 @@ export const BillingUsagePage:React.FC=()=>{
             <div className="flex items-start justify-between gap-2"><div><h3 className="text-base font-bold text-slate-950">{p.name}</h3><div className="mt-2"><span className="text-[26px] font-bold tracking-tight text-slate-950">{p.price}</span><span className="text-xs font-semibold text-slate-400"> / month</span></div></div>{p.special&&<span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">Top tier</span>}{p.popular&&<span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-bold uppercase tracking-wide text-indigo-700">Popular</span>}</div>
             <div className="my-4 h-px bg-slate-100"/>
             <div className="flex-1 space-y-2.5 text-xs font-medium text-slate-600">{[p.messages.toLocaleString()+' total messages',p.ai.toLocaleString()+' max AI replies',(p.automations===null?'Unlimited':p.automations.toLocaleString())+' automations',p.accounts+' Instagram account'+(p.accounts===1?'':'s')].map(x=><div key={x} className="flex items-start gap-2"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600"/><span>{x}</span></div>)}</div>
-            <button disabled={active} onClick={()=>setIsRenewModalOpen(true)} className={`mt-5 min-h-10 w-full rounded-xl px-3 text-xs font-bold transition ${active?'cursor-default border border-slate-200 bg-slate-50 text-slate-500':p.special?'bg-amber-500 text-slate-950 hover:bg-amber-400':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>{active?'Current Plan':(p.name==='Free'?'Use Free Plan':'Upgrade')}</button>
+            <button disabled={active} onClick={()=>p.id==='free'?window.location.assign('/refunds'):window.location.assign('/billing/checkout?plan='+p.id)} className={`mt-5 min-h-10 w-full rounded-xl px-3 text-xs font-bold transition ${active?'cursor-default border border-slate-200 bg-slate-50 text-slate-500':p.special?'bg-amber-500 text-slate-950 hover:bg-amber-400':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>{active?'Current Plan':(p.name==='Free'?'Use Free Plan':'Upgrade')}</button>
           </article>})}
         </div>
       </section>
@@ -139,10 +110,8 @@ export const BillingUsagePage:React.FC=()=>{
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="billing-history-heading">
-        <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-600"><ReceiptText className="h-5 w-5"/></span><div><h2 id="billing-history-heading" className="text-base font-bold text-slate-900">Billing history</h2><p className="mt-1 text-sm text-slate-500">Subscription payments and reply top-ups will appear here once billing is enabled.</p></div></div>
-        <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200" tabIndex={0} role="region" aria-label="Billing history table">
-          <table className="billing-comparison w-full text-left text-sm"><caption className="sr-only">Payment and top-up history</caption><thead><tr>{['Date','Description','Amount','Status','Receipt'].map(label=><th key={label} scope="col">{label}</th>)}</tr></thead><tbody><tr><td colSpan={5} className="text-center"><p className="font-medium text-slate-700">Billing history is not connected yet</p><p className="mt-1 text-sm text-slate-500">Actual payment amounts and receipts will be shown when payment integration is ready.</p></td></tr></tbody></table>
-        </div>
+        <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-600"><ReceiptText className="h-5 w-5"/></span><div><h2 id="billing-history-heading" className="text-base font-bold text-slate-900">Billing history</h2><p className="mt-1 text-sm text-slate-500">Your payment records, confirmation status and plan activation details.</p></div></div>
+        <BillingHistory />
       </section>
     </div>
   </div>;

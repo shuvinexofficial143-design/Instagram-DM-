@@ -115,6 +115,18 @@
     {
       "source": "/login",
       "destination": "/index.html"
+    },
+    {
+      "source": "/billing/checkout",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/contact",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/refunds",
+      "destination": "/index.html"
     }
   ],
   "regions": [
