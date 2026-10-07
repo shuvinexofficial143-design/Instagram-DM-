@@ -77,6 +77,7 @@ try {
   }
   for(const route of ['/help','/help/faq/','/help/billing','/privacy','/terms']) assert.ok(ui.publicSupportPage(route));
   assert.equal(ui.publicSupportPage('/admin'),undefined);checks++;
+  let html;
   window.location.pathname='/help';globalThis.__uiFixture=fixture();
   html=await streamRender(React.createElement(ui.App));
   for(const text of ['Plans, payments and cancellation','Recommended workflow','Open billing guide']) assert.ok(html.includes(text),text);
@@ -85,7 +86,7 @@ try {
   for(const text of ['Buy or upgrade a plan','Cancel a paid plan','Confirm with the payment provider','Safe pre-launch behavior']) assert.ok(html.includes(text),text);
   checks++;
   window.location.pathname='/';
-  let html=await streamRender(React.createElement(ui.App));
+  html=await streamRender(React.createElement(ui.App));
   for(const price of ['₹0','₹299','₹599','₹1,299'])assert.ok(html.includes(price));
   assert.ok(html.includes('Example conversation'));assert.ok(html.includes('1,500 total messages'));checks++;
   window.location.pathname='/login';window.location.search='?mode=signup';
