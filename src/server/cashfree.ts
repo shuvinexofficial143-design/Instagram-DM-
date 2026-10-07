@@ -5,7 +5,13 @@ export class BillingError extends Error {
   constructor(message: string, public status = 503) { super(message); }
 }
 export function businessDetails() {
-  return { legalName: cleanEnvironment(process.env.BUSINESS_LEGAL_NAME), email: cleanEnvironment(process.env.BUSINESS_SUPPORT_EMAIL), phone: cleanEnvironment(process.env.BUSINESS_SUPPORT_PHONE), address: cleanEnvironment(process.env.BUSINESS_ADDRESS) };
+  // Public contact details supplied by the website owner; environment values can override them.
+  return {
+    legalName: cleanEnvironment(process.env.BUSINESS_LEGAL_NAME) || 'Auto Replies',
+    email: cleanEnvironment(process.env.BUSINESS_SUPPORT_EMAIL) || 'nazhalijing@gmail.com',
+    phone: cleanEnvironment(process.env.BUSINESS_SUPPORT_PHONE) || '9589244427',
+    address: cleanEnvironment(process.env.BUSINESS_ADDRESS) || 'ग्राम बघेरा, तहसील तराना, जिला उज्जैन, मध्य प्रदेश, भारत',
+  };
 }
 export function billingConfig() {
   const mode = cleanEnvironment(process.env.CASHFREE_ENV) || 'sandbox';
