@@ -77,6 +77,13 @@ try {
   }
   for(const route of ['/help','/help/faq/','/help/billing','/privacy','/terms']) assert.ok(ui.publicSupportPage(route));
   assert.equal(ui.publicSupportPage('/admin'),undefined);checks++;
+  window.location.pathname='/help';globalThis.__uiFixture=fixture();
+  html=await streamRender(React.createElement(ui.App));
+  for(const text of ['Plans, payments and cancellation','Recommended workflow','Open billing guide']) assert.ok(html.includes(text),text);
+  window.location.pathname='/help/billing';
+  html=await streamRender(React.createElement(ui.App));
+  for(const text of ['Buy or upgrade a plan','Cancel a paid plan','Confirm with the payment provider','Safe pre-launch behavior']) assert.ok(html.includes(text),text);
+  checks++;
   window.location.pathname='/';
   let html=await streamRender(React.createElement(ui.App));
   for(const price of ['₹0','₹299','₹599','₹1,299'])assert.ok(html.includes(price));
@@ -135,6 +142,9 @@ try {
   globalThis.__uiFixture=fixture({activeTab:'settings'});
   html=renderToStaticMarkup(React.createElement(ui.WorkspaceTabs));
   assert.ok(html.includes('workspace-settings-tabs'));for(const text of ['Account','Integrations','Activity logs'])assert.ok(html.includes(text));assert.ok(html.includes('aria-current="page"'));checks++;
+  globalThis.__uiFixture=fixture({activeTab:'help'});
+  html=renderToStaticMarkup(React.createElement(ui.WorkspaceTabs));
+  assert.ok(html.includes('workspace-help-tabs'));for(const text of ['Help center','FAQ','Billing help'])assert.ok(html.includes(text));assert.ok(html.includes('aria-current="page"'));checks++;
   assert.equal(ui.matchesPreviewMessage('please send PRICE','keywords',['price']),true);
   assert.equal(ui.matchesPreviewMessage('hello','keywords',['price']),false);
   assert.equal(ui.matchesPreviewMessage('hello','all',[]),true);
@@ -170,6 +180,8 @@ try {
     assert.ok(!html.includes('No payments yet'));
     assert.ok(html.includes('scope="row">Instagram accounts'));
     assert.ok(html.includes('billing-special-plan'));
+    assert.ok(html.includes('Manage subscription'));
+    assert.ok(html.includes(currentPlan==='free'?'No paid subscription':'Cancel plan'));
     checks++;
   }
   globalThis.__uiFixture=fixture();
