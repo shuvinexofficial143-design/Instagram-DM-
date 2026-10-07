@@ -1,5 +1,5 @@
 import billingHandler from './api/billing';
-import usageHandler from './api/usage';
+import usageHandler from './src/server/usage';
 import express, { Request, Response } from 'express';
 import path from 'path';
 import { readFileSync } from 'fs';
