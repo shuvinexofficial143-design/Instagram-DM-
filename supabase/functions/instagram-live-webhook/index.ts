@@ -416,23 +416,9 @@ async function findWorkspaceByInstagramIds(admin: any, ids: string[]) {
   return null;
 }
 async function getPlanQuota(admin: any, workspaceId: string) {
-  // Independent reads start together; usage remains fresh for every message.
-  // Profiles contain identity columns, not a JSON plan document. Until a
-  // server-issued subscription exists, use the configured free entitlement.
-  const [planResult, usageResult] = await Promise.all([
-    admin.from("autoreply_plans").select("id,total_messages,ai_replies").eq("id", "free").maybeSingle(),
-    admin.rpc("autoreply_get_usage", { p_user_id: workspaceId }),
-  ]);
-  if (planResult.error || usageResult.error) {
-    console.error("[QUOTA_LOOKUP_FAILED]", { planCode: planResult.error?.code, usageCode: usageResult.error?.code });
-    throw new Error("Could not verify the message allowance");
-  }
-  const usage = usageResult.data;
-  return {
-    plan: "free", totalUsed: Number(usage?.total_messages || 0), aiUsed: Number(usage?.ai_replies || 0),
-    totalLimit: Number(planResult.data?.total_messages ?? 1500),
-    aiLimit: Number(planResult.data?.ai_replies ?? 1000),
-  };
+  const { data, error } = await admin.rpc("autoreply_billing_entitlement", { p_workspace_id: workspaceId });
+  if (error || !data) throw new Error("Could not verify the message allowance");
+  return data;
 }
 
 function aiTimeoutMs(): number {

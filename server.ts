@@ -1,3 +1,5 @@
+import billingHandler from './api/billing';
+import usageHandler from './api/usage';
 import express, { Request, Response } from 'express';
 import path from 'path';
 import { readFileSync } from 'fs';
@@ -127,6 +129,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.all('/api/billing', billingHandler);
+  app.all('/api/usage', usageHandler);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 

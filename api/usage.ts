@@ -6,12 +6,6 @@ const SUPABASE_URL = String(
   'https://dwgxmmftybxwpurgsxkx.supabase.co'
 ).replace(/\/+$/, '');
 
-const LIMITS: Record<string, { messages: number; ai: number }> = {
-  free: { messages: 1500, ai: 1000 },
-  starter: { messages: 7500, ai: 5000 },
-  pro: { messages: 25000, ai: 15000 },
-  business: { messages: 75000, ai: 40000 },
-};
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
@@ -40,32 +34,13 @@ export default async function handler(req: any, res: any) {
   };
 
   try {
-    const [planResponse, usageResponse] = await Promise.all([
-      fetch(SUPABASE_URL + '/rest/v1/autoreply_plans?id=eq.free&select=id,total_messages,ai_replies&limit=1', { headers, signal: AbortSignal.timeout(8000) }),
-      fetch(SUPABASE_URL + '/rest/v1/rpc/autoreply_get_usage', {
-        method: 'POST', headers, body: JSON.stringify({ p_user_id: identity.userId }), signal: AbortSignal.timeout(8000),
-      }),
-    ]);
-    if (!planResponse.ok || !usageResponse.ok) throw new Error('Could not verify workspace usage');
-    const plans: any[] = await planResponse.json();
-    const usage: any = await usageResponse.json();
-    const plan = 'free';
-    const totalLimit = Number(plans?.[0]?.total_messages ?? 1500);
-    const aiLimit = Number(plans?.[0]?.ai_replies ?? 1000);
-    const totalUsed = Number(usage?.total_messages || 0);
-    const aiUsed = Number(usage?.ai_replies || 0);
-
-    res.setHeader('Cache-Control', 'private, no-store');
-    return res.status(200).json({
-      ok: true,
-      plan,
-      totalUsed,
-      aiUsed,
-      totalLimit,
-      aiLimit,
-      reset: 'monthly',
-      source: 'database',
+    const response = await fetch(SUPABASE_URL + '/rest/v1/rpc/autoreply_billing_entitlement', {
+      method: 'POST', headers, body: JSON.stringify({ p_workspace_id: identity.userId }), signal: AbortSignal.timeout(8000),
     });
+    if (!response.ok) throw new Error('Could not verify workspace usage');
+    const entitlement = await response.json();
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.status(200).json({ ok: true, ...entitlement, reset: 'monthly' });
   } catch (error: any) {
     return res.status(500).json({
       ok: false,

@@ -10,6 +10,7 @@ type ServerUsage = {
   aiUsed?: number;
   totalLimit?: number;
   aiLimit?: number;
+  expiresAt?: string;
 };
 
 export const useWorkspaceUsage = () => {
@@ -62,7 +63,7 @@ export const useWorkspaceUsage = () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [user?.id]);
+  }, [user?.id, user?.plan]);
 
   const plan = getPlanConfig(serverUsage?.plan || fallback.plan.id);
   return {
@@ -73,6 +74,7 @@ export const useWorkspaceUsage = () => {
     aiLimit: Number(serverUsage?.aiLimit ?? fallback.aiLimit),
     automationUsed: fallback.automationUsed,
     automationLimit: plan.automations,
+    expiresAt: serverUsage?.expiresAt,
     loading,
     source: serverUsage ? ('server' as const) : ('fallback' as const),
   };

@@ -24,6 +24,7 @@ const ContactsPage = lazy(() => import('./components/Contacts/ContactsPage').the
 const CrmPage = lazy(() => import('./components/CRM/CrmPage').then((m) => ({ default: m.CrmPage })));
 const InboxPage = lazy(() => import('./components/Inbox/InboxPage').then((m) => ({ default: m.InboxPage })));
 const SettingsPage = lazy(() => import('./components/Settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const CheckoutPage = lazy(() => import('./components/Billing/CheckoutPage').then(m => ({ default: m.CheckoutPage })));
 const BillingUsagePage = lazy(() => import('./components/Billing/BillingUsagePage').then((m) => ({ default: m.BillingUsagePage })));
 const AboutUsPage = lazy(() => import('./components/About/AboutUsPage').then((m) => ({ default: m.AboutUsPage })));
 const AdminPage = lazy(() => import('./components/Admin/AdminPage').then((m) => ({ default: m.AdminPage })));
@@ -63,6 +64,9 @@ const MainContent: React.FC = () => {
           {activeTab === 'inbox' && <InboxPage />}
           {activeTab === 'integrations' && <IntegrationsPage />}
           {activeTab === 'billing' && <BillingUsagePage />}
+          {activeTab === 'checkout' && <CheckoutPage />}
+          {activeTab === 'contact' && <SupportPage page="contact" />}
+          {activeTab === 'refunds' && <SupportPage page="refunds" />}
           {activeTab === 'settings' && <SettingsPage />}
           {activeTab === 'about' && <AboutUsPage />}
           {activeTab === 'help' && <SupportPage page="help" />}
