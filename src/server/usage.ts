@@ -1,4 +1,4 @@
-import { enforceRateLimit, resolveAiIdentity } from './_auth.js';
+import { enforceRateLimit, resolveAiIdentity } from '../../api/_auth.js';
 
 const SUPABASE_URL = String(
   process.env.SUPABASE_URL ||

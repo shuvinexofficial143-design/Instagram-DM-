@@ -1,3 +1,4 @@
+import usageHandler from '../src/server/usage.js';
 import { randomUUID } from 'node:crypto';
 import { authenticatedUser, cleanEnvironment } from '../src/server/supabaseConfig.js';
 import { enforceRateLimit } from './_auth.js';
@@ -18,6 +19,7 @@ export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'private, no-store');
   try {
     const action = String(req.query?.action || 'config');
+    if (action === 'usage') return usageHandler(req, res);
     if (action === 'config' && req.method === 'GET') return res.status(200).json({ ok: true, ...billingConfig() });
     if (action === 'webhook') {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
