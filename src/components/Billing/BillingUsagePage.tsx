@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BarChart3, Bot, Check, CreditCard, Instagram, Plus, Zap, ArrowUpRight, ShieldCheck, ReceiptText } from 'lucide-react';
+import { BarChart3, Bot, Check, CreditCard, Instagram, Plus, Zap, ArrowUpRight, ShieldCheck, ReceiptText, XCircle, CalendarClock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { PLAN_CATALOG } from '../../lib/planUsage';
 import { useWorkspaceUsage } from '../../hooks/useWorkspaceUsage';
@@ -32,7 +32,9 @@ export const BillingUsagePage:React.FC=()=>{
   const{instagramAccount,setIsRenewModalOpen}=useApp();
   const usage=useWorkspaceUsage();
   const [showTopUps,setShowTopUps]=useState(false);
+  const [showCancellation,setShowCancellation]=useState(false);
   const plan=usage.plan;
+  const isPaidPlan=plan.id!=='free';
   const autoLimit=usage.automationLimit===null?Math.max(usage.automationUsed,1):usage.automationLimit;
 
   return <div className="min-h-full bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
@@ -69,6 +71,41 @@ export const BillingUsagePage:React.FC=()=>{
         <div className="mt-4 rounded-xl bg-indigo-50 p-4 text-sm leading-6 text-indigo-950"><strong>How top-ups are planned to work</strong><p>One subscription stays active. A one-time pack adds reply capacity without starting a second subscription or changing your renewal date. Final prices, expiry and payment options will be shown before purchase.</p></div>
         <p className="mt-3 text-xs text-slate-500">This is a preview. No payment is taken and no balance or reply allowance changes here.</p>
       </section>}
+
+      <section id="manage-subscription" className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-[0_5px_18px_rgba(15,23,42,.035)] sm:p-6" aria-labelledby="manage-subscription-heading">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarClock className="h-5 w-5"/></span>
+              <div>
+                <h2 id="manage-subscription-heading" className="text-base font-bold text-slate-950">Manage subscription</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">Manage renewal and cancellation from the same billing workspace. Payment-provider status will become the source of truth when the gateway is connected.</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">{plan.name} plan</span>
+              <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800">Payment gateway pending</span>
+            </div>
+          </div>
+          <button type="button" disabled={!isPaidPlan} onClick={()=>setShowCancellation(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400">
+            <XCircle className="h-4 w-4"/>{isPaidPlan?'Cancel plan':'No paid subscription'}
+          </button>
+        </div>
+
+        {showCancellation&&isPaidPlan&&<div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50/60 p-5" role="region" aria-label="Cancel subscription confirmation">
+          <div className="flex items-start gap-3"><XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600"/><div><h3 className="font-bold text-slate-950">Cancel {plan.name} plan</h3><p className="mt-1 text-sm leading-6 text-slate-600">This screen is ready for self-service cancellation. Final cancellation is intentionally unavailable until a real payment gateway is connected.</p></div></div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-white bg-white/80 p-4"><strong className="text-sm text-slate-900">1. Review</strong><p className="mt-1 text-xs leading-5 text-slate-600">Show the renewal date, remaining access and any provider-specific terms.</p></div>
+            <div className="rounded-xl border border-white bg-white/80 p-4"><strong className="text-sm text-slate-900">2. Confirm</strong><p className="mt-1 text-xs leading-5 text-slate-600">Send one authenticated cancellation request to the payment provider.</p></div>
+            <div className="rounded-xl border border-white bg-white/80 p-4"><strong className="text-sm text-slate-900">3. Verify</strong><p className="mt-1 text-xs leading-5 text-slate-600">Only show Cancelled after the provider confirms renewal has stopped.</p></div>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={()=>setShowCancellation(false)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700">Keep plan</button>
+            <button type="button" disabled className="min-h-10 rounded-xl bg-slate-300 px-4 text-sm font-semibold text-white">Confirm cancellation · gateway required</button>
+          </div>
+          <p className="mt-3 text-xs leading-5 text-slate-500">No subscription, payment or workspace entitlement is changed by this preview.</p>
+        </div>}
+      </section>
 
       <section>
         <div className="mb-3"><h2 className="text-base font-bold text-slate-950">Monthly usage</h2><p className="mt-0.5 text-xs text-slate-500">Your current workspace limits and consumption.</p></div>
