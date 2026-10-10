@@ -193,14 +193,13 @@ try {
   window.location.pathname='/billing/checkout';window.location.search='?plan=starter';
   globalThis.__uiFixture=fixture({firebaseUser:{uid:'test-user',email:'owner@example.test'}});
   html=renderToStaticMarkup(React.createElement(ui.CheckoutPage));
-  for(const label of ['Available payment methods','UPI &amp; QR','Net banking','Debit / credit card','Continue to payment']) assert.ok(html.includes(label),label);
-  assert.ok(html.includes('Secure payment powered by Cashfree'));
+  for(const label of ['Auto Replies Premium','Protected by Cashfree','Billing information','UPI / QR','Net banking','Continue securely']) assert.ok(html.includes(label),label);
+  assert.ok(html.includes('Your details') && html.includes('Server-verified activation'));
   checks++;
-  // Cashfree's _self redirect owns navigation; a second navigation would
-  // prematurely replace the payment gateway with the confirmation page.
   const checkoutSource=await readFile(path.join(root,'src/components/Billing/CheckoutPage.tsx'),'utf8');
-  assert.ok(checkoutSource.includes("orderId||order?'Payment pending'"),'unpaid orders must not appear to be confirming a payment');
-  assert.ok(checkoutSource.includes('Open Cashfree checkout'),'existing pending orders must be payable without creating another order');
+  assert.ok(checkoutSource.includes("mountCashfreeCheckout"),'real Cashfree inline checkout should be embedded');
+  assert.ok(checkoutSource.includes("pending") && checkoutSource.includes("cancel"),'unfinished checkout must have safe recovery');
+  assert.ok(checkoutSource.includes("Check payment status")||checkoutSource.includes("Check latest payment status"),'payment verification should be visible');
   assert.ok(!/await openCashfreeCheckout\(p\.paymentSessionId,p\.mode\);\s*window\.location\.assign/.test(checkoutSource),'do not override Cashfree redirect');
   checks++;
   window.location.search='';
