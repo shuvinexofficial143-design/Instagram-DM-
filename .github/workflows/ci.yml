@@ -43,5 +43,8 @@ jobs:
       - name: Automation and customer Sheet regressions
         run: bun run test:automations
 
+      - name: Billing and payment regressions
+        run: bun run test:billing
+
       - name: Production build
         run: bun run build
