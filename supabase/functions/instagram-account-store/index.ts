@@ -427,7 +427,7 @@ Deno.serve(async (req: Request) => {
       return reply(403, { ok: false, error: "Administrator access required" });
     }
 
-    const [profilesRes, accountsRes, automationsRes, usageRes, plansRes, auditRes, dmHistoryRes, claimsRes, documentsRes, runtimeRes] = await Promise.all([
+    const [profilesRes, accountsRes, automationsRes, usageRes, plansRes, auditRes, dmHistoryRes, claimsRes, documentsRes, runtimeRes, paymentsRes] = await Promise.all([
       admin.from("autoreply_profiles").select("user_id,email,display_name,avatar_url,role,last_login_at,last_active_at,created_at,updated_at").order("created_at", { ascending: false }),
       admin.from("autoreply_instagram_tokens").select("user_id,account,created_at,updated_at"),
       admin.from("autoreply_active_automations").select("user_id,automation_id,data,updated_at"),
@@ -438,8 +438,9 @@ Deno.serve(async (req: Request) => {
       admin.from("autoreply_message_claims").select("user_id,message_id,direction,status,created_at,expires_at").order("created_at", { ascending: false }).limit(500),
       admin.from("autoreply_documents").select("user_id,collection,id,created_at,updated_at").order("updated_at", { ascending: false }).limit(500),
       admin.from("autoreply_runtime_context").select("ig_user_id,user_id,automation_id,automation,updated_at").order("updated_at", { ascending: false }).limit(100),
+      admin.from("autoreply_billing_orders").select("order_id,owner_user_id,plan_id,amount_inr,currency,environment,status,activation_status,created_at,paid_at,access_expires_at").order("created_at",{ascending:false}).limit(100),
     ]);
-    const firstError = profilesRes.error || accountsRes.error || automationsRes.error || usageRes.error || plansRes.error || auditRes.error || dmHistoryRes.error || claimsRes.error || documentsRes.error || runtimeRes.error;
+    const firstError = profilesRes.error || accountsRes.error || automationsRes.error || usageRes.error || plansRes.error || auditRes.error || dmHistoryRes.error || claimsRes.error || documentsRes.error || runtimeRes.error || paymentsRes.error;
     if (firstError) throw firstError;
 
     const accounts = (accountsRes.data || []).map((row: any) => ({
@@ -454,6 +455,7 @@ Deno.serve(async (req: Request) => {
       instagramAccounts: accounts,
       activeAutomations: automationsRes.data || [],
       usageMonthly: usageRes.data || [],
+      billingOrders: paymentsRes.data || [],
       plans: plansRes.data || [],
       auditLogs: auditRes.data || [],
       dmHistory: dmHistoryRes.data || [],
@@ -476,17 +478,29 @@ Deno.serve(async (req: Request) => {
 
     const plan = payload?.plan || {};
     const id = String(plan.id || "").trim();
-    if (!id) return reply(400, { ok: false, error: "Plan ID required" });
-    const { data: before } = await admin.from("autoreply_plans").select("*").eq("id", id).maybeSingle();
+    if (!["free","starter","pro","business"].includes(id)) return reply(400,{ok:false,error:"Unknown plan"});
+    const { data: before, error: beforeError } = await admin.from("autoreply_plans").select("*").eq("id", id).maybeSingle();
+    if(beforeError || !before) return reply(404,{ok:false,error:"Plan not found"});
+    const validInt=(value:any,min:number,max:number)=>Number.isSafeInteger(Number(value))&&Number(value)>=min&&Number(value)<=max;
+    const name=String(plan.name??before.name).trim();
+    const auto=plan.automations_limit===null||plan.automations_limit===""?null:Number(plan.automations_limit);
+    if(name.length<2||name.length>64||
+       !validInt(plan.price_inr,id==="free"?0:1,id==="free"?0:1000000)||
+       !validInt(plan.total_messages,0,100000000)||
+       !validInt(plan.ai_replies,0,100000000)||
+       !validInt(plan.instagram_accounts,1,100)||
+       (auto!==null&&!validInt(auto,0,100000))||
+       !validInt(plan.billing_days,1,366))
+      return reply(400,{ok:false,error:"Enter valid plan details, price, billing days and separate reply limits."});
     const update = {
-      name: String(plan.name || before?.name || id),
-      price_inr: Math.max(0, Number(plan.price_inr) || 0),
-      total_messages: Math.max(0, Number(plan.total_messages) || 0),
-      ai_replies: Math.max(0, Number(plan.ai_replies) || 0),
-      instagram_accounts: Math.max(0, Number(plan.instagram_accounts) || 0),
-      automations_limit: plan.automations_limit === null || plan.automations_limit === "" ? null : Math.max(0, Number(plan.automations_limit) || 0),
-      billing_days: Math.max(1, Number(plan.billing_days) || 30),
-      is_active: Boolean(plan.is_active),
+      name,
+      price_inr: Number(plan.price_inr),
+      total_messages: Number(plan.total_messages),
+      ai_replies: Number(plan.ai_replies),
+      instagram_accounts: Number(plan.instagram_accounts),
+      automations_limit: auto,
+      billing_days: Number(plan.billing_days),
+      is_active: id==="free"?true:Boolean(plan.is_active),
       updated_at: new Date().toISOString(),
     };
     const { data: saved, error: saveError } = await admin.from("autoreply_plans").update(update).eq("id", id).select().single();
@@ -658,6 +672,14 @@ Deno.serve(async (req: Request) => {
         });
       }
 
+      // The plan's automation count is checked on the trusted server,
+      // never only by the browser.
+      const {data:entitlement,error:quotaError}=await admin.rpc("autoreply_billing_entitlement",{p_workspace_id:workspaceId});
+      if(quotaError || !entitlement) return reply(503,{ok:false,error:"Unable to verify workspace plan"});
+      const maxAutomations=entitlement.automationLimit;
+      if(maxAutomations!==null && !(existingRows||[]).some((row:any)=>row.id===id) &&
+         (existingRows||[]).length>=Number(maxAutomations))
+        return reply(403,{ok:false,code:"AUTOMATION_LIMIT_REACHED",error:"This plan's automation limit has been reached. Upgrade to add more automations."});
       const pausedAutomationIds: string[] = [];
 
       // Only one live DM AI Conversation is allowed per workspace.
