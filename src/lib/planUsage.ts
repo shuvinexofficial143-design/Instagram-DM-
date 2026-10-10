@@ -10,18 +10,19 @@ export type PlanConfig = {
   ai: number;
   accounts: number;
   automations: number | null;
+  billingDays?: number;
 };
 
 export const PLAN_CATALOG: PlanConfig[] = [
-  { id: 'free', name: 'Free', price: '₹0', messages: 1500, ai: 1000, accounts: 1, automations: 5 },
+  { id: 'free', name: 'Free', price: '₹0', messages: 1500, ai: 1500, accounts: 1, automations: 5 },
   { id: 'starter', name: 'Starter', price: '₹299', messages: 7500, ai: 5000, accounts: 1, automations: null },
   { id: 'pro', name: 'Pro', price: '₹599', messages: 25000, ai: 15000, accounts: 2, automations: null },
   { id: 'business', name: 'Business', price: '₹1,299', messages: 75000, ai: 40000, accounts: 5, automations: null },
 ];
 
-export const getPlanConfig = (value?: string | null): PlanConfig => {
+export const getPlanConfig = (value?: string | null, catalog: PlanConfig[] = PLAN_CATALOG): PlanConfig => {
   const key = String(value || 'free').toLowerCase();
-  return PLAN_CATALOG.find((plan) => plan.id === key) || PLAN_CATALOG[0];
+  return catalog.find((plan) => plan.id === key) || PLAN_CATALOG.find((plan) => plan.id === key) || PLAN_CATALOG[0];
 };
 
 export const usagePercent = (used: number, limit: number | null): number => {
@@ -68,7 +69,7 @@ export const getFallbackWorkspaceUsage = (
 
   return {
     plan,
-    messageUsed: monthlyAutomated.length,
+    messageUsed: Math.max(0, monthlyAutomated.length - monthlyAi.length),
     messageLimit,
     aiUsed: monthlyAi.length,
     aiLimit,
