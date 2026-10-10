@@ -91,8 +91,8 @@ begin
  insert into public.autoreply_usage_monthly (user_id,month_key,total_messages,ai_replies,updated_at)
  values(owner_id,month_id,1,case when p_is_ai then 1 else 0 end,now())
  on conflict (user_id,month_key) do update
- set total_messages=public.autoreply_usage_monthly.total_messages+1,
-     ai_replies=public.autoreply_usage_monthly.ai_replies+case when p_is_ai then 1 else 0 end,
+ set total_messages=autoreply_usage_monthly.total_messages+1,
+     ai_replies=autoreply_usage_monthly.ai_replies+case when p_is_ai then 1 else 0 end,
      updated_at=now();
  return jsonb_build_object('allowed',true,'reason','reserved','used',used_count+1,'limit',max_count);
 end $$;
