@@ -13,7 +13,8 @@ const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, sta
   actions: [{ type: 'send_dm', message_text: 'Static reply' }] });
 
 function fixture(automations = [ai], options = {}) {
-  const writes = [], apiCalls = [], aiInputs = [], rpcCalls = [], claims = new Set(), history = new Map(), tasks = [];
+  const writes = [], apiCalls = [], aiInputs = [], rpcCalls = [], claims = new Set(), history = new Map(), tasks = [], deliveryKeys = new Set();
+  let standardUsed=options.quotaUsed||0, aiUsedCount=options.aiUsed||0;
   const account = { ig_user_id: 'business', username: 'business_handle', access_token: 'test-token', own_sender_ids: options.ownSenderIds || [] };
   const admin = {
     from(table) {
@@ -62,6 +63,16 @@ function fixture(automations = [ai], options = {}) {
         if (options.usageGate) await options.usageGate;
         return { data: { total_messages: options.quotaUsed || 0, ai_replies: 0 } };
       }
+      if(name === 'autoreply_reserve_delivery_quota') {
+        if(options.quotaError) return {data:null,error:{code:'quota_unavailable'}};
+        const isAi=args.p_is_ai,used=isAi?aiUsedCount:standardUsed,limit=1500;
+        if(deliveryKeys.has(args.p_delivery_key)) return {data:{allowed:false,reason:'already_claimed'},error:null};
+        if(used>=limit) return {data:{allowed:false,reason:isAi?'ai_limit_reached':'normal_limit_reached'},error:null};
+        deliveryKeys.add(args.p_delivery_key);
+        if(isAi) aiUsedCount++; else standardUsed++;
+        return {data:{allowed:true,reason:'reserved'},error:null};
+      }
+      if(name === 'autoreply_finish_delivery_quota') return {data:true,error:null};
       if (name === 'autoreply_prepare_automation_event') {
         options.onPrepare?.();
         if (options.prepareGate) await options.prepareGate;
@@ -69,7 +80,7 @@ function fixture(automations = [ai], options = {}) {
         const duplicate = claims.has(args.p_message_id);
         claims.add(args.p_message_id);
         return { data: { user_id: 'workspace', account, automation: ai,
-          automations, quota: { totalUsed: options.quotaUsed || 0, aiUsed: options.aiUsed || 0, totalLimit: 1500, aiLimit: 1000 },
+          automations, quota: { normalUsed: options.quotaUsed || 0, normalLimit: 1500, totalUsed: options.quotaUsed || 0, totalLimit:1500, aiUsed: options.aiUsed || 0, aiLimit: 1500 },
           history: history.get(args.p_sender_id) || [], message_state: duplicate ? 'duplicate' : 'new' } };
       }
       return { data: {}, error: null };
@@ -189,9 +200,18 @@ test('preparation or quota failure blocks send before typing and returns an erro
   assert.equal(r.body.results[0].reason, 'context_lookup_failed'); assert.equal(f.apiCalls.length, 0);
 
 });
-test('exhausted quota never starts typing', async () => {
-  const f = fixture([ai], { quotaUsed: 1500 }); const r = await f.post(dm());
-  assert.equal(r.body.results[0].reason, 'monthly_message_limit_reached'); assert.equal(f.apiCalls.length, 0);
+test('exhausted AI quota never starts typing', async () => {
+  const f = fixture([ai], { aiUsed: 1500 }); const r = await f.post(dm());
+  assert.equal(r.body.results[0].reason, 'monthly_ai_limit_reached'); assert.equal(f.apiCalls.length, 0);
+});
+test('standard allowance exhaustion does not stop separately purchased AI replies',async()=>{
+ const f=fixture([ai],{quotaUsed:1500});const r=await f.post(dm());
+ assert.equal(r.body.sent,1);
+});
+test('standard DM and comment replies stop at independent standard allowance',async()=>{
+ const f=fixture([staticRule('dm',{all_or_keywords:'all'})],{quotaUsed:1500});const r=await f.post(dm());
+ assert.equal(r.body.results[0].reason,'monthly_standard_limit_reached');
+ assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
 });
 test('paused automations and echo notifications send nothing', async () => {
   const f = fixture([{ ...ai, status: 'paused' }]); assert.equal((await f.post(dm())).body.sent, 0);
