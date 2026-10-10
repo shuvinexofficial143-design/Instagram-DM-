@@ -43,8 +43,8 @@ export const PlanRenewModal: React.FC = () => {
                   <div key={item} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><span>{item}</span></div>
                 )}
               </div>
-              <button disabled={active} onClick={() => renewPlan(plan.id)} className={`mt-6 w-full rounded-xl px-4 py-3 text-sm font-bold transition ${active ? 'cursor-default bg-slate-100 text-slate-500' : 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-500/15 hover:opacity-95'}`}>
-                {active ? 'Current Plan' : plan.id === 'free' ? 'Use Free Plan' : `Choose ${plan.name}`}
+              <button disabled={active && plan.id === 'free'} onClick={() => renewPlan(plan.id)} className={`mt-6 w-full rounded-xl px-4 py-3 text-sm font-bold transition ${active ? 'cursor-default bg-slate-100 text-slate-500' : 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-500/15 hover:opacity-95'}`}>
+                {active ? (plan.id === 'free' ? 'Current Plan' : 'Renew for 30 days') : plan.id === 'free' ? 'Use Free Plan' : `Choose ${plan.name}`}
               </button>
             </article>;
           })}
