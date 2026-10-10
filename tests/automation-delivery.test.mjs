@@ -194,6 +194,12 @@ test('failed private reply cannot publish a false sent-you-a-DM comment', async 
   const f = fixture([rule], { sendFails: true }); const r = await f.post(comment());
   assert.equal(r.body.sent, 0); assert.equal(r.body.results[0].reason, 'automation_action_failed');
   assert.equal(f.apiCalls.length, 1);
+  assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_finish_delivery_quota' && c.args.p_sent===false),'confirmed provider rejection releases its standard quota slot');
+});
+test('definitive AI send rejection returns the AI quota reservation',async()=>{
+  const f=fixture([ai],{sendFails:true});const r=await f.post(dm('ai-denied'));
+  assert.equal(r.body.sent,0);
+  assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_finish_delivery_quota' && c.args.p_sent===false),'rejected AI send releases quota');
 });
 test('preparation or quota failure blocks send before typing and returns an error', async () => {
   const f = fixture([ai], { quotaError: true }); const r = await f.post(dm());
