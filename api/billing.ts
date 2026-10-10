@@ -112,7 +112,17 @@ export default async function handler(req: any, res: any) {
     }
     const id = `ar_${cfg.mode}_${randomUUID()}`;
     // Reservation snapshots authoritative prices and serializes checkout per login.
-    let order = await billingDb('rpc/autoreply_reserve_billing_order', 'POST', { p_order_id: id, p_request_id: body.requestId, p_owner_id: user.id, p_plan_id: body.planId, p_environment: cfg.mode });
+    let order: any;
+    try {
+      order = await billingDb('rpc/autoreply_reserve_billing_order', 'POST', { p_order_id: id, p_request_id: body.requestId, p_owner_id: user.id, p_plan_id: body.planId, p_environment: cfg.mode });
+    } catch (reservationError) {
+      // Concurrent checkout tabs may race after the initial pending check.
+      // Return a comprehensible conflict instead of a misleading storage error.
+      const existingRows = await billingDb(`autoreply_billing_orders?owner_user_id=eq.${encodeURIComponent(user.id)}&environment=eq.${cfg.mode}&status=in.(creating,pending)&limit=1`).catch(()=>[]);
+      if(existingRows?.[0] && existingRows[0].plan_id !== body.planId)
+        return res.status(409).json({ok:false,code:'PENDING_OTHER_PLAN',error:'Finish or securely cancel your existing '+existingRows[0].plan_id+' checkout before selecting a new plan.',pendingOrder:safeOrder(existingRows[0])});
+      throw reservationError;
+    }
     if (order.status === 'paid') return res.status(200).json({ ok: true, order: safeOrder(order) });
     // Retrying the same durable reservation uses the SAME provider id and key, never creates a second chargeable order.
     const provider = await cashfreeRequest('/orders', 'POST', {
