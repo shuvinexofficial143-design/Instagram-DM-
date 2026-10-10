@@ -7,11 +7,11 @@ import { webcrypto } from 'node:crypto';
 const source=(await fs.readFile(new URL('../supabase/functions/instagram-account-store/index.ts',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
 const compiled=await transform(source,{loader:'ts',format:'esm'});
 const owner='12345678-1234-4234-8234-123456789012';
-function fixture(){
+function fixture(maxAccounts=5){
   let handler, business='business-a', fetches=0;
   const tables={autoreply_instagram_memberships:[],autoreply_instagram_tokens:[],autoreply_documents:[]};
   const uploadPaths=[];
-  const admin={storage:{getBucket:async()=>({data:{id:'catalog-images'},error:null}),from:()=>({createSignedUploadUrl:async path=>{uploadPaths.push(path);return {data:{token:'signed-upload'}};},getPublicUrl:path=>({data:{publicUrl:'https://example.supabase.co/storage/v1/object/public/catalog-images/'+path}})})},auth:{getUser:async jwt=>jwt==='session' ? {data:{user:{id:owner}}} : {data:null,error:{message:'Unauthorized'}}},from(table){
+  const admin={rpc: async(name)=>({data: name==='autoreply_billing_entitlement'?{accounts:maxAccounts,automationLimit:5}:null,error:null}),storage:{getBucket:async()=>({data:{id:'catalog-images'},error:null}),from:()=>({createSignedUploadUrl:async path=>{uploadPaths.push(path);return {data:{token:'signed-upload'}};},getPublicUrl:path=>({data:{publicUrl:'https://example.supabase.co/storage/v1/object/public/catalog-images/'+path}})})},auth:{getUser:async jwt=>jwt==='session' ? {data:{user:{id:owner}}} : {data:null,error:{message:'Unauthorized'}}},from(table){
     let filters={},sets={},mutation;
     const q={select(){return q;},eq(k,v){filters[k]=v;return q;},in(k,v){sets[k]=v;return q;},order(){return q;},
       upsert(value){mutation=value;return q;},async maybeSingle(){return result(true);},then(resolve,reject){return Promise.resolve(result(false)).then(resolve,reject);}};
@@ -21,7 +21,7 @@ function fixture(){
         const found=rows.find(row=>row[key]===mutation[key]&&(key!=='id'||row.user_id===mutation.user_id&&row.collection===mutation.collection));
         if(found)Object.assign(found,mutation);else rows.push({...mutation});return {data:null,error:null};}
       const matches=rows.filter(row=>Object.entries(filters).every(([k,v])=>row[k]===v)&&Object.entries(sets).every(([k,v])=>v.includes(row[k])));
-      return {data:single?matches[0]||null:matches,error:null};
+      return {data:single?matches[0]||null:matches,error:null,count:matches.length};
     }return q;
   }};
   const context=vm.createContext({crypto:webcrypto,Request,Response,URLSearchParams,AbortSignal,console:{log(){},warn(){},error(){}},
@@ -39,6 +39,13 @@ test('adding a second Instagram account keeps the original connection and data w
  assert.equal(f.tables.autoreply_instagram_tokens.length,2);
  assert.equal(f.tables.autoreply_instagram_tokens.find(row=>row.user_id===owner).account.ig_user_id,'business-a');
  assert.equal(f.tables.autoreply_instagram_memberships.length,2);
+});
+test('additional Instagram account is blocked when plan allowance is exhausted',async()=>{
+ const f=fixture(1);assert.equal((await f.save()).status,200);
+ f.setBusiness('business-b');
+ const denied=await f.save();assert.equal(denied.status,403);
+ assert.equal(denied.body.code,'INSTAGRAM_ACCOUNT_LIMIT_REACHED');
+ assert.equal(f.tables.autoreply_instagram_tokens.length,1);
 });
 test('reconnecting an existing account reuses its workspace rather than duplicating it',async()=>{
  const f=fixture();await f.save();const saved=await f.save('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
