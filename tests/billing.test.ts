@@ -68,6 +68,51 @@ test('authoritative reserved price and stable idempotency key are used; browser 
  Object.defineProperty(q,'body',{get(){throw new Error('Vercel JSON body getter must not be read');}});
  const r=res();await handler(q,r);assert.equal(r.code,200);assert.equal(r.body.order.amount,599);assert.equal(providerCalls,1);
 });
+test('a prior unfinished Starter order yields a helpful conflict for Pro, never a generic storage error',async()=>{
+ setup();
+ const old={...order,plan_id:'starter',amount_inr:299,order_id:'ar_sandbox_00000000-0000-4000-8000-000000000004'};
+ globalThis.fetch=async(url:any)=>{
+  const path=String(url);
+  if(path.includes('/auth/'))return Response.json({id:uid});
+  if(path.includes('status=in.(creating,pending)'))return Response.json([old]);
+  if(path.endsWith('/payments'))return Response.json([]);
+  if(path.includes('cashfree.com'))return Response.json({order_id:old.order_id,order_amount:299,order_currency:'INR',order_status:'ACTIVE',payment_session_id:'old-session'});
+  throw new Error('No new order may be created when another plan is pending');
+ };
+ const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
+ assert.equal(r.code,409);assert.equal(r.body.code,'PENDING_OTHER_PLAN');assert.equal(r.body.pendingOrder.planId,'starter');
+});
+test('customer may explicitly terminate an unpaid provider order to switch plans',async()=>{
+ setup();let terminateCount=0;
+ globalThis.fetch=async(url:any,init:any)=>{
+  const path=String(url);
+  if(path.includes('/auth/'))return Response.json({id:uid});
+  if(path.includes('cashfree.com')){
+    if(init?.method==='PATCH'){terminateCount++;return Response.json({order_id:oid,order_status:'TERMINATED'});}
+    if(path.endsWith('/payments'))return Response.json([]);
+    return Response.json({order_id:oid,order_amount:599,order_currency:'INR',order_status:terminateCount?'TERMINATED':'ACTIVE',payment_session_id:'old-session'});
+  }
+  if(init?.method==='PATCH')return Response.json([{...order,status:'expired'}]);
+  return Response.json([order]);
+ };
+ const r=res();await handler(req('cancel','POST',{orderId:oid}),r);
+ assert.equal(r.code,200);assert.equal(terminateCount,1);assert.equal(r.body.order.status,'expired');
+});
+test('provider termination request in progress never unlocks another payable order',async()=>{
+ setup();
+ globalThis.fetch=async(url:any,init:any)=>{
+  const path=String(url);
+  if(path.includes('/auth/'))return Response.json({id:uid});
+  if(path.includes('cashfree.com')){
+    if(init?.method==='PATCH')return Response.json({order_status:'TERMINATION_REQUESTED'});
+    if(path.endsWith('/payments'))return Response.json([]);
+    return Response.json({order_id:oid,order_amount:599,order_currency:'INR',order_status:'ACTIVE',payment_session_id:'old-session'});
+  }
+  return Response.json([order]);
+ };
+ const r=res();await handler(req('cancel','POST',{orderId:oid}),r);
+ assert.equal(r.code,409);assert.ok(r.body.error.includes('still closing'));
+});
 test('signed successful webhook rechecks provider and finalizes the durable order; failures never downgrade paid',async()=>{
  setup();let confirmations=0;
  globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('rpc/autoreply_confirm')){confirmations++;const body=JSON.parse(init.body);assert.equal(body.p_environment,'sandbox');assert.equal(body.p_amount,599);return Response.json({...order,status:'paid',activation_status:'test'});}if(path.endsWith('/payments'))return Response.json([{cf_payment_id:'123',payment_amount:599,payment_currency:'INR',payment_status:'SUCCESS'}]);if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:599,order_currency:'INR',order_status:'PAID'});return Response.json([order]);};
@@ -76,5 +121,5 @@ test('signed successful webhook rechecks provider and finalizes the durable orde
 });
 test('forged webhook is rejected before any database or provider access',async()=>{setup();globalThis.fetch=async()=>{throw new Error('Should not fetch');};const r=res();await handler(req('webhook','POST',{type:'PAYMENT_SUCCESS_WEBHOOK'}),r);assert.equal(r.code,401);});
 test('provider timeout never creates a second order in one request',async()=>{
- setup();let calls=0;globalThis.fetch=async(url:any)=>{if(String(url).includes('/auth/'))return Response.json({id:uid});if(String(url).includes('/rest/'))return Response.json(order);calls++;throw new Error('timeout');};const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,503);assert.equal(calls,1);
+ setup();let calls=0;globalThis.fetch=async(url:any)=>{if(String(url).includes('/auth/'))return Response.json({id:uid});if(String(url).includes('status=in.(creating,pending)'))return Response.json([]);if(String(url).includes('/rest/'))return Response.json(order);calls++;throw new Error('timeout');};const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,503);assert.equal(calls,1);
 });
