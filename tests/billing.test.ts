@@ -51,12 +51,15 @@ test('authoritative reserved price and stable idempotency key are used; browser 
   if(path.includes('cashfree.com')){providerCalls++;const body=JSON.parse(init.body);assert.equal(body.order_amount,599);assert.equal(body.order_id,oid);assert.equal(init.headers['x-idempotency-key'],rid);assert.equal(body.order_meta.return_url,'https://example.test/billing/checkout?order_id='+oid);return Response.json({order_id:oid,payment_session_id:'session'});}
   return Response.json([{...order,payment_session_id:'session'}]);
  };
- const r=res();await handler(req('create','POST',{planId:'pro',amount:1,name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,200);assert.equal(r.body.order.amount,599);assert.equal(providerCalls,1);
+ const q=req('create','POST',{planId:'pro',amount:1,name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid});
+ // Vercel exposes a lazy parsed-JSON getter; reading it consumes the raw request.
+ Object.defineProperty(q,'body',{get(){throw new Error('Vercel JSON body getter must not be read');}});
+ const r=res();await handler(q,r);assert.equal(r.code,200);assert.equal(r.body.order.amount,599);assert.equal(providerCalls,1);
 });
 test('signed successful webhook rechecks provider and finalizes the durable order; failures never downgrade paid',async()=>{
  setup();let confirmations=0;
  globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('rpc/autoreply_confirm')){confirmations++;const body=JSON.parse(init.body);assert.equal(body.p_environment,'sandbox');assert.equal(body.p_amount,599);return Response.json({...order,status:'paid',activation_status:'test'});}if(path.endsWith('/payments'))return Response.json([{cf_payment_id:'123',payment_amount:599,payment_currency:'INR',payment_status:'SUCCESS'}]);if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:599,order_currency:'INR',order_status:'PAID'});return Response.json([order]);};
- for(const type of ['PAYMENT_SUCCESS_WEBHOOK','PAYMENT_FAILED_WEBHOOK']){const event={type,data:{order:{order_id:oid}}};const q=req('webhook','POST',event);q.headers['x-webhook-timestamp']='1791356400000';q.headers['x-webhook-signature']=createHmac('sha256','test-secret').update(q.headers['x-webhook-timestamp']).update(JSON.stringify(event)).digest('base64');const r=res();await handler(q,r);assert.equal(r.code,200);}
+ for(const type of ['PAYMENT_SUCCESS_WEBHOOK','PAYMENT_FAILED_WEBHOOK']){const event={type,data:{order:{order_id:oid}}};const q=req('webhook','POST',event);Object.defineProperty(q,'body',{get(){throw new Error('Webhook must use original stream, not parsed body');}});q.headers['x-webhook-timestamp']='1791356400000';q.headers['x-webhook-signature']=createHmac('sha256','test-secret').update(q.headers['x-webhook-timestamp']).update(JSON.stringify(event)).digest('base64');const r=res();await handler(q,r);assert.equal(r.code,200);}
  assert.equal(confirmations,1);
 });
 test('forged webhook is rejected before any database or provider access',async()=>{setup();globalThis.fetch=async()=>{throw new Error('Should not fetch');};const r=res();await handler(req('webhook','POST',{type:'PAYMENT_SUCCESS_WEBHOOK'}),r);assert.equal(r.code,401);});
