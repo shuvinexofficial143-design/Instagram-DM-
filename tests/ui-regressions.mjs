@@ -89,7 +89,7 @@ try {
   window.location.pathname='/';
   html=await streamRender(React.createElement(ui.App));
   for(const price of ['₹0','₹299','₹599','₹1,299'])assert.ok(html.includes(price));
-  assert.ok(html.includes('Example conversation'));assert.ok(html.includes('1,500 total messages'));checks++;
+  assert.ok(html.includes('Example conversation'));assert.ok(html.includes('1,500 standard DM/comment/story replies'));checks++;
   window.location.pathname='/login';window.location.search='?mode=signup';
   html=await streamRender(React.createElement(ui.App));
   assert.ok(html.includes('Create your account'));assert.ok(html.includes('id="auth-email"'));assert.ok(html.includes('for="auth-email"'));checks++;
@@ -177,6 +177,9 @@ try {
     assert.ok(html.includes('Add Money'));
     assert.ok(html.includes('aria-controls="reply-top-ups"'));
     assert.ok(html.includes('Compare plans in detail'));
+    assert.ok(html.includes('Standard replies'));
+    assert.ok(html.includes('AI Replies'));
+    assert.ok(!html.includes('AI replies are included within total messages'));
     for(const price of ['₹0','₹299','₹599','₹1,299']) assert.ok(html.includes(price));
     assert.ok(html.includes('Loading payment history'));
     assert.ok(!html.includes('No payments yet'));

@@ -518,9 +518,20 @@ async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:s
  finally{if(leaseOwner)await admin.from('autoreply_sheet_sync_leases').delete().eq('workspace_id',workspaceId).eq('automation_id',automationId).eq('owner_id',leaseOwner);}
 }
 
-async function incrementUsage(admin:any, workspaceId:string, isAi:boolean) {
-  const { error } = await admin.rpc("autoreply_increment_usage", { p_user_id: workspaceId, p_is_ai: isAi });
-  if (error) console.warn("[USAGE_INCREMENT_WARN]", error);
+// Atomic, durable reservation BEFORE delivery. Never permit parallel sends to
+// overrun a customer's purchased standard or AI allowance.
+async function reserveDeliveryQuota(admin:any, workspaceId:string, deliveryKey:string, isAi:boolean):Promise<{allowed:boolean;reason?:string}> {
+  const { data, error } = await admin.rpc("autoreply_reserve_delivery_quota", {
+    p_workspace_id: workspaceId, p_delivery_key: deliveryKey, p_is_ai: isAi
+  });
+  if(error || !data) throw new Error("Delivery quota could not be verified");
+  return data;
+}
+async function finishDeliveryQuota(admin:any, workspaceId:string, deliveryKey:string, sent:boolean) {
+  const {error} = await admin.rpc("autoreply_finish_delivery_quota", {
+    p_workspace_id: workspaceId, p_delivery_key: deliveryKey, p_sent: sent
+  });
+  if(error) console.warn("[QUOTA_FINALIZATION_WARN]", {category:deliveryKey.slice(0,8)});
 }
 
 async function loadActiveDmAiAutomation(admin: any, workspaceId: string) {
@@ -1305,7 +1316,7 @@ async function executeStaticActions(admin: any, workspaceId: string, item: any, 
     // Send the private reply first. A public "Sent you a DM" is only posted
     // after Instagram has confirmed that the private message was accepted.
     const ordered = [...actions].sort((a, b) => Number(b.type === "send_dm") - Number(a.type === "send_dm"));
-    for (const action of ordered) {
+    for (const [index,action] of ordered.entries()) {
       if (action.type === "send_dm") {
         let text = asText(action.message_text, 1000);
         const links = (action.buttons || []).filter((b: any) => /^https?:\/\//.test(String(b.url || "")))
@@ -1315,20 +1326,27 @@ async function executeStaticActions(admin: any, workspaceId: string, item: any, 
         if(catalog && item.triggerType === "comment") throw new Error("Catalogs are available for DM replies");
         if (!text && !catalog) continue;
         if(catalog) text=`[Catalog: ${catalog.name}]`;
+        const deliveryKey=`standard:${item.messageId||item.commentId||item.senderId}:${automation.id}:${index}:${action.type}`;
+        const slot=await reserveDeliveryQuota(admin,workspaceId,deliveryKey,false);
+        if(!slot.allowed) return {ok:false,sent:deliveries.length>0,reason:slot.reason||"monthly_standard_limit_reached",deliveries};
         const recipient = item.triggerType === "comment" ? { comment_id: item.commentId } : { id: item.senderId };
         const payload = catalog ? await sendInstagramCatalog(account.ig_user_id,item.senderId,account.access_token,catalog) : await metaWrite(`${encodeURIComponent(account.ig_user_id)}/messages`, account.access_token, { recipient, message: { text } });
         if (!payload?.message_id) throw new Error("Instagram did not confirm private message delivery");
         deliveries.push({ type: "send_dm", id: String(payload.message_id), text });
-        // Each confirmed message counts; partial action failures never erase it.
-        runInBackground(incrementUsage(admin, workspaceId, false));
+        // Reserved in the database before the Meta API call; confirmation only
+        // changes the reservation state, never grants a second allowance.
+        runInBackground(finishDeliveryQuota(admin,workspaceId,deliveryKey,true));
         runInBackground(markOutboundClaim(admin, workspaceId, String(payload.message_id)));
         runInBackground(persistOutboundMessage(admin, workspaceId, item, { username: item.senderId, avatar_url: "" }, automation, text, String(payload.message_id), catalog));
       }
       if (action.type === "reply_comment" && item.triggerType === "comment" && action.comment_reply_text) {
+        const deliveryKey=`standard:${item.messageId||item.commentId||item.senderId}:${automation.id}:${index}:${action.type}`;
+        const slot=await reserveDeliveryQuota(admin,workspaceId,deliveryKey,false);
+        if(!slot.allowed) return {ok:false,sent:deliveries.length>0,reason:slot.reason||"monthly_standard_limit_reached",deliveries};
         const payload = await metaWrite(`${encodeURIComponent(item.commentId)}/replies`, account.access_token, { message: asText(action.comment_reply_text, 1000) });
         if (!payload?.id) throw new Error("Instagram did not confirm comment reply");
         deliveries.push({ type: "reply_comment", id: String(payload.id) });
-        runInBackground(incrementUsage(admin, workspaceId, false));
+        runInBackground(finishDeliveryQuota(admin,workspaceId,deliveryKey,true));
       }
       if (action.type === "add_tag" && action.tag_name) {
         await saveContactTags(admin, workspaceId, item.senderId, [action.tag_name]);
@@ -1640,8 +1658,7 @@ Deno.serve(async (req: Request) => {
     // Keep non-AI/ignored events ordered within this batch, including their
     // contact updates. Only an eligible AI turn benefits from parallel storage.
     const canStartAi = automation?.trigger_type === "dm_ai_conversation" &&
-      context.quota && context.quota.totalUsed < context.quota.totalLimit &&
-      context.quota.aiUsed < context.quota.aiLimit;
+      context.quota && context.quota.aiUsed < context.quota.aiLimit;
     if (!canStartAi && !await inboundSaved) {
       results.push({ messageId: item.messageId, ok: false, reason: "inbox_save_failed" });
       continue;
@@ -1676,9 +1693,9 @@ Deno.serve(async (req: Request) => {
       continue;
     }
     const quota = context.quota;
-    if (quota.totalUsed >= quota.totalLimit) {
-      runInBackground(logEvent(admin, workspaceId, item.messageId, {status:"ignored", reason:"monthly_message_limit_reached", sender_id:item.senderId, incoming_text:item.text, trigger_type:item.triggerType}));
-      results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_message_limit_reached" });
+    if (automation.trigger_type !== "dm_ai_conversation" && quota.normalUsed >= quota.normalLimit) {
+      runInBackground(logEvent(admin, workspaceId, item.messageId, {status:"ignored", reason:"monthly_standard_limit_reached", sender_id:item.senderId, incoming_text:item.text, trigger_type:item.triggerType}));
+      results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_standard_limit_reached" });
       continue;
     }
     if (automation.trigger_type === "dm_ai_conversation" && quota.aiUsed >= quota.aiLimit) {
@@ -1844,6 +1861,14 @@ Instagram DM style rules:
     const sendStart = performance.now();
 
     try {
+      // Separate AI allowance, reserved under an owner-level database lock.
+      const aiDeliveryKey=`ai:${item.messageId||item.senderId}:${automation.id}`;
+      const slot=await reserveDeliveryQuota(admin,workspaceId,aiDeliveryKey,true);
+      if(!slot.allowed) {
+        stopTyping();
+        results.push({messageId:item.messageId,ok:true,ignored:true,reason:slot.reason||"monthly_ai_limit_reached"});
+        continue;
+      }
       // This is the user-visible critical point. Everything expensive that does
       // not affect the reply itself is deferred until after the Send API call.
       const sendResult = sendCatalog ? await sendInstagramCatalog(igUserId,item.senderId,accessToken,selectedCatalog) : await sendInstagramText(
@@ -1855,7 +1880,8 @@ Instagram DM style rules:
 
       const sendMs = Math.round(performance.now() - sendStart);
       const instagramMessageId = String(sendResult?.message_id || "");
-      runInBackground(incrementUsage(admin, workspaceId, true));
+      if(!instagramMessageId) throw new Error("Instagram did not confirm AI reply delivery");
+      runInBackground(finishDeliveryQuota(admin,workspaceId,aiDeliveryKey,true));
       const tagActions = (automation.actions || []).filter((a: any) => a.type === "add_tag");
       if (tagActions.length) runInBackground(saveContactTags(admin, workspaceId, item.senderId, tagActions.map((a: any) => a.tag_name)));
       runInBackground(syncAiLeadToGoogleSheet(admin, workspaceId, item.senderId, item.text, history, openaiKey, String(automation.id), item.messageId, responseText));

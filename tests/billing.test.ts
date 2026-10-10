@@ -19,6 +19,18 @@ test('production requires approval switch and complete business identity; config
  Object.assign(process.env,{BUSINESS_LEGAL_NAME:'Example Business',BUSINESS_SUPPORT_EMAIL:'support@example.test',BUSINESS_SUPPORT_PHONE:'+919876543210',BUSINESS_ADDRESS:'Example address',CASHFREE_LIVE_ENABLED:'true'});
  assert.equal(billingConfig().configured,true);const r=res();await handler(req('config'),r);assert.equal(r.code,200);assert.ok(!JSON.stringify(r.body).includes('secret'));assert.ok(!JSON.stringify(r.body).includes('test-id'));
 });
+test('public plan catalog reads admin prices from trusted storage without authentication',async()=>{
+ setup();
+ globalThis.fetch=async(url:any)=>{
+  assert.ok(String(url).includes('/rest/v1/autoreply_plans?'));
+  return Response.json([{id:'free',name:'Free',price_inr:0,total_messages:1500,ai_replies:1500,is_active:true},{id:'starter',name:'Starter',price_inr:399,total_messages:3000,ai_replies:2500,is_active:true}]);
+ };
+ const r=res();await handler(req('plans'),r);
+ assert.equal(r.code,200);assert.equal(r.body.plans[1].price_inr,399);
+ assert.equal(r.body.plans[0].total_messages,1500);
+ assert.equal(r.body.plans[0].ai_replies,1500);
+ assert.ok(!JSON.stringify(r.body).includes('test-secret'));
+});
 test('raw body signature rejects JSON reformatting, wrong key and missing signatures',()=>{
  const raw=Buffer.from('{"amount":599.00}'),ts='1791356400000',secret='secret';const sig=createHmac('sha256',secret).update(ts).update(raw).digest('base64');
  assert.equal(verifyCashfreeSignature(raw,ts,sig,secret),true);assert.equal(verifyCashfreeSignature(Buffer.from('{"amount":599}'),ts,sig,secret),false);assert.equal(verifyCashfreeSignature(raw,ts,sig,'other'),false);assert.equal(verifyCashfreeSignature(raw,ts,'',secret),false);
