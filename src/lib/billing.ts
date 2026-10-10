@@ -1,5 +1,5 @@
 import { auth } from './supabase';
-export type BillingOrder = { orderId:string; planId:string; amount:number; currency:string; environment:string; status:string; createdAt:string; paidAt?:string; activatedAt?:string; expiresAt?:string; paymentExpiresAt?:string; activationStatus?:string; paymentId?:string; lastAttempt?:string };
+export type BillingOrder = { orderId:string; planId:string; amount:number; currency:string; environment:string; status:string; createdAt:string; billingDays?:number; paidAt?:string; activatedAt?:string; expiresAt?:string; paymentExpiresAt?:string; activationStatus?:string; paymentId?:string; lastAttempt?:string };
 export type BusinessDetails = {legalName:string;email:string;phone:string;address:string};
 export type BillingConfiguration = {configured:boolean;mode:string;legalReady:boolean;appUrl:string;business:BusinessDetails};
 export async function billingRequest(action:string, body?:unknown, orderId?:string) {

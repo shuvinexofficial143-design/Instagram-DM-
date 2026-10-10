@@ -47,21 +47,125 @@ const BANKS = [
   ["KVBLR", "Karur Vysya Bank"],
   ["UCBAR", "UCO Bank"],
 ];
-const choices = [
-  { id: "qr", Icon: QrCode, name: "UPI / QR", note: "Scan with any UPI app" },
-  {
-    id: "netbanking",
-    Icon: Landmark,
-    name: "Net banking",
-    note: "Pay from your bank account",
-  },
-  {
-    id: "card",
-    Icon: CreditCard,
-    name: "Debit / credit card",
-    note: "Secure card payment",
-  },
-] as const;
+export type EligibleMethod = {
+  type: string;
+  banks: { name: string; nick: string }[];
+};
+const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+const availableBanks = (eligible: EligibleMethod[]) => {
+  const net = eligible.find((m) => m.type === "netbanking");
+  return BANKS.filter(([id, name]) =>
+    net?.banks.some(
+      (b) =>
+        normalize(b.name) === normalize(name) ||
+        normalize(b.nick) === normalize(name) ||
+        b.nick === id,
+    ),
+  );
+};
+export function PaymentMethodPicker({
+  eligible,
+  method,
+  onChange,
+  onContinue,
+  busy,
+}: {
+  eligible: EligibleMethod[];
+  method: PaymentMethod;
+  onChange: (m: PaymentMethod) => void;
+  onContinue: () => void;
+  busy: boolean;
+}) {
+  const mobile =
+    typeof navigator !== "undefined" &&
+    /Android|iPhone|iPad/i.test(navigator.userAgent);
+  const upi = eligible.some((m) => m.type === "upi");
+  const choices = [
+    ...(upi
+      ? [
+          {
+            id: "qr" as const,
+            Icon: QrCode,
+            name: "UPI QR",
+            note: "Scan with any UPI app",
+          },
+          ...(mobile
+            ? [
+                {
+                  id: "app" as const,
+                  Icon: Smartphone,
+                  name: "UPI app",
+                  note: "Open your UPI app on this device",
+                },
+              ]
+            : []),
+        ]
+      : []),
+    ...(availableBanks(eligible).length
+      ? [
+          {
+            id: "netbanking" as const,
+            Icon: Landmark,
+            name: "Net banking",
+            note: "Continue securely to your bank",
+          },
+        ]
+      : []),
+    ...(eligible.some((m) =>
+      ["card", "credit_card", "debit_card"].includes(m.type),
+    )
+      ? [
+          {
+            id: "card" as const,
+            Icon: CreditCard,
+            name: "Debit / credit card",
+            note: "Pay using secure card fields",
+          },
+        ]
+      : []),
+  ];
+  return (
+    <>
+      <h2 className="ar-method-heading">Choose a payment method</h2>
+      <div className="ar-methods" role="group" aria-label="Payment method">
+        {choices.map(({ id, Icon, name, note }) => (
+          <button
+            key={id}
+            className={"ar-method " + (method === id ? "selected" : "")}
+            disabled={busy}
+            onClick={() => onChange(id)}
+            aria-pressed={method === id}
+          >
+            <span className="ar-method-icon">
+              <Icon size={23} />
+            </span>
+            <span>
+              <strong>{name}</strong>
+              <small>{note}</small>
+            </span>
+            <span className="ar-radio">
+              {method === id && <Check size={12} />}
+            </span>
+          </button>
+        ))}
+      </div>
+      {!choices.length && (
+        <div className="ar-alert">
+          No supported payment method is currently available. Please contact
+          support.
+        </div>
+      )}
+      <button
+        className="ar-primary ar-full"
+        disabled={busy || !choices.some((c) => c.id === method)}
+        onClick={onContinue}
+      >
+        {busy ? "Preparing payment…" : "Continue"}
+        <ArrowRight size={17} />
+      </button>
+    </>
+  );
+}
 export function PaymentMethods({
   prepare,
   check,
@@ -69,6 +173,10 @@ export function PaymentMethods({
   existingSession,
   returnUrl,
   amount,
+  merchant,
+  method,
+  eligible,
+  changeMethod,
 }: {
   prepare: () => Promise<PaymentSession | null>;
   check: () => Promise<void>;
@@ -76,11 +184,17 @@ export function PaymentMethods({
   existingSession?: PaymentSession;
   returnUrl: string;
   amount: string;
+  merchant: string;
+  method: PaymentMethod;
+  eligible: EligibleMethod[];
+  changeMethod: () => void;
 }) {
-  const [method, setMethod] = useState<PaymentMethod>("qr"),
-    [bank, setBank] = useState("HDFCR"),
+  const banks = availableBanks(eligible);
+  const [bank, setBank] = useState(banks[0]?.[0] || ""),
     [app, setApp] = useState("gpay");
-  const [session, setSession] = useState<PaymentSession | null>(null),
+  const [session, setSession] = useState<PaymentSession | null>(
+      existingSession || null,
+    ),
     [loading, setLoading] = useState(false),
     [submitting, setSubmitting] = useState(false),
     [ready, setReady] = useState(false),
@@ -110,7 +224,7 @@ export function PaymentMethods({
     return () => window.clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (!session || timedOut) return;
+    if (!session || timedOut || !Number.isFinite(deadline)) return;
     let live = true;
     const fields: PaymentElement[] = [];
     setLoading(true);
@@ -253,59 +367,12 @@ export function PaymentMethods({
       setSubmitting(false);
     }
   };
-  const change = (value: PaymentMethod) => {
-    if (loading || submitting) return;
-    setSession(null);
-    setReady(false);
-    setError("");
-    setMethod(value);
-  };
   payAction.current = () => void pay();
   return (
     <section className="ar-checkout-card ar-payment-card">
-      <div className="ar-section-heading">
-        <span className="ar-eyebrow">PAYMENT METHOD</span>
-        <h2>Choose a payment method</h2>
-        <p>Choose an option to complete your {amount} payment.</p>
-      </div>
       <div className="ar-payment-layout">
-        <div className="ar-methods" role="group" aria-label="Payment method">
-          {[
-            ...choices,
-            ...(mobile
-              ? [
-                  {
-                    id: "app" as const,
-                    Icon: Smartphone,
-                    name: "UPI app",
-                    note: "Pay on this phone",
-                  },
-                ]
-              : []),
-          ].map(({ id, Icon, name, note }) => (
-            <button
-              key={id}
-              type="button"
-              disabled={loading || submitting}
-              aria-pressed={method === id}
-              onClick={() => change(id)}
-              className={"ar-method " + (method === id ? "selected" : "")}
-            >
-              <span className="ar-method-icon">
-                <Icon size={21} />
-              </span>
-              <span>
-                <strong>{name}</strong>
-                <small>{note}</small>
-              </span>
-              <span className="ar-radio">
-                {method === id && <Check size={12} />}
-              </span>
-            </button>
-          ))}
-        </div>
         <div className="ar-method-content">
-          {timedOut ? (
+          {timedOut || !Number.isFinite(deadline) ? (
             <div className="ar-empty-payment">
               <Clock3 size={34} />
               <h3>Payment session expired</h3>
@@ -318,7 +385,7 @@ export function PaymentMethods({
                 onClick={() => void restart().catch((e) => setError(e.message))}
               >
                 <RefreshCw size={17} />
-                Start a fresh checkout
+                Generate new QR
               </button>
             </div>
           ) : (
@@ -331,11 +398,11 @@ export function PaymentMethods({
                   <select
                     id="ar-bank"
                     className="ar-input"
-                    disabled={loading || submitting || Boolean(session)}
+                    disabled={loading || submitting}
                     value={bank}
                     onChange={(e) => setBank(e.target.value)}
                   >
-                    {BANKS.map(([id, name]) => (
+                    {banks.map(([id, name]) => (
                       <option value={id} key={id}>
                         {name}
                       </option>
@@ -356,7 +423,7 @@ export function PaymentMethods({
                     id="ar-app"
                     className="ar-input"
                     value={app}
-                    disabled={loading || submitting || Boolean(session)}
+                    disabled={loading || submitting}
                     onChange={(e) => setApp(e.target.value)}
                   >
                     <option value="gpay">Google Pay</option>
@@ -367,7 +434,7 @@ export function PaymentMethods({
               )}
               {method === "qr" && (
                 <div className="ar-qr-panel">
-                  <span className="ar-qr-label">UPI QR PAYMENT</span>
+                  <span className="ar-qr-label">PAYING {merchant}</span>
                   <strong className="ar-payment-amount">{amount}</strong>
                   {session ? (
                     <div className="ar-qr-frame">
@@ -388,9 +455,7 @@ export function PaymentMethods({
                       <p>Your secure QR appears here</p>
                     </div>
                   )}
-                  <h3>
-                    {qrRequested ? "Scan with any UPI app" : "Pay with UPI"}
-                  </h3>
+                  <h3>किसी भी UPI ऐप से स्कैन करके भुगतान करें।</h3>
                   <p>Google Pay, PhonePe, Paytm, BHIM and other UPI apps</p>
                   {mobile && (
                     <small>
@@ -490,7 +555,7 @@ export function PaymentMethods({
               {session && method === "qr" && !error && (
                 <div className="ar-waiting" role="status">
                   <span />
-                  Waiting for payment · Confirmation is automatic
+                  Waiting for payment confirmation
                 </div>
               )}
             </>
@@ -512,6 +577,13 @@ export function PaymentMethods({
           )}
         </div>
       </div>
+      <button
+        className="ar-text-link ar-centered"
+        type="button"
+        onClick={changeMethod}
+      >
+        Change payment method
+      </button>
       <div className="ar-security-foot">
         <ShieldCheck size={17} />
         <span>Secure payment processing by Cashfree</span>

@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { cleanEnvironment, normalizeAppUrl, SUPABASE_URL } from './supabaseConfig.js';
 
 export class BillingError extends Error {
-  constructor(message: string, public status = 503) { super(message); }
+  constructor(message: string, public status = 503, public code = 'BILLING_UNAVAILABLE') { super(message); }
 }
 export function businessDetails() {
   // Public contact details supplied by the website owner; environment values can override them.
@@ -42,17 +42,27 @@ export async function billingDb(path: string, method = 'GET', body?: any) {
   if (!response.ok) { console.error('[BILLING_STORAGE_ERROR]', { status: response.status }); throw new BillingError('Payment storage is temporarily unavailable. Please check your existing order before retrying.'); }
   return response.status === 204 ? null : response.json();
 }
-export async function cashfreeRequest(path: string, method = 'GET', body?: any, idempotencyKey?: string) {
+export async function cashfreeRequest(path: string, method = 'GET', body?: any, idempotencyKey?: string, clientHeaders: Record<string,string> = {}) {
   const cfg = billingConfig();
   if (!cfg.configured) throw new BillingError('Payments are being set up. No money has been taken. Please try again later.');
   const base = cfg.mode === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
-  const response = await fetch(base + path, { method, headers: { 'x-client-id': cleanEnvironment(process.env.CASHFREE_CLIENT_ID), 'x-client-secret': cleanEnvironment(process.env.CASHFREE_CLIENT_SECRET), 'x-api-version': '2025-01-01', 'Content-Type': 'application/json', ...(idempotencyKey ? { 'x-idempotency-key': idempotencyKey } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000) });
+  const response = await fetch(base + path, { method, headers: { 'x-client-id': cleanEnvironment(process.env.CASHFREE_CLIENT_ID), 'x-client-secret': cleanEnvironment(process.env.CASHFREE_CLIENT_SECRET), 'x-api-version': '2025-01-01', 'Content-Type': 'application/json', ...clientHeaders, ...(idempotencyKey ? { 'x-idempotency-key': idempotencyKey } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000) });
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new BillingError(response.status === 404 ? 'Payment order is not available yet. Check again shortly.' : 'The payment provider could not complete this request. Check your existing order before retrying.', response.status === 404 ? 409 : 503);
+  if (!response.ok) {
+    const code = String(payload?.code || 'request_failed').replace(/[^a-zA-Z0-9_]/g,'').slice(0,80);
+    const type = String(payload?.type || '').replace(/[^a-zA-Z0-9_]/g,'').slice(0,80);
+    console.error('[CASHFREE_REQUEST_FAILED]', {operation:method+' '+(path.startsWith('/orders/')?'/orders/:id':path), status:response.status, code, type});
+    const message = response.status === 404 ? 'Payment order is not available yet. Check again shortly.'
+      : response.status === 401 || response.status === 403 ? 'Cashfree merchant authentication failed. Contact support; do not retry payment.'
+      : response.status === 429 ? 'Cashfree is receiving too many requests. Wait a moment before checking again.'
+      : response.status < 500 ? 'Cashfree rejected the payment request ('+code+'). No new payment has been confirmed. Please contact support.'
+      : 'Cashfree is temporarily unavailable. Your payment status will be checked before you can retry.';
+    throw new BillingError(message,response.status===404?409:503,'CASHFREE_'+code.toUpperCase());
+  }
   return payload;
 }
 export function validateProviderPayment(order: any, provider: any, payments: any[]) {
-  if (provider?.order_id !== order.order_id || Number(provider.order_amount) !== Number(order.amount_inr) || provider.order_currency !== 'INR') throw new BillingError('Payment details could not be verified.', 409);
+  if (provider?.order_id !== order.order_id || Number(provider.order_amount) !== Number(order.amount_inr) || provider.order_currency !== 'INR' || provider.customer_details?.customer_id !== order.owner_user_id) throw new BillingError('Payment details could not be verified.', 409);
   if (provider.order_status !== 'PAID') return null;
   const payment = payments.find(p => p.payment_status === 'SUCCESS' && Number(p.payment_amount) === Number(order.amount_inr) && p.payment_currency === 'INR' && /^\d+$/.test(String(p.cf_payment_id || '')));
   if (!payment) throw new BillingError('Payment confirmation is still processing. Your plan has not changed.', 409);
@@ -79,10 +89,10 @@ export async function closeUnpaidOrder(order: any) {
   const provider = await cashfreeRequest('/orders/' + encodeURIComponent(order.order_id), 'PATCH', { order_status: 'TERMINATED' });
   const finalOrder = await reconcileOrder(order);
   if (finalOrder.status === 'paid') return finalOrder;
-  if (provider.order_status !== 'TERMINATED' || finalOrder.status !== 'expired')
+  if (finalOrder.status !== 'expired')
     throw new BillingError('The previous payment is still closing. Please try your selected plan again shortly.', 409);
   return finalOrder;
 }
 export function safeOrder(order: any) {
-  return { orderId: order.order_id, planId: order.plan_id, amount: order.amount_inr, currency: order.currency, environment: order.environment, status: order.status, createdAt: order.created_at, paidAt: order.paid_at, activatedAt: order.activated_at, expiresAt: order.access_expires_at, paymentExpiresAt: order.payment_expires_at, activationStatus: order.activation_status, lastAttempt: order.last_attempt, paymentId: order.cf_payment_id };
+  return { orderId: order.order_id, planId: order.plan_id, amount: order.amount_inr, currency: order.currency, environment: order.environment, status: order.status, createdAt: order.created_at, billingDays: order.billing_days, paidAt: order.paid_at, activatedAt: order.activated_at, expiresAt: order.access_expires_at, paymentExpiresAt: order.payment_expires_at, activationStatus: order.activation_status, lastAttempt: order.last_attempt, paymentId: order.cf_payment_id };
 }

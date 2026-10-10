@@ -41,7 +41,7 @@ try {
       export {BillingUsagePage} from './src/components/Billing/BillingUsagePage';
       export {SettingsPage} from './src/components/Settings/SettingsPage';
       export {CheckoutPage} from './src/components/Billing/CheckoutPage';
-      export {PaymentMethods} from './src/components/Billing/PaymentMethods';
+      export {PaymentMethods,PaymentMethodPicker} from './src/components/Billing/PaymentMethods';
       export {Header} from './src/components/Header';
       export {HomePage} from './src/components/Home/HomePage';
       export {AnalyticsPage} from './src/components/Analytics/AnalyticsPage';
@@ -199,13 +199,13 @@ try {
   window.location.pathname='/billing/checkout';window.location.search='?plan=starter';
   globalThis.__uiFixture=fixture({firebaseUser:{uid:'test-user',email:'owner@example.test'}});
   html=renderToStaticMarkup(React.createElement(ui.CheckoutPage));
-  for(const label of ['SUBSCRIPTION CHECKOUT','Protected by Cashfree','Plan &amp; details','Activation','YOUR PLAN','Standard and AI reply allowances','₹299']) assert.ok(html.includes(label),label);
+  for(const label of ['AUTO REPLIES CHECKOUT','Secure payments by Cashfree','Plan','Order','Payment','Done','Loading your checkout']) assert.ok(html.includes(label),label);
   assert.ok(!html.includes('Almost there. Make it official.'));
   checks++;
-  html=renderToStaticMarkup(React.createElement(ui.PaymentMethods,{prepare:async()=>null,check:async()=>{},restart:async()=>{},amount:'₹299',returnUrl:'https://example.test/billing/checkout'}));
-  for(const label of ['UPI / QR','Net banking','Debit / credit card','Generate QR code','Your secure QR appears here']) assert.ok(html.includes(label),label);
-  assert.ok(!html.includes('iframe'),'only the selected secure field loads after choosing a payment method');
-  checks++;
+  html=renderToStaticMarkup(React.createElement(ui.PaymentMethodPicker,{eligible:[{type:'upi',banks:[]},{type:'netbanking',banks:[{name:'HDFC Bank',nick:'hdfc_bank'}]}],method:'qr',onChange:()=>{},onContinue:()=>{},busy:false}));
+  for(const label of ['UPI QR','Net banking','Continue']) assert.ok(html.includes(label),label);
+  assert.ok(!html.includes('Debit / credit card'),'disabled merchant methods must be hidden');
+  assert.ok(!html.includes('iframe'),'method selection never mounts a QR or payment field');checks++;
   const checkoutSource=await readFile(path.join(root,'src/components/Billing/CheckoutPage.tsx'),'utf8');
   const methodsSource=await readFile(path.join(root,'src/components/Billing/PaymentMethods.tsx'),'utf8');
   assert.ok(!checkoutSource.includes('mountCashfreeCheckout'),'hosted checkout banner is removed');

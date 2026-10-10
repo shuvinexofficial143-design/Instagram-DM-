@@ -25,7 +25,7 @@ export async function readBillingBody(req: any): Promise<Buffer> {
   if (typeof body === 'string') return Buffer.from(body);
   throw new BillingError('Raw payment request required.', 400);
 }
-const orderIdValid = (value: string) => /^ar_(sandbox|production)_[a-f0-9-]{36}$/.test(value);
+const orderIdValid = (value: string) => /^ar_(sandbox|production|s|p)_[a-f0-9-]{36}$/.test(value);
 export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'private, no-store');
   try {
@@ -51,12 +51,27 @@ export default async function handler(req: any, res: any) {
       if (orders?.[0] && event.type === 'PAYMENT_SUCCESS_WEBHOOK') await reconcileOrder(orders[0]);
       return res.status(200).json({ ok: true });
     }
-    if (!['create','status','history','subscription','pending','cancel'].includes(action)) return res.status(404).json({ ok: false, error: 'Unknown billing action.' });
-    if (req.method !== (['create','cancel'].includes(action) ? 'POST' : 'GET')) return res.status(405).json({ ok: false, error: 'Method not allowed.' });
+    if (!['create','status','history','subscription','pending','cancel','methods'].includes(action)) return res.status(404).json({ ok: false, error: 'Unknown billing action.' });
+    if (req.method !== (['create','cancel','methods'].includes(action) ? 'POST' : 'GET')) return res.status(405).json({ ok: false, error: 'Method not allowed.' });
     const user = await authenticatedUser(req);
     if (!user) return res.status(401).json({ ok: false, error: 'Sign in to manage your payments.' });
     const rate = enforceRateLimit(`billing:${action}:${user.id}`, action === 'create' ? 10 : 90, 60000);
     if (!rate.allowed) { res.setHeader('Retry-After', String(rate.retryAfter)); return res.status(429).json({ ok: false, error: 'Too many payment requests. Please wait a moment.' }); }
+    if (action === 'methods') {
+      const data=JSON.parse((await readBillingBody(req)).toString('utf8'));
+      if(!['starter','pro','business'].includes(data.planId)) throw new BillingError('Select a paid plan.',400);
+      const rows=await billingDb(`autoreply_plans?id=eq.${data.planId}&is_active=eq.true&select=id,price_inr,billing_days&limit=1`);
+      if(!rows?.[0]) throw new BillingError('This plan is currently unavailable.',409);
+      const ua=String(req.headers['user-agent']||'');
+      const mobile=/Android|iPhone|iPad/i.test(ua);
+      const headers:Record<string,string>={'x-client-device':/iPad/i.test(ua)?'tablet':mobile?'mobile':'desktop',
+        'x-client-os':/iPhone|iPad/i.test(ua)?'ios':/Android/i.test(ua)?'android':/Windows/i.test(ua)?'windows':/Mac/i.test(ua)?'macos':'linux',
+        'x-client-browser':/Edg/i.test(ua)?'edge':/Firefox/i.test(ua)?'firefox':/Chrome/i.test(ua)?'chrome':'safari',
+        ...(mobile?{'x-client-rendering-type':'mweb'}:{})};
+      const eligible=await cashfreeRequest('/eligibility/payment_methods','POST',{queries:{amount:Number(rows[0].price_inr)}},undefined,headers);
+      const methods=Array.isArray(eligible)?eligible.filter(p=>p.eligibility===true && p.entity_type==='payment_methods').map(p=>({type:p.entity_value,banks:(p.entity_details?.payment_method_details||[]).filter((b:any)=>b.eligibility===true).map((b:any)=>({name:String(b.display||''),nick:String(b.nick||'')}))})):[];
+      return res.status(200).json({ok:true,planId:data.planId,amount:Number(rows[0].price_inr),methods});
+    }
     if (action === 'pending') {
       // Retained for older clients; the current checkout does not show a
       // pending-plan screen. Replacement is handled when payment begins.
@@ -107,7 +122,7 @@ export default async function handler(req: any, res: any) {
         if(existing.status==='paid') return res.status(200).json({ok:true,order:safeOrder(existing)});
       }
     }
-    const id = `ar_${cfg.mode}_${randomUUID()}`;
+    const id = `ar_${cfg.mode==='production'?'p':'s'}_${randomUUID()}`;
     // Reservation snapshots authoritative prices and serializes checkout per login.
     let order: any;
     try {
@@ -141,6 +156,6 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ ok: true, order: safeOrder({...order,status:'pending',payment_expires_at:provider.order_expiry_time||paymentExpiresAt}), paymentSessionId: provider.payment_session_id, mode: cfg.mode });
   } catch (error: any) {
     console.error('[BILLING_REQUEST_FAILED]', { type: error?.name || 'Error', status: error?.status || 503 });
-    return res.status(error instanceof BillingError ? error.status : 503).json({ ok: false, error: error instanceof BillingError ? error.message : 'Payment confirmation is temporarily unavailable. Check your existing order before paying again.' });
+    return res.status(error instanceof BillingError ? error.status : 503).json({ ok: false, code: error instanceof BillingError ? error.code : 'BILLING_UNAVAILABLE', error: error instanceof BillingError ? error.message : 'Payment confirmation is temporarily unavailable. Check your existing order before paying again.' });
   }
 }

@@ -4,18 +4,11 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
-  Clock3,
-  Headphones,
-  Instagram,
   Loader2,
   LockKeyhole,
   MessageCircle,
   ReceiptText,
   ShieldCheck,
-  Sparkles,
-  TriangleAlert,
-  Zap,
-  Bot,
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { getPlanConfig } from "../../lib/planUsage";
@@ -25,24 +18,41 @@ import {
   BillingConfiguration,
   BillingOrder,
 } from "../../lib/billing";
-import { PaymentSession } from "../../lib/cashfreeElements";
-import { PaymentMethods } from "./PaymentMethods";
+import { PaymentSession, PaymentMethod } from "../../lib/cashfreeElements";
+import {
+  PaymentMethods,
+  PaymentMethodPicker,
+  EligibleMethod,
+} from "./PaymentMethods";
 import "./checkout.css";
-const fmt = (value: number) => Number(value || 0).toLocaleString("en-IN");
+type Stage = "plan" | "confirm" | "methods" | "pay" | "result";
+const fmt = (n: number) => "₹" + Number(n || 0).toLocaleString("en-IN");
+const date = (value?: string) =>
+  value
+    ? new Date(value).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "";
 export const CheckoutPage: React.FC = () => {
-  const { user, firebaseUser, setActiveTab } = useApp();
-  // Capture the entry URL once. Remembering an order must not restart initialization
-  // or cancel the SDK's payment promise halfway through the checkout.
+  const { user, firebaseUser } = useApp();
   const [entry] = useState(() => new URLSearchParams(window.location.search));
-  const requested = entry.get("plan") || "starter",
-    initialOrderId = entry.get("order_id") || "";
+  const [requested, setRequested] = useState(entry.get("plan") || "starter");
+  const initialId = entry.get("order_id") || "";
+  const receipt = entry.get("receipt") === "1";
   const catalog = usePlanCatalog();
   const [cfg, setCfg] = useState<BillingConfiguration | null>(null),
     [order, setOrder] = useState<BillingOrder | null>(null);
-  const [session, setSession] = useState<PaymentSession | undefined>(),
-    [stage, setStage] = useState<"details" | "payment" | "result">(
-      initialOrderId ? "result" : "details",
-    );
+  const [session, setSession] = useState<PaymentSession>(),
+    [stage, setStage] = useState<Stage>(initialId ? "result" : "plan");
+  const [method, setMethod] = useState<PaymentMethod>(
+    ["qr", "app", "netbanking", "card"].includes(entry.get("method") || "")
+      ? (entry.get("method") as PaymentMethod)
+      : "qr",
+  );
+  const [eligible, setEligible] = useState<EligibleMethod[]>([]),
+    [quote, setQuote] = useState<number>();
   const [initializing, setInitializing] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -51,21 +61,26 @@ export const CheckoutPage: React.FC = () => {
     [phone, setPhone] = useState(""),
     [agreed, setAgreed] = useState(false);
   const requestId = useRef(crypto.randomUUID()),
-    refreshing = useRef(false),
-    prepareLock = useRef(false);
-  const plan = getPlanConfig(order?.planId || requested, catalog.plans);
-  const planAvailable =
+    lock = useRef(false),
+    refreshing = useRef(false);
+  const plan = getPlanConfig(order?.planId || requested, catalog.plans),
+    days = order?.billingDays || plan.billingDays || 30;
+  const available =
     catalog.synced &&
     catalog.plans.some((p) => p.id === requested && p.id !== "free");
   const paid = order?.status === "paid",
     active = paid && order.activationStatus === "active",
     test = paid && order.activationStatus === "test",
     expired = order?.status === "expired";
-  const otherDomain = Boolean(
+  const amount = order
+    ? fmt(order.amount)
+    : quote !== undefined
+      ? fmt(quote)
+      : plan.price;
+  const blocked = Boolean(
     cfg?.appUrl && new URL(cfg.appUrl).origin !== window.location.origin,
   );
-  const amount = order ? "₹" + fmt(order.amount) : plan.price;
-  const sessionFrom = (p: any): PaymentSession | undefined =>
+  const from = (p: any): PaymentSession | undefined =>
     p.paymentSessionId
       ? {
           paymentSessionId: p.paymentSessionId,
@@ -74,41 +89,45 @@ export const CheckoutPage: React.FC = () => {
           paymentExpiresAt: p.order.paymentExpiresAt,
         }
       : undefined;
-  const acceptStatus = (p: any) => {
+  const accept = (p: any, initial = false) => {
     setOrder(p.order);
+    if (initial) setRequested(p.order.planId);
     if (p.order.status === "paid" || p.order.status === "expired") {
-      setStage("result");
       setSession(undefined);
-    } else {
-      setSession(sessionFrom(p));
-      if (p.paymentSessionId) setStage("payment");
+      setStage("result");
+    } else if (p.paymentSessionId) {
+      setSession((previous) =>
+        previous?.paymentSessionId === p.paymentSessionId &&
+        previous.paymentExpiresAt === p.order.paymentExpiresAt
+          ? previous
+          : from(p),
+      );
+      setStage((previous) =>
+        initial || previous === "result" ? "pay" : previous,
+      );
     }
-  };
-  const remember = (o: BillingOrder) => {
-    window.history.replaceState(
-      null,
-      "",
-      "/billing/checkout?order_id=" + encodeURIComponent(o.orderId),
-    );
-    setOrder(o);
   };
   useEffect(() => {
     let live = true;
     void (async () => {
       try {
-        const config = await billingRequest("config");
+        const c = await billingRequest("config");
         if (!live) return;
-        setCfg(config);
-        if (initialOrderId) {
-          const status = await billingRequest(
-            "status",
-            undefined,
-            initialOrderId,
-          );
-          if (live) acceptStatus(status);
+        setCfg(c);
+        if (initialId) {
+          const p = await billingRequest("status", undefined, initialId);
+          if (live) {
+            if (p.order.status === "pending") {
+              const methods = await billingRequest("methods", {
+                planId: p.order.planId,
+              });
+              if (live) setEligible(methods.methods);
+            }
+            if (live) accept(p, true);
+          }
         }
       } catch (e: any) {
-        if (live) setError(e.message || "Could not load checkout.");
+        if (live) setError(e.message);
       } finally {
         if (live) setInitializing(false);
       }
@@ -116,17 +135,20 @@ export const CheckoutPage: React.FC = () => {
     return () => {
       live = false;
     };
-  }, [initialOrderId]);
+  }, [initialId]);
   const refresh = async () => {
-    const id = order?.orderId || initialOrderId;
+    const id = order?.orderId || initialId;
     if (!id || refreshing.current) return;
     refreshing.current = true;
     try {
-      acceptStatus(await billingRequest("status", undefined, id));
+      const p = await billingRequest("status", undefined, id);
+      accept(p);
       setError("");
+      return p;
     } catch (e: any) {
       setError(
-        e.message || "Payment confirmation is delayed. Please check again.",
+        e.message ||
+          "Confirmation is delayed. We will keep checking; please do not pay again.",
       );
     } finally {
       refreshing.current = false;
@@ -135,15 +157,21 @@ export const CheckoutPage: React.FC = () => {
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   useEffect(() => {
-    if (!order || paid || expired) return;
-    let live = true;
-    let timer: number;
+    if (
+      !order ||
+      active ||
+      test ||
+      order.activationStatus === "review"
+    )
+      return;
+    let live = true,
+      timer: number;
     const poll = async () => {
       await refreshRef.current();
       if (live)
         timer = window.setTimeout(
           () => void poll(),
-          document.hidden ? 15000 : 4000,
+          document.hidden || expired ? 15000 : 4000,
         );
     };
     timer = window.setTimeout(() => void poll(), 4000);
@@ -151,538 +179,611 @@ export const CheckoutPage: React.FC = () => {
     window.addEventListener("focus", focus);
     return () => {
       live = false;
-      window.clearTimeout(timer);
+      clearTimeout(timer);
       window.removeEventListener("focus", focus);
     };
-  }, [order?.orderId, paid, expired]);
+  }, [order?.orderId, active, test, expired, order?.activationStatus]);
   useEffect(() => {
-    if (!active) return;
-    const timer = window.setTimeout(
-      () => window.location.assign("/billing"),
-      2500,
-    );
-    return () => window.clearTimeout(timer);
-  }, [active]);
-  const prepare = async (): Promise<PaymentSession | null> => {
-    if (prepareLock.current)
-      throw new Error("Your payment is already being prepared.");
-    if (session) return session;
-    if (!cfg?.configured || !planAvailable || !agreed || otherDomain)
-      throw new Error("Review your billing details before starting payment.");
-    prepareLock.current = true;
+    if (!active || receipt) return;
+    const t = window.setTimeout(() => window.location.assign("/billing"), 4000);
+    return () => clearTimeout(t);
+  }, [active, receipt]);
+  const loadMethods = async () => {
+    if (lock.current) return;
+    lock.current = true;
     setBusy(true);
     setError("");
     try {
-      const response = await billingRequest("create", {
+      const p = await billingRequest("methods", {
+        planId: order?.planId || requested,
+      });
+      setEligible(p.methods);
+      setQuote(p.amount);
+      if ((quote ?? Number(plan.price.replace(/[^0-9.]/g, ""))) !== p.amount) {
+        setStage("confirm");
+        setError(
+          "The plan price has changed. Please review the updated total.",
+        );
+      } else setStage("methods");
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  };
+  const start = async () => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      if (session) {
+        window.history.replaceState(
+          null,
+          "",
+          "/billing/checkout?order_id=" +
+            encodeURIComponent(session.orderId) +
+            "&method=" +
+            method,
+        );
+        setStage("pay");
+        return;
+      }
+      const p = await billingRequest("create", {
         planId: requested,
         name,
         email,
         phone,
         requestId: requestId.current,
       });
-      remember(response.order);
-      if (["paid", "expired"].includes(response.order.status)) {
-        acceptStatus(response);
-        return null;
-      }
-      const next = sessionFrom(response);
-      if (!next)
-        throw new Error(
-          "Your order is being prepared. Check payment status before retrying.",
+      window.history.replaceState(
+        null,
+        "",
+        "/billing/checkout?order_id=" +
+          encodeURIComponent(p.order.orderId) +
+          "&method=" +
+          method,
+      );
+      accept(p);
+      if (p.order.status === "pending" && p.paymentSessionId) setStage("pay");
+      else if (p.order.status === "creating") {
+        setStage("result");
+        setError(
+          "Your order is being prepared. We are checking its status before any retry.",
         );
-      setSession(next);
-      return next;
+      }
     } catch (e: any) {
       setError(e.message);
-      throw e;
     } finally {
-      prepareLock.current = false;
+      lock.current = false;
       setBusy(false);
     }
   };
-  const cancel = async (o: BillingOrder) => {
-    if (busy) throw new Error("Please wait for the current payment request.");
+  const regenerate = async () => {
+    if (lock.current || !order) return;
+    lock.current = true;
     setBusy(true);
     setError("");
     try {
-      await billingRequest("cancel", { orderId: o.orderId });
+      const p = await billingRequest("status", undefined, order.orderId);
+      accept(p);
+      if (p.order.status === "paid") return;
+      const closed = await billingRequest("cancel", { orderId: order.orderId });
+      if (closed.order.status !== "expired")
+        throw new Error(
+          "The previous payment is still being checked. Please wait.",
+        );
       requestId.current = crypto.randomUUID();
+      setOrder(null);
+      setSession(undefined);
+      window.history.replaceState(
+        null,
+        "",
+        "/billing/checkout?plan=" + requested,
+      );
+      if (!/^[6-9]\d{9}$/.test(phone)) {
+        setStage("confirm");
+        return;
+      }
+      const next = await billingRequest("create", {
+        planId: requested,
+        name,
+        email,
+        phone,
+        requestId: requestId.current,
+      });
+      window.history.replaceState(
+        null,
+        "",
+        "/billing/checkout?order_id=" +
+          encodeURIComponent(next.order.orderId) +
+          "&method=" +
+          method,
+      );
+      accept(next);
+      if (next.order.status === "pending" && next.paymentSessionId)
+        setStage("pay");
     } catch (e: any) {
+      await refreshRef.current();
       setError(e.message);
-      throw e;
     } finally {
+      lock.current = false;
       setBusy(false);
     }
   };
-  const restart = async () => {
-    if (!order) return;
-    await cancel(order);
-    window.location.assign(
-      "/billing/checkout?plan=" + encodeURIComponent(order.planId),
-    );
+  const changeMethod = async () => {
+    const p = await refresh();
+    if (p && p.order.status !== "paid" && p.order.status !== "expired")
+      await loadMethods();
   };
-  const heading = active
-    ? "Your plan is active."
-    : test
-      ? "Test payment complete."
-      : paid
-        ? "Payment received."
-        : expired
-          ? "Your checkout expired."
-          : stage === "result"
-            ? "Confirming your payment."
-            : stage === "payment"
-              ? "Complete your payment"
-              : "Review your subscription";
-  const included = [
-    {
-      Icon: MessageCircle,
-      label: "Standard replies",
-      value: fmt(plan.messages),
-      note: "DM, comment & story automation",
-    },
-    {
-      Icon: Bot,
-      label: "AI replies",
-      value: fmt(plan.ai),
-      note: "A separate AI reply allowance",
-    },
-    {
-      Icon: Instagram,
-      label: "Instagram accounts",
-      value: String(plan.accounts),
-      note: "Connected professional accounts",
-    },
-    {
-      Icon: Zap,
-      label: "Automations",
-      value: plan.automations === null ? "Unlimited" : fmt(plan.automations),
-      note: "Build your customer journeys",
-    },
+  const features = [
+    `${plan.messages.toLocaleString("en-IN")} standard replies / calendar month`,
+    `${plan.ai.toLocaleString("en-IN")} AI replies / calendar month`,
+    `${plan.accounts} Instagram ${plan.accounts === 1 ? "account" : "accounts"}`,
+    plan.automations === null
+      ? "Unlimited automations"
+      : `${plan.automations} automations`,
   ];
+  const step =
+    stage === "plan" ? 0 : stage === "confirm" ? 1 : stage === "result" ? 3 : 2;
+  const heading =
+    stage === "plan"
+      ? "A little more possibility."
+      : stage === "confirm"
+        ? "Review your order"
+        : stage === "methods"
+          ? "How would you like to pay?"
+          : stage === "pay"
+            ? method === "qr"
+              ? "Scan. Pay. You’re ready."
+              : "Complete your payment"
+            : active
+              ? "Congratulations! Your plan is active."
+              : test
+                ? "Test payment complete."
+                : paid
+                  ? "Activating your plan…"
+                  : expired
+                    ? "Payment session expired"
+                    : "Checking your payment…";
   return (
-    <div className={"ar-checkout ar-stage-" + stage}>
-      <div className="ar-checkout-shell">
-        <header className="ar-checkout-nav">
-          <button onClick={() => setActiveTab("billing")} className="ar-back">
-            <ArrowLeft size={17} />
-            Back to billing
-          </button>
-          <span className="ar-brand">
-            <span>
-              <MessageCircle size={20} />
-            </span>
-            Auto Replies
+    <div className="ar-checkout">
+      <header className="ar-checkout-nav">
+        <a className="ar-back" href="/billing">
+          <ArrowLeft size={16} />
+          <span>Back to billing</span>
+        </a>
+        <a href="/billing" className="ar-brand">
+          <span>
+            <MessageCircle size={19} />
           </span>
-          <span className="ar-secure">
-            <LockKeyhole size={14} />
-            Secure checkout
-          </span>
-        </header>
+          Auto Replies
+        </a>
+        <span className="ar-secure">
+          <LockKeyhole size={13} />
+          Secure checkout
+        </span>
+      </header>
+      <main className="ar-checkout-shell">
+        <ol className="ar-steps" aria-label="Checkout progress">
+          {["Plan", "Order", "Payment", "Done"].map((label, i) => (
+            <li
+              key={label}
+              className={i === step ? "current" : i < step ? "complete" : ""}
+              aria-current={i === step ? "step" : undefined}
+            >
+              <span>{i < step ? <Check size={12} /> : i + 1}</span>
+              {label}
+            </li>
+          ))}
+        </ol>
         <div className="ar-checkout-title">
-          <span className="ar-eyebrow">SUBSCRIPTION CHECKOUT</span>
+          <span className="ar-eyebrow">
+            {stage === "result" ? "YOUR SUBSCRIPTION" : "AUTO REPLIES CHECKOUT"}
+          </span>
           <h1>{heading}</h1>
           <p>
-            {stage === "details"
-              ? "Confirm your plan and receipt details before payment."
-              : stage === "payment"
-                ? "Pay securely with UPI, your bank or a card."
-                : "Your payment and plan details, all in one place."}
+            {stage === "plan"
+              ? "More room for conversations that matter."
+              : stage === "confirm"
+                ? "One payment. A clear total. No automatic renewal."
+                : stage === "methods"
+                  ? "Choose a secure payment option to continue."
+                  : stage === "pay"
+                    ? "Your plan activates after verified payment confirmation."
+                    : active
+                      ? "Your workspace is ready for its next chapter."
+                      : paid
+                        ? "Payment received. Please do not pay again."
+                        : "We verify every payment before updating your plan."}
           </p>
         </div>
-        <ol className="ar-steps" aria-label="Checkout progress">
-          {["Plan & details", "Payment", "Activation"].map((label, i) => {
-            const current =
-              stage === "details" ? 0 : stage === "payment" ? 1 : 2;
-            return (
-              <li
-                key={label}
-                aria-current={i === current ? "step" : undefined}
-                className={
-                  i === current ? "current" : i < current ? "complete" : ""
-                }
-              >
-                <span>{i < current ? <Check size={14} /> : i + 1}</span>
-                {label}
-              </li>
-            );
-          })}
-        </ol>
         {cfg?.mode === "sandbox" && (
           <div className="ar-notice">
-            Test environment: sandbox payments do not activate live
-            subscriptions.
+            Sandbox checkout · Test payments do not activate a live plan.
           </div>
         )}
         {error && (
           <div className="ar-alert" role="alert">
-            <TriangleAlert size={18} />
             {error}
           </div>
         )}
-        <div className="ar-checkout-grid">
-          <main className="ar-checkout-main">
-            {initializing ? (
-              <section className="ar-checkout-card ar-loading">
-                <Loader2 className="animate-spin" />
-                <p>Preparing your checkout…</p>
-              </section>
-            ) : stage === "details" ? (
-              <section className="ar-checkout-card">
-                <div className="ar-section-heading">
-                  <span className="ar-eyebrow">YOUR SUBSCRIPTION</span>
-                  <h2>Choose your plan</h2>
-                  <p>Choose the capacity your business needs.</p>
-                </div>
-                <div className="ar-plan-choices">
-                  {catalog.plans
-                    .filter((p) => p.id !== "free")
-                    .map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        aria-pressed={requested === p.id}
-                        className={
-                          "ar-plan-choice " +
-                          (requested === p.id ? "selected" : "")
-                        }
-                        onClick={() => {
-                          if (requested !== p.id)
-                            window.location.assign(
-                              "/billing/checkout?plan=" +
-                                encodeURIComponent(p.id),
-                            );
-                        }}
-                      >
-                        <span>
-                          {p.name}
-                          {requested === p.id && <Check size={14} />}
-                        </span>
-                        <strong>{p.price}</strong>
-                        <small>for {p.billingDays || 30} days</small>
-                      </button>
-                    ))}
-                </div>
-                <div className="ar-form-heading">
-                  <ReceiptText size={20} />
-                  <div>
-                    <h3>Billing information</h3>
-                    <p>Used for your payment receipt.</p>
-                  </div>
-                </div>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (
-                      planAvailable &&
-                      cfg?.configured &&
-                      agreed &&
-                      !otherDomain
-                    )
-                      setStage("payment");
-                  }}
-                  className="ar-checkout-form"
-                >
-                  <label className="ar-label">
-                    Full name
-                    <input
-                      className="ar-input"
-                      required
-                      minLength={2}
-                      maxLength={100}
-                      autoComplete="name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Your full name"
-                    />
-                  </label>
-                  <label className="ar-label">
-                    Email address
-                    <input
-                      className="ar-input"
-                      required
-                      type="email"
-                      maxLength={200}
-                      autoComplete="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                    />
-                  </label>
-                  <label className="ar-label">
-                    Mobile number
-                    <div className="ar-phone-input">
-                      <span>+91</span>
-                      <input
-                        required
-                        type="tel"
-                        inputMode="numeric"
-                        autoComplete="tel-national"
-                        pattern="[6-9][0-9]{9}"
-                        maxLength={10}
-                        value={phone}
-                        onChange={(e) =>
-                          setPhone(
-                            e.target.value.replace(/\D/g, "").slice(0, 10),
-                          )
-                        }
-                        placeholder="10-digit mobile number"
-                      />
-                    </div>
-                  </label>
-                  <label className="ar-agreement">
-                    <input
-                      required
-                      type="checkbox"
-                      checked={agreed}
-                      onChange={(e) => setAgreed(e.target.checked)}
-                    />
-                    <span>
-                      I agree to the{" "}
-                      <a href="/terms" target="_blank" rel="noreferrer">
-                        Terms
-                      </a>
-                      ,{" "}
-                      <a href="/privacy" target="_blank" rel="noreferrer">
-                        Privacy Policy
-                      </a>{" "}
-                      and{" "}
-                      <a href="/refunds" target="_blank" rel="noreferrer">
-                        Refund Policy
-                      </a>
-                      . This is a one-time payment with no automatic renewal.
-                    </span>
-                  </label>
-                  {otherDomain && (
-                    <div className="ar-notice">
-                      Please continue from{" "}
-                      <a
-                        href={
-                          cfg!.appUrl +
-                          "/billing/checkout?plan=" +
-                          encodeURIComponent(requested)
-                        }
-                      >
-                        your payment domain
-                      </a>
-                      .
-                    </div>
-                  )}
-                  <button
-                    className="ar-primary ar-full"
-                    disabled={
-                      !agreed ||
-                      !planAvailable ||
-                      !cfg?.configured ||
-                      otherDomain
+        {initializing ? (
+          <section className="ar-checkout-card ar-loading">
+            <Loader2 className="animate-spin" />
+            <p>Loading your checkout…</p>
+          </section>
+        ) : stage === "plan" ? (
+          <section className="ar-checkout-card">
+            <div className="ar-plan-heading">
+              <div>
+                <span className="ar-eyebrow">YOUR SELECTED PLAN</span>
+                <h2>{plan.name}</h2>
+              </div>
+              <a href="/billing#plans" className="ar-text-link">
+                Change plan
+              </a>
+            </div>
+            <div className="ar-price">
+              {plan.price}
+              <span>/ {days} days</span>
+            </div>
+            <p className="ar-note">
+              {plan.name === "Starter"
+                ? "Everything you need to build your first customer journeys."
+                : plan.name === "Pro"
+                  ? "Room to grow your conversations with smarter automation."
+                  : "Greater capacity for a growing team and multiple accounts."}
+            </p>
+            <ul className="ar-features">
+              {features.map((f) => (
+                <li key={f}>
+                  <span>
+                    <Check size={14} />
+                  </span>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <details className="ar-details">
+              <summary>View all features</summary>
+              <p>
+                DM, comment and story reply automation. Standard replies and AI
+                replies have independent monthly allowances. Access lasts {days}{" "}
+                days from successful activation.
+              </p>
+            </details>
+            <button
+              className="ar-primary ar-full"
+              disabled={!available || !cfg?.configured || blocked}
+              onClick={() => {
+                setError("");
+                setStage("confirm");
+              }}
+            >
+              Continue
+              <ArrowRight size={17} />
+            </button>
+            {(!cfg?.configured || blocked) && (
+              <p className="ar-note">
+                {blocked
+                  ? "Continue on the official website to make a payment."
+                  : "Payments are currently unavailable. Please try again later."}
+              </p>
+            )}
+          </section>
+        ) : stage === "confirm" ? (
+          <section className="ar-checkout-card">
+            <div className="ar-plan-heading">
+              <h2>Order summary</h2>
+              <button className="ar-text-link" onClick={() => setStage("plan")}>
+                Back to plan
+              </button>
+            </div>
+            <dl className="ar-order-lines">
+              <div>
+                <dt>Plan</dt>
+                <dd>{plan.name}</dd>
+              </div>
+              <div>
+                <dt>Billing period</dt>
+                <dd>One-time · {days} days</dd>
+              </div>
+              <div>
+                <dt>Membership</dt>
+                <dd>{days} days of access</dd>
+              </div>
+              <div>
+                <dt>Plan amount</dt>
+                <dd>{amount}</dd>
+              </div>
+            </dl>
+            <div className="ar-total">
+              <span>
+                Total payable{" "}
+                <small>INR · No additional checkout charges</small>
+              </span>
+              <strong>{amount}</strong>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void loadMethods();
+              }}
+            >
+              <div className="ar-billing-details">
+                <h3>Receipt details</h3>
+                <p className="ar-note">
+                  Use your account details for the payment receipt.
+                </p>
+                <label className="ar-label">
+                  Name
+                  <input
+                    className="ar-input"
+                    autoComplete="name"
+                    required
+                    minLength={2}
+                    maxLength={100}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    readOnly={Boolean(user.name && user.name.length >= 2)}
+                  />
+                </label>
+                <label className="ar-label">
+                  Email
+                  <input
+                    className="ar-input"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    readOnly={Boolean(firebaseUser?.email || user.email)}
+                  />
+                </label>
+                <label className="ar-label">
+                  Mobile number
+                  <input
+                    className="ar-input"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel-national"
+                    placeholder="10-digit Indian mobile number"
+                    required
+                    pattern="[6-9][0-9]{9}"
+                    maxLength={10}
+                    value={phone}
+                    onChange={(e) =>
+                      setPhone(e.target.value.replace(/\D/g, ""))
                     }
-                  >
-                    Continue to payment
-                    <ArrowRight size={17} />
-                  </button>
-                  {!catalog.synced && (
-                    <p className="ar-note">
-                      {catalog.error || "Confirming live plan prices…"}
-                    </p>
-                  )}
-                  {catalog.synced && !planAvailable && (
-                    <p className="ar-note">
-                      Select an available paid plan above.
-                    </p>
-                  )}
-                  {!cfg?.configured && (
-                    <p className="ar-note">
-                      Payments are temporarily unavailable. Please try again
-                      later.
-                    </p>
-                  )}
-                  <p className="ar-form-foot">
-                    <LockKeyhole size={13} />
-                    Encrypted payment · No automatic charges
-                  </p>
-                </form>
-              </section>
-            ) : stage === "payment" ? (
-              <>
-                <PaymentMethods
-                  prepare={prepare}
-                  check={refresh}
-                  restart={restart}
-                  existingSession={session}
-                  returnUrl={
-                    (cfg?.appUrl || window.location.origin) +
-                    "/billing/checkout?order_id=" +
-                    encodeURIComponent(order?.orderId || "")
-                  }
-                  amount={amount}
+                  />
+                </label>
+                <p className="ar-note">
+                  Cashfree needs your mobile number to process the payment.
+                </p>
+              </div>
+              <label className="ar-agreement">
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  required
+                  onChange={(e) => setAgreed(e.target.checked)}
                 />
-                {!order && (
-                  <button
-                    className="ar-edit-details"
-                    onClick={() => setStage("details")}
-                  >
-                    <ArrowLeft size={14} />
-                    Edit billing details
-                  </button>
+                <span>
+                  I agree to the{" "}
+                  <a href="/terms" target="_blank" rel="noreferrer">
+                    terms
+                  </a>{" "}
+                  and{" "}
+                  <a href="/refunds" target="_blank" rel="noreferrer">
+                    refund policy
+                  </a>
+                  .
+                </span>
+              </label>
+              <button
+                type="submit"
+                className="ar-primary ar-full"
+                disabled={busy}
+              >
+                {busy ? <Loader2 size={17} className="animate-spin" /> : null}
+                Choose payment method
+                <ArrowRight size={17} />
+              </button>
+            </form>
+          </section>
+        ) : stage === "methods" ? (
+          <section className="ar-checkout-card">
+            <div className="ar-mini-summary">
+              <span>
+                {plan.name} <small>{days} days</small>
+              </span>
+              <strong>{amount}</strong>
+            </div>
+            <PaymentMethodPicker
+              eligible={eligible}
+              method={method}
+              onChange={setMethod}
+              busy={busy}
+              onContinue={() => void start()}
+            />
+            <button
+              className="ar-text-link ar-centered"
+              disabled={busy}
+              onClick={() => {
+                setError("");
+                setStage("confirm");
+              }}
+            >
+              Back to order summary
+            </button>
+          </section>
+        ) : stage === "pay" && session ? (
+          <PaymentMethods
+            method={method}
+            eligible={eligible}
+            existingSession={session}
+            prepare={async () => session}
+            check={async () => {
+              await refresh();
+            }}
+            restart={regenerate}
+            changeMethod={() => void changeMethod()}
+            returnUrl={
+              window.location.origin +
+              "/billing/checkout?order_id=" +
+              encodeURIComponent(session.orderId) +
+              "&method=" +
+              method
+            }
+            amount={amount}
+            merchant={cfg?.business?.legalName || "Auto Replies"}
+          />
+        ) : (
+          <section className="ar-checkout-card ar-result">
+            {active ? (
+              <>
+                <div className="ar-success-mark">
+                  <Check size={38} />
+                </div>
+                {!receipt && (
+                  <div className="ar-confetti" aria-hidden="true">
+                    {Array.from({ length: 18 }, (_, i) => (
+                      <i key={i} style={{ "--i": i } as React.CSSProperties} />
+                    ))}
+                  </div>
                 )}
               </>
             ) : (
-              <section className="ar-checkout-card ar-result">
-                <div
-                  className={
-                    "ar-result-icon " +
-                    (paid ? "success" : expired ? "expired" : "")
-                  }
-                >
-                  {paid ? (
-                    <CheckCircle2 size={38} />
-                  ) : expired ? (
-                    <Clock3 size={38} />
-                  ) : (
-                    <Loader2 className="animate-spin" size={38} />
-                  )}
-                </div>
-                <span className="ar-eyebrow">
-                  {active
-                    ? "PAYMENT SUCCESSFUL"
-                    : paid
-                      ? "PAYMENT CONFIRMED"
-                      : "PAYMENT STATUS"}
-                </span>
-                <h2>{heading}</h2>
-                <p>
-                  {active
-                    ? "Your " +
-                      plan.name +
-                      " plan is ready. Returning to your billing dashboard…"
-                    : test
-                      ? "Your test payment was confirmed. Live subscriptions are unchanged."
-                      : paid
-                        ? "Your payment is confirmed and is being reviewed. Please contact support."
-                        : expired
-                          ? "This session can no longer accept payment. Start a fresh checkout when you’re ready."
-                          : "We’re checking your payment securely. This page updates automatically."}
-                </p>
-                {order && (
-                  <div className="ar-receipt">
-                    <span>{paid ? "Amount paid" : "Order amount"}</span>
-                    <strong>{amount}</strong>
-                    <span>Plan</span>
-                    <strong>
-                      {plan.name} · {plan.billingDays || 30} days
-                    </strong>
-                    <span>Order reference</span>
-                    <small>{order.orderId}</small>
+              <div className="ar-result-icon">
+                {paid || !expired ? (
+                  <Loader2 size={32} className="animate-spin" />
+                ) : (
+                  <ReceiptText size={32} />
+                )}
+              </div>
+            )}
+            <h2>
+              {active
+                ? plan.name + " is ready."
+                : test
+                  ? "Sandbox payment verified"
+                  : paid
+                    ? order.activationStatus === "review"
+                      ? "Payment received — activation needs review"
+                      : "Activating your plan…"
+                    : expired
+                      ? "This QR is no longer available"
+                      : "Waiting for payment confirmation"}
+            </h2>
+            {paid ? (
+              <>
+                <dl className="ar-order-lines">
+                  <div>
+                    <dt>Plan</dt>
+                    <dd>{plan.name}</dd>
                   </div>
+                  <div>
+                    <dt>Payment received</dt>
+                    <dd>{amount}</dd>
+                  </div>
+                  <div>
+                    <dt>Membership</dt>
+                    <dd>
+                      {days} days
+                      {order.expiresAt
+                        ? " · Until " + date(order.expiresAt)
+                        : ""}
+                    </dd>
+                  </div>
+                  {receipt && (
+                    <>
+                      <div>
+                        <dt>Order reference</dt>
+                        <dd className="ar-reference">{order.orderId}</dd>
+                      </div>
+                      <div>
+                        <dt>Payment reference</dt>
+                        <dd>{order.paymentId || "Verified payment"}</dd>
+                      </div>
+                      <div>
+                        <dt>Payment date</dt>
+                        <dd>{date(order.paidAt)}</dd>
+                      </div>
+                    </>
+                  )}
+                </dl>
+                {test && (
+                  <p className="ar-note">
+                    This was a test payment. Your live subscription has not
+                    changed.
+                  </p>
                 )}
-                {!paid && !expired && (
-                  <button
-                    className="ar-primary ar-full"
-                    onClick={() => void refresh()}
-                  >
-                    <RefreshIcon />
-                    Check payment status
-                  </button>
+                {order.activationStatus === "review" && (
+                  <p className="ar-note">
+                    Contact support to activate this confirmed payment. Please
+                    do not pay again.
+                  </p>
                 )}
-                {expired && (
-                  <button
-                    className="ar-primary ar-full"
-                    onClick={() =>
-                      window.location.assign(
-                        "/billing/checkout?plan=" + encodeURIComponent(plan.id),
-                      )
-                    }
-                  >
-                    Start a new checkout
-                    <ArrowRight size={17} />
-                  </button>
-                )}
-                <button
-                  className="ar-secondary ar-full"
-                  onClick={() => {
-                    if (active) window.location.assign("/billing");
-                    else setActiveTab("billing");
-                  }}
-                >
+                <a href="/billing" className="ar-primary ar-full">
                   Back to billing
                   <ArrowRight size={17} />
+                </a>
+                {!receipt && (
+                  <a
+                    className="ar-text-link ar-centered"
+                    href={
+                      "/billing/checkout?order_id=" +
+                      encodeURIComponent(order.orderId) +
+                      "&receipt=1"
+                    }
+                  >
+                    View receipt
+                  </a>
+                )}
+                {active && !receipt && (
+                  <p className="ar-note">
+                    Returning to billing in about 4 seconds…
+                  </p>
+                )}
+              </>
+            ) : expired ? (
+              <>
+                <p className="ar-note">
+                  We check the previous payment before allowing a new QR.
+                </p>
+                <button
+                  className="ar-primary ar-full"
+                  disabled={busy}
+                  onClick={() => void regenerate()}
+                >
+                  {busy ? "Checking previous payment…" : "Generate new QR"}
                 </button>
-              </section>
+              </>
+            ) : (
+              <>
+                <p className="ar-note">
+                  Confirmation can take a little longer. We are checking
+                  automatically. Please do not pay again.
+                </p>
+                <button className="ar-text-link" onClick={() => void refresh()}>
+                  Check status
+                </button>
+              </>
             )}
-          </main>
-          <aside className="ar-order-summary">
-            <section className="ar-summary-card">
-              <div className="ar-summary-head">
-                <div className="ar-summary-mark">
-                  <Sparkles size={24} />
-                </div>
-                <span className="ar-eyebrow">YOUR PLAN</span>
-                <h2>{plan.name}</h2>
-                <p>Subscription access for {plan.billingDays || 30} days</p>
-                <div className="ar-summary-price">
-                  {amount}
-                  <span>/ {plan.billingDays || 30} days</span>
-                </div>
-                <div className="ar-summary-badge">
-                  <Check size={13} />
-                  One-time payment
-                </div>
-              </div>
-              <div className="ar-summary-body">
-                <h3>Included in your plan</h3>
-                {included.map(({ Icon, label, value, note }) => (
-                  <div className="ar-included" key={label}>
-                    <span>
-                      <Icon size={18} />
-                    </span>
-                    <div>
-                      <strong>
-                        {value} {label.toLowerCase()}
-                      </strong>
-                      <small>{note}</small>
-                    </div>
-                    <Check size={15} />
-                  </div>
-                ))}
-                <div className="ar-summary-total">
-                  <span>Total due today</span>
-                  <strong>
-                    {amount}
-                    <small> INR</small>
-                  </strong>
-                </div>
-                <p className="ar-summary-note">
-                  Your plan activates after payment confirmation. Standard and
-                  AI reply allowances are counted separately.
-                </p>
-              </div>
-            </section>
-            <div className="ar-trust">
-              <ShieldCheck size={20} />
-              <div>
-                <strong>Protected by Cashfree</strong>
-                <p>
-                  Your payment details are encrypted and processed securely.
-                </p>
-              </div>
-            </div>
-            <a className="ar-support" href="/contact">
-              <Headphones size={16} />
-              Need a hand? Contact support
-              <ArrowRight size={14} />
-            </a>
-          </aside>
-        </div>
-        <footer className="ar-checkout-footer">
-          <span>© {new Date().getFullYear()} Auto Replies</span>
-          <nav>
-            <a href="/terms">Terms</a>
-            <a href="/privacy">Privacy</a>
-            <a href="/refunds">Refunds</a>
-          </nav>
+          </section>
+        )}
+        <footer className="ar-security-foot">
+          <ShieldCheck size={15} />
+          Secure payments by Cashfree<span>•</span>No automatic renewal
         </footer>
-      </div>
+        <div className="ar-footer-links">
+          <a href="/contact">Need help?</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/refunds">Refunds</a>
+        </div>
+      </main>
     </div>
   );
 };
-const RefreshIcon = () => <ReceiptText size={16} />;
