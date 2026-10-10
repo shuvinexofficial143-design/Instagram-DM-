@@ -2,7 +2,7 @@ import usageHandler from '../src/server/usage.js';
 import { randomUUID } from 'node:crypto';
 import { authenticatedUser, cleanEnvironment } from '../src/server/supabaseConfig.js';
 import { enforceRateLimit } from './_auth.js';
-import { BillingError, billingConfig, billingDb, cashfreeRequest, reconcileOrder, safeOrder, validatedCustomer, verifyCashfreeSignature } from '../src/server/cashfree.js';
+import { BillingError, billingConfig, billingDb, cashfreeRequest, closeUnpaidOrder, reconcileOrder, safeOrder, validatedCustomer, verifyCashfreeSignature } from '../src/server/cashfree.js';
 
 // Cashfree signatures are over the ORIGINAL bytes, never parsed / re-serialized JSON.
 // Vercel's req.body is a lazy JSON-parsing getter; reading it first consumes the stream
@@ -58,8 +58,8 @@ export default async function handler(req: any, res: any) {
     const rate = enforceRateLimit(`billing:${action}:${user.id}`, action === 'create' ? 10 : 90, 60000);
     if (!rate.allowed) { res.setHeader('Retry-After', String(rate.retryAfter)); return res.status(429).json({ ok: false, error: 'Too many payment requests. Please wait a moment.' }); }
     if (action === 'pending') {
-      // A previous live checkout belongs to one owner and must be resolved
-      // before a different plan can begin. Never silently charge twice.
+      // Retained for older clients; the current checkout does not show a
+      // pending-plan screen. Replacement is handled when payment begins.
       const env = billingConfig().mode;
       const pending = await billingDb(`autoreply_billing_orders?owner_user_id=eq.${encodeURIComponent(user.id)}&environment=eq.${env}&status=in.(creating,pending)&order=created_at.desc&limit=1`);
       const o = pending?.[0] ? await reconcileOrder(pending[0]) : null;
@@ -74,11 +74,7 @@ export default async function handler(req: any, res: any) {
       const existing=await reconcileOrder(rows[0]);
       if(existing.status==='paid') throw new BillingError('This payment was received. Your plan has not been cancelled.',409);
       if(existing.status==='expired') return res.status(200).json({ok:true,order:safeOrder(existing)});
-      // Provider termination is the ONLY safe way to release an existing
-      // payable order. Do not release an active checkout by changing local DB.
-      const provider=await cashfreeRequest('/orders/'+encodeURIComponent(orderId),'PATCH',{order_status:'TERMINATED'});
-      if(provider.order_status!=='TERMINATED') throw new BillingError('Cashfree is still closing the earlier checkout. Check its status before switching plans.',409);
-      const finalOrder=await reconcileOrder(existing);
+      const finalOrder=await closeUnpaidOrder(existing);
       if(finalOrder.status==='paid') throw new BillingError('Your existing payment succeeded. Your plan has not been cancelled.',409);
       if(finalOrder.status!=='expired') throw new BillingError('Checkout termination has not been verified yet. Try again shortly.',409);
       return res.status(200).json({ok:true,order:safeOrder(finalOrder)});
@@ -104,10 +100,11 @@ export default async function handler(req: any, res: any) {
     if (!/^[a-f0-9-]{36}$/i.test(String(body.requestId || ''))) throw new BillingError('Invalid checkout request.', 400);
     const current = await billingDb(`autoreply_billing_orders?owner_user_id=eq.${encodeURIComponent(user.id)}&environment=eq.${cfg.mode}&status=in.(creating,pending)&order=created_at.desc&limit=1`);
     if(current?.[0]) {
-      const existing=await reconcileOrder(current[0]);
-      if(['creating','pending'].includes(existing.status) && existing.plan_id!==body.planId) {
-        res.setHeader('Cache-Control','private, no-store');
-        return res.status(409).json({ok:false,code:'PENDING_OTHER_PLAN',error:'You already have an unfinished '+existing.plan_id+' checkout. Continue it or cancel it securely before choosing a different plan.',pendingOrder:safeOrder(existing)});
+      let existing=await reconcileOrder(current[0]);
+      if(existing.status==='paid') return res.status(200).json({ok:true,order:safeOrder(existing)});
+      if(['creating','pending'].includes(existing.status) && (existing.request_id!==body.requestId || existing.plan_id!==body.planId)) {
+        existing=await closeUnpaidOrder(existing);
+        if(existing.status==='paid') return res.status(200).json({ok:true,order:safeOrder(existing)});
       }
     }
     const id = `ar_${cfg.mode}_${randomUUID()}`;
@@ -119,10 +116,11 @@ export default async function handler(req: any, res: any) {
       // Concurrent checkout tabs may race after the initial pending check.
       // Return a comprehensible conflict instead of a misleading storage error.
       const existingRows = await billingDb(`autoreply_billing_orders?owner_user_id=eq.${encodeURIComponent(user.id)}&environment=eq.${cfg.mode}&status=in.(creating,pending)&limit=1`).catch(()=>[]);
-      if(existingRows?.[0] && existingRows[0].plan_id !== body.planId)
-        return res.status(409).json({ok:false,code:'PENDING_OTHER_PLAN',error:'Finish or securely cancel your existing '+existingRows[0].plan_id+' checkout before selecting a new plan.',pendingOrder:safeOrder(existingRows[0])});
+      if(existingRows?.[0])
+        return res.status(409).json({ok:false,code:'CHECKOUT_IN_PROGRESS',error:'Another payment request is being prepared. Please try your selected plan again shortly.'});
       throw reservationError;
     }
+    if(order.plan_id!==body.planId) throw new BillingError('Your selected plan changed. Please start its checkout again.',409);
     if (order.status === 'paid') return res.status(200).json({ ok: true, order: safeOrder(order) });
     if (order.status === 'expired') return res.status(200).json({ok:true,order:safeOrder(order)});
     if (order.payment_session_id) {

@@ -14,7 +14,6 @@ import {
   ShieldCheck,
   Sparkles,
   TriangleAlert,
-  XCircle,
   Zap,
   Bot,
 } from "lucide-react";
@@ -39,8 +38,7 @@ export const CheckoutPage: React.FC = () => {
     initialOrderId = entry.get("order_id") || "";
   const catalog = usePlanCatalog();
   const [cfg, setCfg] = useState<BillingConfiguration | null>(null),
-    [order, setOrder] = useState<BillingOrder | null>(null),
-    [pending, setPending] = useState<BillingOrder | null>(null);
+    [order, setOrder] = useState<BillingOrder | null>(null);
   const [session, setSession] = useState<PaymentSession | undefined>(),
     [stage, setStage] = useState<"details" | "payment" | "result">(
       initialOrderId ? "result" : "details",
@@ -108,9 +106,6 @@ export const CheckoutPage: React.FC = () => {
             initialOrderId,
           );
           if (live) acceptStatus(status);
-        } else {
-          const response = await billingRequest("pending");
-          if (live) setPending(response.order || null);
         }
       } catch (e: any) {
         if (live) setError(e.message || "Could not load checkout.");
@@ -186,7 +181,6 @@ export const CheckoutPage: React.FC = () => {
         requestId: requestId.current,
       });
       remember(response.order);
-      setPending(null);
       if (["paid", "expired"].includes(response.order.status)) {
         acceptStatus(response);
         return null;
@@ -200,10 +194,6 @@ export const CheckoutPage: React.FC = () => {
       return next;
     } catch (e: any) {
       setError(e.message);
-      try {
-        const response = await billingRequest("pending");
-        setPending(response.order || null);
-      } catch {}
       throw e;
     } finally {
       prepareLock.current = false;
@@ -216,7 +206,6 @@ export const CheckoutPage: React.FC = () => {
     setError("");
     try {
       await billingRequest("cancel", { orderId: o.orderId });
-      setPending(null);
       requestId.current = crypto.randomUUID();
     } catch (e: any) {
       setError(e.message);
@@ -232,12 +221,6 @@ export const CheckoutPage: React.FC = () => {
       "/billing/checkout?plan=" + encodeURIComponent(order.planId),
     );
   };
-  const resume = () => {
-    if (pending)
-      window.location.assign(
-        "/billing/checkout?order_id=" + encodeURIComponent(pending.orderId),
-      );
-  };
   const heading = active
     ? "Your plan is active."
     : test
@@ -249,8 +232,8 @@ export const CheckoutPage: React.FC = () => {
           : stage === "result"
             ? "Confirming your payment."
             : stage === "payment"
-              ? "A secure way to pay."
-              : "Your next chapter starts here.";
+              ? "Complete your payment"
+              : "Review your subscription";
   const included = [
     {
       Icon: MessageCircle,
@@ -278,7 +261,7 @@ export const CheckoutPage: React.FC = () => {
     },
   ];
   return (
-    <div className="ar-checkout">
+    <div className={"ar-checkout ar-stage-" + stage}>
       <div className="ar-checkout-shell">
         <header className="ar-checkout-nav">
           <button onClick={() => setActiveTab("billing")} className="ar-back">
@@ -297,13 +280,13 @@ export const CheckoutPage: React.FC = () => {
           </span>
         </header>
         <div className="ar-checkout-title">
-          <span className="ar-eyebrow">AUTO REPLIES PREMIUM</span>
+          <span className="ar-eyebrow">SUBSCRIPTION CHECKOUT</span>
           <h1>{heading}</h1>
           <p>
             {stage === "details"
-              ? "Review your plan and billing details. Your upgraded workspace is one step away."
+              ? "Confirm your plan and receipt details before payment."
               : stage === "payment"
-                ? "Choose your payment method. We’ll take care of the confirmation."
+                ? "Pay securely with UPI, your bank or a card."
                 : "Your payment and plan details, all in one place."}
           </p>
         </div>
@@ -344,42 +327,11 @@ export const CheckoutPage: React.FC = () => {
                 <Loader2 className="animate-spin" />
                 <p>Preparing your checkout…</p>
               </section>
-            ) : pending && !order ? (
-              <section className="ar-checkout-card ar-pending">
-                <Clock3 size={32} />
-                <h2>You have an unfinished checkout</h2>
-                <p>
-                  Your {pending.planId} payment is still open. Continue it, or
-                  close it securely to choose another plan.
-                </p>
-                <div className="ar-receipt">
-                  <span>Pending payment</span>
-                  <strong>
-                    ₹{fmt(pending.amount)} · {pending.planId}
-                  </strong>
-                </div>
-                <button className="ar-primary ar-full" onClick={resume}>
-                  Continue existing payment
-                  <ArrowRight size={17} />
-                </button>
-                <button
-                  className="ar-secondary ar-full"
-                  disabled={busy}
-                  onClick={() => void cancel(pending).catch(() => {})}
-                >
-                  {busy ? (
-                    <Loader2 className="animate-spin" size={17} />
-                  ) : (
-                    <XCircle size={17} />
-                  )}
-                  Cancel unpaid checkout and choose {plan.name}
-                </button>
-              </section>
             ) : stage === "details" ? (
               <section className="ar-checkout-card">
                 <div className="ar-section-heading">
                   <span className="ar-eyebrow">YOUR SUBSCRIPTION</span>
-                  <h2>A plan that works for you.</h2>
+                  <h2>Choose your plan</h2>
                   <p>Choose the capacity your business needs.</p>
                 </div>
                 <div className="ar-plan-choices">
@@ -613,7 +565,7 @@ export const CheckoutPage: React.FC = () => {
                 </p>
                 {order && (
                   <div className="ar-receipt">
-                    <span>Amount paid</span>
+                    <span>{paid ? "Amount paid" : "Order amount"}</span>
                     <strong>{amount}</strong>
                     <span>Plan</span>
                     <strong>
@@ -666,7 +618,7 @@ export const CheckoutPage: React.FC = () => {
                 </div>
                 <span className="ar-eyebrow">YOUR PLAN</span>
                 <h2>{plan.name}</h2>
-                <p>More room for meaningful conversations.</p>
+                <p>Subscription access for {plan.billingDays || 30} days</p>
                 <div className="ar-summary-price">
                   {amount}
                   <span>/ {plan.billingDays || 30} days</span>
@@ -677,7 +629,7 @@ export const CheckoutPage: React.FC = () => {
                 </div>
               </div>
               <div className="ar-summary-body">
-                <h3>Everything you’re getting</h3>
+                <h3>Included in your plan</h3>
                 {included.map(({ Icon, label, value, note }) => (
                   <div className="ar-included" key={label}>
                     <span>

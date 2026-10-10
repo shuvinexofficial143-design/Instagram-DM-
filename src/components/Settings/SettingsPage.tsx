@@ -1,6 +1,7 @@
 import { InstagramAccounts } from '../Common/InstagramAccounts';
 import React, { useEffect, useState } from 'react';
 import {
+  CalendarClock,
   CheckCircle2,
   Download,
   Globe2,
@@ -14,6 +15,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useWorkspaceUsage } from '../../hooks/useWorkspaceUsage';
 import { UserAvatar } from '../Common/UserAvatar';
 
 const LANGUAGE_KEY = 'autoreply_default_ai_language';
@@ -40,6 +42,8 @@ export const SettingsPage: React.FC = () => {
     disconnectChannel,
     setIsConnectModalOpen,
   } = useApp();
+
+  const usage = useWorkspaceUsage();
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -119,6 +123,21 @@ export const SettingsPage: React.FC = () => {
       </header>
 
       <InstagramAccounts />
+
+      <section id="manage-subscription" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarClock className="h-5 w-5" /></span>
+            <div>
+              <h2 className="text-lg font-bold text-slate-950">Manage subscription</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{usage.plan.name} plan · {usage.plan.price} / month. Renew manually when you need it; no automatic charges.</p>
+              {usage.expiresAt && <p className="mt-2 text-sm text-slate-500">Access until {new Date(usage.expiresAt).toLocaleString()}</p>}
+            </div>
+          </div>
+          <a href="/refunds" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Refund &amp; cancellation policy</a>
+        </div>
+      </section>
+
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5 sm:p-6">

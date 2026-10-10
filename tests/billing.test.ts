@@ -6,11 +6,12 @@ import handler from '../api/billing.ts';
 import {billingConfig,validatedCustomer,validateProviderPayment,verifyCashfreeSignature} from '../src/server/cashfree.ts';
 const originalFetch=globalThis.fetch;
 const originalEnv={...process.env};
-const uid='00000000-0000-4000-8000-000000000001';
+let uid='00000000-0000-4000-8000-000000000001';
+let fixtureUserIndex=1;
 const oid='ar_sandbox_00000000-0000-4000-8000-000000000003';
 const rid='00000000-0000-4000-8000-000000000002';
 const order={order_id:oid,owner_user_id:uid,plan_id:'pro',environment:'sandbox',amount_inr:599,currency:'INR',billing_days:30,request_id:rid,status:'pending'};
-function setup(){Object.assign(process.env,{CASHFREE_CLIENT_ID:'test-id',CASHFREE_CLIENT_SECRET:'test-secret',CASHFREE_ENV:'sandbox',SUPABASE_SERVICE_ROLE_KEY:'server-secret',APP_URL:'https://example.test'});}
+function setup(){uid='00000000-0000-4000-8000-'+String(++fixtureUserIndex).padStart(12,'0');order.owner_user_id=uid;Object.assign(process.env,{CASHFREE_CLIENT_ID:'test-id',CASHFREE_CLIENT_SECRET:'test-secret',CASHFREE_ENV:'sandbox',SUPABASE_SERVICE_ROLE_KEY:'server-secret',APP_URL:'https://example.test'});}
 function res(){return {code:0,body:null as any,headers:{} as any,setHeader(k:string,v:string){this.headers[k]=v;},status(code:number){this.code=code;return this;},json(body:any){this.body=body;return this;}};}
 function req(action:string,method='GET',body?:any){const r:any=Readable.from(body===undefined?[]:[Buffer.from(JSON.stringify(body))]);r.method=method;r.query={action};r.headers={authorization:'Bearer user-token'};return r;}
 afterEach(()=>{globalThis.fetch=originalFetch;for(const key of Object.keys(process.env))if(!(key in originalEnv))delete process.env[key];Object.assign(process.env,originalEnv);});
@@ -69,19 +70,60 @@ test('authoritative reserved price and stable idempotency key are used; browser 
  Object.defineProperty(q,'body',{get(){throw new Error('Vercel JSON body getter must not be read');}});
  const r=res();await handler(q,r);assert.equal(r.code,200);assert.equal(r.body.order.amount,599);assert.equal(providerCalls,1);
 });
-test('a prior unfinished Starter order yields a helpful conflict for Pro, never a generic storage error',async()=>{
- setup();
- const old={...order,plan_id:'starter',amount_inr:299,order_id:'ar_sandbox_00000000-0000-4000-8000-000000000004'};
- globalThis.fetch=async(url:any)=>{
-  const path=String(url);
-  if(path.includes('/auth/'))return Response.json({id:uid});
+for(const [selectedPlan,amount] of [['starter',299],['pro',599],['business',1299]] as const) {
+ test('a new '+selectedPlan+' checkout safely replaces an old Starter session and uses its selected price',async()=>{
+  setup();let terminated=false,creates=0,reservations=0;
+  const old={...order,plan_id:'starter',amount_inr:299,request_id:'00000000-0000-4000-8000-000000000004',order_id:'ar_sandbox_00000000-0000-4000-8000-000000000004'};
+  const selected={...order,plan_id:selectedPlan,amount_inr:amount};
+  globalThis.fetch=async(url:any,init:any)=>{
+   const path=String(url);
+   if(path.includes('/auth/'))return Response.json({id:uid});
+   if(path.includes('status=in.(creating,pending)'))return Response.json([old]);
+   if(path.includes('rpc/autoreply_reserve')){assert.ok(terminated,'old provider order must close before reserving the selected plan');assert.equal(JSON.parse(init.body).p_plan_id,selectedPlan);reservations++;return Response.json(selected);}
+   if(path.includes('cashfree.com')){
+    if(init.method==='PATCH'){assert.equal(JSON.parse(init.body).order_status,'TERMINATED');terminated=true;return Response.json({order_status:'TERMINATED'});}
+    if(init.method==='POST'){creates++;assert.equal(JSON.parse(init.body).order_amount,amount);return Response.json({order_id:oid,payment_session_id:'new-session'});}
+    if(path.endsWith('/payments'))return Response.json([]);
+    return Response.json({order_id:old.order_id,order_amount:299,order_currency:'INR',order_status:terminated?'TERMINATED':'ACTIVE',payment_session_id:'old-session'});
+   }
+   if(init.method==='PATCH')return Response.json([{...(path.includes(old.order_id)?old:selected),status:terminated?'expired':'pending'}]);
+   throw new Error('Unexpected request '+path);
+  };
+  const r=res();await handler(req('create','POST',{planId:selectedPlan,name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
+  assert.equal(r.code,200);assert.equal(r.body.order.planId,selectedPlan);assert.equal(r.body.order.amount,amount);assert.equal(r.body.paymentSessionId,'new-session');assert.equal(creates,1);assert.equal(reservations,1);
+ });
+}
+test('a payment that succeeds while switching plans is confirmed without creating another payable order',async()=>{
+ setup();let terminated=false,reservations=0;
+ const old={...order,plan_id:'starter',amount_inr:299};
+ globalThis.fetch=async(url:any,init:any)=>{
+  const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
   if(path.includes('status=in.(creating,pending)'))return Response.json([old]);
+  if(path.includes('rpc/autoreply_reserve')){reservations++;throw new Error('Must not create a second order');}
+  if(path.includes('rpc/autoreply_confirm'))return Response.json({...old,status:'paid',activation_status:'test'});
+  if(path.includes('cashfree.com')){
+   if(init.method==='PATCH'){terminated=true;return Response.json({order_status:'PAID'});}
+   if(path.endsWith('/payments'))return Response.json(terminated?[{cf_payment_id:'456',payment_status:'SUCCESS',payment_amount:299,payment_currency:'INR'}]:[]);
+   return Response.json({order_id:oid,order_amount:299,order_currency:'INR',order_status:terminated?'PAID':'ACTIVE'});
+  }
+  throw new Error('Unexpected request');
+ };
+ const r=res();await handler(req('create','POST',{planId:'business',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
+ assert.equal(r.code,200);assert.equal(r.body.order.status,'paid');assert.equal(reservations,0);
+});
+test('unverified provider termination prevents a replacement checkout from becoming payable',async()=>{
+ setup();let reservations=0;
+ const old={...order,plan_id:'starter',amount_inr:299};
+ globalThis.fetch=async(url:any,init:any)=>{
+  const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
+  if(path.includes('status=in.(creating,pending)'))return Response.json([old]);
+  if(path.includes('rpc/autoreply_reserve')){reservations++;throw new Error('Must not reserve');}
   if(path.endsWith('/payments'))return Response.json([]);
-  if(path.includes('cashfree.com'))return Response.json({order_id:old.order_id,order_amount:299,order_currency:'INR',order_status:'ACTIVE',payment_session_id:'old-session'});
-  throw new Error('No new order may be created when another plan is pending');
+  if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:299,order_currency:'INR',order_status:init.method==='PATCH'?'TERMINATION_REQUESTED':'ACTIVE'});
+  throw new Error('Unexpected request');
  };
  const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
- assert.equal(r.code,409);assert.equal(r.body.code,'PENDING_OTHER_PLAN');assert.equal(r.body.pendingOrder.planId,'starter');
+ assert.equal(r.code,409);assert.ok(r.body.error.includes('still closing'));assert.equal(reservations,0);
 });
 test('customer may explicitly terminate an unpaid provider order to switch plans',async()=>{
  setup();let terminateCount=0;

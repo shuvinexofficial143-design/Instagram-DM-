@@ -265,239 +265,252 @@ export function PaymentMethods({
     <section className="ar-checkout-card ar-payment-card">
       <div className="ar-section-heading">
         <span className="ar-eyebrow">PAYMENT METHOD</span>
-        <h2>How would you like to pay?</h2>
+        <h2>Choose a payment method</h2>
         <p>Choose an option to complete your {amount} payment.</p>
       </div>
-      <div className="ar-methods" role="group" aria-label="Payment method">
-        {[
-          ...choices,
-          ...(mobile
-            ? [
-                {
-                  id: "app" as const,
-                  Icon: Smartphone,
-                  name: "UPI app",
-                  note: "Pay on this phone",
-                },
-              ]
-            : []),
-        ].map(({ id, Icon, name, note }) => (
-          <button
-            key={id}
-            type="button"
-            disabled={loading || submitting}
-            aria-pressed={method === id}
-            onClick={() => change(id)}
-            className={"ar-method " + (method === id ? "selected" : "")}
-          >
-            <span className="ar-method-icon">
-              <Icon size={21} />
-            </span>
-            <span>
-              <strong>{name}</strong>
-              <small>{note}</small>
-            </span>
-            <span className="ar-radio">
-              {method === id && <Check size={12} />}
-            </span>
-          </button>
-        ))}
-      </div>
-      <div className="ar-method-content">
-        {timedOut ? (
-          <div className="ar-empty-payment">
-            <Clock3 size={34} />
-            <h3>Payment session expired</h3>
-            <p>
-              Check whether your payment was received. A new checkout starts
-              only after this one is safely closed.
-            </p>
+      <div className="ar-payment-layout">
+        <div className="ar-methods" role="group" aria-label="Payment method">
+          {[
+            ...choices,
+            ...(mobile
+              ? [
+                  {
+                    id: "app" as const,
+                    Icon: Smartphone,
+                    name: "UPI app",
+                    note: "Pay on this phone",
+                  },
+                ]
+              : []),
+          ].map(({ id, Icon, name, note }) => (
             <button
-              className="ar-primary"
-              onClick={() => void restart().catch((e) => setError(e.message))}
+              key={id}
+              type="button"
+              disabled={loading || submitting}
+              aria-pressed={method === id}
+              onClick={() => change(id)}
+              className={"ar-method " + (method === id ? "selected" : "")}
             >
-              <RefreshCw size={17} />
-              Start a fresh checkout
+              <span className="ar-method-icon">
+                <Icon size={21} />
+              </span>
+              <span>
+                <strong>{name}</strong>
+                <small>{note}</small>
+              </span>
+              <span className="ar-radio">
+                {method === id && <Check size={12} />}
+              </span>
             </button>
-          </div>
-        ) : (
-          <>
-            {method === "netbanking" && (
-              <>
-                <label className="ar-label" htmlFor="ar-bank">
-                  Select your bank
-                </label>
-                <select
-                  id="ar-bank"
-                  className="ar-input"
-                  disabled={loading || submitting || Boolean(session)}
-                  value={bank}
-                  onChange={(e) => setBank(e.target.value)}
-                >
-                  {BANKS.map(([id, name]) => (
-                    <option value={id} key={id}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <p className="ar-note">
-                  Continue to your bank to authorize the payment. You'll return
-                  here for confirmation.
-                </p>
-              </>
-            )}
-            {method === "app" && (
-              <>
-                <label className="ar-label" htmlFor="ar-app">
-                  Choose your UPI app
-                </label>
-                <select
-                  id="ar-app"
-                  className="ar-input"
-                  value={app}
-                  disabled={loading || submitting || Boolean(session)}
-                  onChange={(e) => setApp(e.target.value)}
-                >
-                  <option value="gpay">Google Pay</option>
-                  <option value="phonepe">PhonePe</option>
-                  <option value="paytm">Paytm</option>
-                </select>
-              </>
-            )}
-            {method === "qr" && (
-              <div className="ar-qr-panel">
-                <span className="ar-qr-label">SCAN & PAY</span>
-                {session ? (
-                  <div className="ar-qr-frame">
-                    <div
-                      id="ar-payment-element"
-                      aria-label="Secure UPI QR code"
-                    />
-                    {loading && (
-                      <div className="ar-qr-loader">
-                        <Loader2 className="animate-spin" size={28} />
-                        <span>Generating your secure QR…</span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="ar-qr-placeholder">
-                    <QrCode size={58} />
-                    <p>A unique QR for your payment</p>
-                  </div>
-                )}
-                <h3>
-                  {qrRequested ? "Scan with any UPI app" : "Pay with UPI"}
-                </h3>
-                <p>Google Pay, PhonePe, Paytm, BHIM and other UPI apps</p>
-                {mobile && (
-                  <small>
-                    Scan using another device, or choose “UPI app” to pay on
-                    this phone.
-                  </small>
-                )}
-              </div>
-            )}
-            {session && method === "card" && (
-              <div className="ar-card-fields">
-                {[
-                  ["cardNumber", "Card number"],
-                  ["cardExpiry", "Expiry date"],
-                  ["cardCvv", "CVV"],
-                  ["cardHolder", "Name on card"],
-                ].map(([id, label]) => (
-                  <div key={id}>
-                    <span className="ar-label">{label}</span>
-                    <div id={"ar-" + id} aria-label={label} />
-                  </div>
-                ))}
-              </div>
-            )}
-            {session && (method === "netbanking" || method === "app") && (
-              <div
-                id="ar-payment-element"
-                className="ar-bank-element"
-                aria-label="Secure payment provider component"
-              />
-            )}
-            {!session ? (
+          ))}
+        </div>
+        <div className="ar-method-content">
+          {timedOut ? (
+            <div className="ar-empty-payment">
+              <Clock3 size={34} />
+              <h3>Payment session expired</h3>
+              <p>
+                Check whether your payment was received. A new checkout starts
+                only after this one is safely closed.
+              </p>
               <button
-                type="button"
-                className="ar-primary ar-full"
-                disabled={loading}
-                onClick={() => void start()}
+                className="ar-primary"
+                onClick={() => void restart().catch((e) => setError(e.message))}
               >
-                {loading ? (
-                  <Loader2 className="animate-spin" size={17} />
-                ) : method === "qr" ? (
-                  <QrCode size={18} />
-                ) : (
-                  <LockKeyhole size={17} />
-                )}{" "}
-                {loading
-                  ? "Preparing payment…"
-                  : method === "qr"
-                    ? "Generate QR code"
-                    : method === "card"
-                      ? "Continue with card"
-                      : "Continue securely"}
-                <ArrowRight size={17} />
+                <RefreshCw size={17} />
+                Start a fresh checkout
               </button>
-            ) : (
-              method !== "qr" && (
+            </div>
+          ) : (
+            <>
+              {method === "netbanking" && (
+                <>
+                  <label className="ar-label" htmlFor="ar-bank">
+                    Select your bank
+                  </label>
+                  <select
+                    id="ar-bank"
+                    className="ar-input"
+                    disabled={loading || submitting || Boolean(session)}
+                    value={bank}
+                    onChange={(e) => setBank(e.target.value)}
+                  >
+                    {BANKS.map(([id, name]) => (
+                      <option value={id} key={id}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="ar-note">
+                    Continue to your bank to authorize the payment. You'll
+                    return here for confirmation.
+                  </p>
+                </>
+              )}
+              {method === "app" && (
+                <>
+                  <label className="ar-label" htmlFor="ar-app">
+                    Choose your UPI app
+                  </label>
+                  <select
+                    id="ar-app"
+                    className="ar-input"
+                    value={app}
+                    disabled={loading || submitting || Boolean(session)}
+                    onChange={(e) => setApp(e.target.value)}
+                  >
+                    <option value="gpay">Google Pay</option>
+                    <option value="phonepe">PhonePe</option>
+                    <option value="paytm">Paytm</option>
+                  </select>
+                </>
+              )}
+              {method === "qr" && (
+                <div className="ar-qr-panel">
+                  <span className="ar-qr-label">UPI QR PAYMENT</span>
+                  <strong className="ar-payment-amount">{amount}</strong>
+                  {session ? (
+                    <div className="ar-qr-frame">
+                      <div
+                        id="ar-payment-element"
+                        aria-label="Secure UPI QR code"
+                      />
+                      {loading && (
+                        <div className="ar-qr-loader">
+                          <Loader2 className="animate-spin" size={28} />
+                          <span>Generating your secure QR…</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="ar-qr-placeholder">
+                      <QrCode size={58} />
+                      <p>Your secure QR appears here</p>
+                    </div>
+                  )}
+                  <h3>
+                    {qrRequested ? "Scan with any UPI app" : "Pay with UPI"}
+                  </h3>
+                  <p>Google Pay, PhonePe, Paytm, BHIM and other UPI apps</p>
+                  {mobile && (
+                    <small>
+                      Scan using another device, or choose “UPI app” to pay on
+                      this phone.
+                    </small>
+                  )}
+                </div>
+              )}
+              {!session && method === "card" && (
+                <div className="ar-empty-payment ar-card-intro">
+                  <CreditCard size={32} />
+                  <h3>Pay by debit or credit card</h3>
+                  <p>
+                    Continue to enter your card details in secure payment
+                    fields.
+                  </p>
+                </div>
+              )}
+              {session && method === "card" && (
+                <div className="ar-card-fields">
+                  {[
+                    ["cardNumber", "Card number"],
+                    ["cardExpiry", "Expiry date"],
+                    ["cardCvv", "CVV"],
+                    ["cardHolder", "Name on card"],
+                  ].map(([id, label]) => (
+                    <div key={id}>
+                      <span className="ar-label">{label}</span>
+                      <div id={"ar-" + id} aria-label={label} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {session && (method === "netbanking" || method === "app") && (
+                <div
+                  id="ar-payment-element"
+                  className="ar-bank-element"
+                  aria-label="Secure payment provider component"
+                />
+              )}
+              {!session ? (
                 <button
                   type="button"
                   className="ar-primary ar-full"
-                  disabled={!ready || submitting || loading}
-                  onClick={() => void pay()}
+                  disabled={loading}
+                  onClick={() => void start()}
                 >
-                  {loading || submitting ? (
+                  {loading ? (
                     <Loader2 className="animate-spin" size={17} />
+                  ) : method === "qr" ? (
+                    <QrCode size={18} />
                   ) : (
                     <LockKeyhole size={17} />
                   )}{" "}
                   {loading
-                    ? "Loading secure fields…"
-                    : submitting
-                      ? "Waiting for confirmation…"
-                      : "Pay " + amount}
+                    ? "Preparing payment…"
+                    : method === "qr"
+                      ? "Generate QR code"
+                      : method === "card"
+                        ? "Continue with card"
+                        : "Continue securely"}
                   <ArrowRight size={17} />
                 </button>
-              )
-            )}
-            {session && seconds !== null && (
-              <div className="ar-countdown">
-                <Clock3 size={16} />
-                <span>Session expires in</span>
-                <strong>
-                  {Math.floor(seconds / 60)}:
-                  {String(seconds % 60).padStart(2, "0")}
-                </strong>
-              </div>
-            )}
-            {session && method === "qr" && !error && (
-              <div className="ar-waiting" role="status">
-                <span />
-                Waiting for payment · Confirmation is automatic
-              </div>
-            )}
-          </>
-        )}
-        {error && (
-          <div className="ar-alert" role="alert">
-            {error}
-          </div>
-        )}
-        {(session || existingSession) && (
-          <button
-            type="button"
-            className="ar-status-link"
-            onClick={() => void check()}
-          >
-            <RefreshCw size={15} />
-            Check payment status
-          </button>
-        )}
+              ) : (
+                method !== "qr" && (
+                  <button
+                    type="button"
+                    className="ar-primary ar-full"
+                    disabled={!ready || submitting || loading}
+                    onClick={() => void pay()}
+                  >
+                    {loading || submitting ? (
+                      <Loader2 className="animate-spin" size={17} />
+                    ) : (
+                      <LockKeyhole size={17} />
+                    )}{" "}
+                    {loading
+                      ? "Loading secure fields…"
+                      : submitting
+                        ? "Waiting for confirmation…"
+                        : "Pay " + amount}
+                    <ArrowRight size={17} />
+                  </button>
+                )
+              )}
+              {session && seconds !== null && (
+                <div className="ar-countdown">
+                  <Clock3 size={16} />
+                  <span>Session expires in</span>
+                  <strong>
+                    {Math.floor(seconds / 60)}:
+                    {String(seconds % 60).padStart(2, "0")}
+                  </strong>
+                </div>
+              )}
+              {session && method === "qr" && !error && (
+                <div className="ar-waiting" role="status">
+                  <span />
+                  Waiting for payment · Confirmation is automatic
+                </div>
+              )}
+            </>
+          )}
+          {error && (
+            <div className="ar-alert" role="alert">
+              {error}
+            </div>
+          )}
+          {(session || existingSession) && (
+            <button
+              type="button"
+              className="ar-status-link"
+              onClick={() => void check()}
+            >
+              <RefreshCw size={15} />
+              Check payment status
+            </button>
+          )}
+        </div>
       </div>
       <div className="ar-security-foot">
         <ShieldCheck size={17} />

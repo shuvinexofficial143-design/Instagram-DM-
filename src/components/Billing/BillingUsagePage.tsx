@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BarChart3, Bot, Check, CreditCard, Instagram, Plus, Zap, ArrowUpRight, ShieldCheck, ReceiptText, XCircle, CalendarClock } from 'lucide-react';
+import { BarChart3, Bot, Check, CreditCard, Instagram, Plus, Zap, ArrowUpRight, ShieldCheck, ReceiptText } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { BillingHistory } from './BillingHistory';
 import { PlanConfig } from '../../lib/planUsage';
@@ -45,20 +45,20 @@ export const BillingUsagePage:React.FC=()=>{
         <button onClick={()=>setIsRenewModalOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 self-start rounded-2xl bg-[#6e45dc] px-5 text-xs font-black text-white shadow-lg shadow-violet-200 transition hover:bg-[#5531c0] sm:self-auto">Upgrade Plan <ArrowUpRight className="h-4 w-4"/></button>
       </header>
 
-      <section className="relative overflow-hidden rounded-[28px] border border-violet-900/10 bg-gradient-to-br from-[#211748] via-[#342366] to-[#6343b0] text-white shadow-[0_24px_65px_rgba(36,25,85,.18)]">
+      <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white text-slate-950 shadow-[0_8px_30px_rgba(15,23,42,.04)]">
         <div className="grid gap-5 p-6 sm:p-9 lg:grid-cols-[1fr_auto] lg:items-center">
           <div>
-            <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-white/15 bg-white/15 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white">{plan.name} plan</span><span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-200"><ShieldCheck className="h-3.5 w-3.5"/>Current subscription</span></div>
-            <div className="mt-5 flex items-end gap-2"><span className="text-[38px] font-black tracking-tight text-white sm:text-[48px]">{plan.price}</span><span className="pb-2 text-xs font-semibold text-violet-200">/ month</span></div>
-            <button type="button" onClick={()=>setShowTopUps(value=>!value)} aria-expanded={showTopUps} aria-controls="reply-top-ups" className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/20 bg-white/15 px-4 text-sm font-bold text-white hover:bg-white/25"><Plus className="h-4 w-4"/>Add Money</button>
-            <p className="mt-3 text-xs text-violet-200">Need more replies? Explore extra capacity for your current plan.</p>
-            <p className="mt-2 max-w-2xl text-xs leading-5 text-violet-200">Each calendar month, standard DM/comment/story replies and AI replies have independent limits.</p>
+            <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-violet-700">{plan.name} plan</span><span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><ShieldCheck className="h-3.5 w-3.5"/>Current subscription</span></div>
+            <div className="mt-5 flex items-end gap-2"><span className="text-[38px] font-black tracking-tight text-slate-950 sm:text-[48px]">{plan.price}</span><span className="pb-2 text-xs font-semibold text-slate-500">/ month</span></div>
+            <button type="button" onClick={()=>setShowTopUps(value=>!value)} aria-expanded={showTopUps} aria-controls="reply-top-ups" className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-50"><Plus className="h-4 w-4"/>Add Money</button>
+            <p className="mt-3 text-xs text-slate-500">Need more replies? Explore extra capacity for your current plan.</p>
+            <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">Each calendar month, standard DM/comment/story replies and AI replies have independent limits.</p>
           </div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-2xl border border-white/15 bg-white/10 px-5 py-5 text-xs backdrop-blur-md sm:gap-x-9">
-            <div><p className="text-violet-200">Standard replies</p><p className="mt-1 text-lg font-black text-white">{usage.messageLimit.toLocaleString()}</p></div>
-            <div><p className="text-violet-200">AI replies</p><p className="mt-1 text-lg font-black text-white">{usage.aiLimit.toLocaleString()}</p></div>
-            <div><p className="text-violet-200">Automations</p><p className="mt-1 text-lg font-black text-white">{plan.automations===null?'Unlimited':plan.automations}</p></div>
-            <div><p className="text-violet-200">IG accounts</p><p className="mt-1 text-lg font-black text-white">{plan.accounts}</p></div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-5 text-xs backdrop-blur-md sm:gap-x-9">
+            <div><p className="text-slate-500">Standard replies</p><p className="mt-1 text-lg font-black text-slate-950">{usage.messageLimit.toLocaleString()}</p></div>
+            <div><p className="text-slate-500">AI replies</p><p className="mt-1 text-lg font-black text-slate-950">{usage.aiLimit.toLocaleString()}</p></div>
+            <div><p className="text-slate-500">Automations</p><p className="mt-1 text-lg font-black text-slate-950">{plan.automations===null?'Unlimited':plan.automations}</p></div>
+            <div><p className="text-slate-500">IG accounts</p><p className="mt-1 text-lg font-black text-slate-950">{plan.accounts}</p></div>
           </div>
         </div>
       </section>
@@ -72,13 +72,6 @@ export const BillingUsagePage:React.FC=()=>{
         <div className="mt-4 rounded-xl bg-indigo-50 p-4 text-sm leading-6 text-indigo-950"><strong>How top-ups are planned to work</strong><p>One subscription stays active. A one-time pack adds reply capacity without starting a second subscription or changing your renewal date. Final prices, expiry and payment options will be shown before purchase.</p></div>
         <p className="mt-3 text-xs text-slate-500">This is a preview. No payment is taken and no balance or reply allowance changes here.</p>
       </section>}
-
-      <section id="manage-subscription" className="rounded-[24px] border border-white bg-white p-5 shadow-[0_15px_35px_rgba(31,23,76,.055)] sm:p-7">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarClock className="h-5 w-5"/></span><div><h2 className="text-base font-bold text-slate-950">Manage subscription</h2><p className="mt-1 text-sm leading-6 text-slate-600">Paid access lasts for the purchased plan's billing period. Renew manually when you need it; no automatic charges.</p>{usage.expiresAt&&<p className="mt-2 text-xs font-semibold text-slate-500">Access until {new Date(usage.expiresAt).toLocaleString()}</p>}</div></div></div>
-          <a href="/refunds" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700">Refund & cancellation policy</a>
-        </div>
-      </section>
 
       <section>
         <div className="mb-3"><h2 className="text-base font-bold text-slate-950">Monthly usage</h2><p className="mt-0.5 text-xs text-slate-500">Your current workspace limits and consumption.</p></div>

@@ -69,3 +69,12 @@ A chargeable order is created only when the customer starts a payment method. Ne
 Pending payments are reconciled automatically every four seconds while visible and on browser focus. Successful SDK callbacks and redirects trigger verification but never grant access themselves. A verified production payment activates the subscription; the success page then reloads billing to refresh the account's entitlement. Signed webhooks remain active when the customer closes the page.
 
 Validation: all paid plans passed authoritative-price and activation API tests, and reservation, activation, entitlement and idempotency checks ran inside a rolled-back production database transaction. No live bank payment was made. Merchant acceptance of real QR, card and bank payments still requires an authenticated checkout/payment test on the whitelisted domain.
+
+
+## Selected-plan checkout revision (2026-10-10)
+
+The Billing & Usage current-plan card is white again. Its plan cards and usage cards retain their existing styling. Manage subscription now lives in Settings.
+
+A plan URL always opens that plan's details directly. No pending-plan interstitial is fetched or displayed. When the customer starts a new payment, the API reconciles any previous unpaid order, terminates it at Cashfree and verifies termination before reserving the selected plan. A successful payment that races termination is confirmed instead; no second payable order is created. Retries with the same request ID retain the same session and deadline. Orders and payment history are retained for verification; removing the pending screen does not delete financial records.
+
+Checkout uses white plan summaries, readable neutral text, the workspace's violet accent, compact receipt details and a payment-method rail beside the QR/bank/card panel on wide screens. Small screens show the selected-plan summary above the form/payment panel.

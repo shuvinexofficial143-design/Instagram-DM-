@@ -72,6 +72,17 @@ export async function reconcileOrder(order: any) {
   }
   return { ...order, status: 'pending', payment_expires_at: provider.order_expiry_time, last_attempt: Array.isArray(payments) ? payments.slice().sort((a,b)=>Date.parse(b.payment_time||'')-Date.parse(a.payment_time||''))[0]?.payment_status : undefined, payment_session_id: provider.payment_session_id || order.payment_session_id };
 }
+export async function closeUnpaidOrder(order: any) {
+  if (order.status === 'paid' || order.status === 'expired') return order;
+  // Release the reservation only after the provider confirms it cannot accept
+  // another payment. If a payment wins this race, confirm it instead.
+  const provider = await cashfreeRequest('/orders/' + encodeURIComponent(order.order_id), 'PATCH', { order_status: 'TERMINATED' });
+  const finalOrder = await reconcileOrder(order);
+  if (finalOrder.status === 'paid') return finalOrder;
+  if (provider.order_status !== 'TERMINATED' || finalOrder.status !== 'expired')
+    throw new BillingError('The previous payment is still closing. Please try your selected plan again shortly.', 409);
+  return finalOrder;
+}
 export function safeOrder(order: any) {
   return { orderId: order.order_id, planId: order.plan_id, amount: order.amount_inr, currency: order.currency, environment: order.environment, status: order.status, createdAt: order.created_at, paidAt: order.paid_at, activatedAt: order.activated_at, expiresAt: order.access_expires_at, paymentExpiresAt: order.payment_expires_at, activationStatus: order.activation_status, lastAttempt: order.last_attempt, paymentId: order.cf_payment_id };
 }
