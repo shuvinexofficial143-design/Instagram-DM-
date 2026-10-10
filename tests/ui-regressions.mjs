@@ -193,6 +193,13 @@ try {
   for(const label of ['Available payment methods','UPI &amp; QR','Net banking','Debit / credit card','Continue to payment']) assert.ok(html.includes(label),label);
   assert.ok(html.includes('Secure payment powered by Cashfree'));
   checks++;
+  // Cashfree's _self redirect owns navigation; a second navigation would
+  // prematurely replace the payment gateway with the confirmation page.
+  const checkoutSource=await readFile(path.join(root,'src/components/Billing/CheckoutPage.tsx'),'utf8');
+  assert.ok(checkoutSource.includes("orderId||order?'Payment pending'"),'unpaid orders must not appear to be confirming a payment');
+  assert.ok(checkoutSource.includes('Open Cashfree checkout'),'existing pending orders must be payable without creating another order');
+  assert.ok(!/await openCashfreeCheckout\(p\.paymentSessionId,p\.mode\);\s*window\.location\.assign/.test(checkoutSource),'do not override Cashfree redirect');
+  checks++;
   window.location.search='';
   globalThis.__uiFixture=fixture();
   html=renderToStaticMarkup(React.createElement(ui.Sidebar));
