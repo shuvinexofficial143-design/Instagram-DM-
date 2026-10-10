@@ -59,7 +59,8 @@ test('authoritative reserved price and stable idempotency key are used; browser 
  setup();let providerCalls=0;
  globalThis.fetch=async(url:any,init:any)=>{
   const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
-  if(path.includes('rpc/autoreply_reserve')){const body=JSON.parse(init.body);assert.equal(body.p_owner_id,uid);assert.equal(body.p_plan_id,'pro');return Response.json(order);}
+  if(path.includes('status=in.(creating,pending)'))return Response.json([]);
+   if(path.includes('rpc/autoreply_reserve')){const body=JSON.parse(init.body);assert.equal(body.p_owner_id,uid);assert.equal(body.p_plan_id,'pro');return Response.json(order);}
   if(path.includes('cashfree.com')){providerCalls++;const body=JSON.parse(init.body);assert.equal(body.order_amount,599);assert.equal(body.order_id,oid);assert.equal(init.headers['x-idempotency-key'],rid);assert.equal(body.order_meta.return_url,'https://example.test/billing/checkout?order_id='+oid);return Response.json({order_id:oid,payment_session_id:'session'});}
   return Response.json([{...order,payment_session_id:'session'}]);
  };
