@@ -17,7 +17,7 @@ export function billingConfig() {
   const mode = cleanEnvironment(process.env.CASHFREE_ENV) || 'sandbox';
   if (!['sandbox', 'production'].includes(mode)) throw new BillingError('Payment environment is invalid.');
   const details = businessDetails();
-  const appUrl = normalizeAppUrl(process.env.APP_URL || 'https://www.autoreplys.in');
+  const appUrl = normalizeAppUrl(process.env.APP_URL || 'https://autoreplys.vercel.app');
   const ready = Boolean(cleanEnvironment(process.env.CASHFREE_CLIENT_ID) && cleanEnvironment(process.env.CASHFREE_CLIENT_SECRET) && cleanEnvironment(process.env.SUPABASE_SERVICE_ROLE_KEY));
   const legalReady = Boolean(details.legalName && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.email) && details.phone && details.address);
   return { mode, appUrl, configured: ready && (mode === 'sandbox' || (legalReady && process.env.CASHFREE_LIVE_ENABLED === 'true')), legalReady, business: details };
