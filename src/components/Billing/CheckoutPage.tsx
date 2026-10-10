@@ -2,6 +2,7 @@ import React, {useEffect,useRef,useState} from 'react';
 import {ArrowLeft,ArrowRight,Check,CheckCircle2,CreditCard,Loader2,LockKeyhole,ReceiptText,ShieldCheck,TriangleAlert,XCircle,QrCode,Landmark,Smartphone} from 'lucide-react';
 import {useApp} from '../../context/AppContext';
 import {getPlanConfig} from '../../lib/planUsage';
+import {usePlanCatalog} from '../../hooks/usePlanCatalog';
 import {billingRequest,openCashfreeCheckout,BillingConfiguration,BillingOrder} from '../../lib/billing';
 
 export const CheckoutPage:React.FC=()=>{
@@ -14,7 +15,9 @@ export const CheckoutPage:React.FC=()=>{
  const requestId=useRef(crypto.randomUUID());
  const checkoutOrigin=cfg?.appUrl?new URL(cfg.appUrl).origin:'';
  const checkoutOnAnotherDomain=Boolean(checkoutOrigin&&checkoutOrigin!==window.location.origin);
- const plan=getPlanConfig(order?.planId||requested);
+ const catalog=usePlanCatalog();
+ const plan=getPlanConfig(order?.planId||requested,catalog.plans);
+ const planAvailable=catalog.synced&&catalog.plans.some(p=>p.id===plan.id);
  const paid=order?.status==='paid', active=paid&&order.activationStatus==='active', test=paid&&order.activationStatus==='test', review=paid&&order.activationStatus==='review', expired=order?.status==='expired';
  useEffect(()=>{let live=true;billingRequest('config').then(p=>{if(live)setCfg(p);}).catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[]);
  useEffect(()=>{
@@ -69,8 +72,9 @@ export const CheckoutPage:React.FC=()=>{
      </div>
      <label className="mt-6 flex items-start gap-3 text-xs leading-6 text-slate-500"><input required checked={agreed} onChange={e=>setAgreed(e.target.checked)} type="checkbox" className="mt-1.5 h-4 w-4 shrink-0"/><span>I agree to the <a href="/terms" target="_blank" rel="noreferrer" className="font-semibold text-indigo-600">Terms</a>, <a href="/privacy" target="_blank" rel="noreferrer" className="font-semibold text-indigo-600">Privacy Policy</a> and <a href="/refunds" target="_blank" rel="noreferrer" className="font-semibold text-indigo-600">Refund & Cancellation Policy</a>. This is a one-time payment. No automatic renewal.</span></label>
      {checkoutOnAnotherDomain&&<p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">Payments are configured for a different website address. To keep your sign-in and payment confirmation together, open checkout on <a className="font-bold underline" href={cfg!.appUrl+'/billing/checkout?plan='+encodeURIComponent(plan.id)}>{checkoutOrigin}</a> and sign in there.</p>}
+     {!planAvailable&&<p role="status" className="mt-4 text-xs text-amber-800">Checking current plan prices and availability…</p>}
      {!cfg?.configured&&<p role="status" className="mt-4 rounded-xl bg-slate-100 p-4 text-sm text-slate-600">Payments are being set up. Checkout will become available when the payment gateway is configured.</p>}
-     <button disabled={busy||!agreed||!cfg?.configured||checkoutOnAnotherDomain||plan.id==='free'} className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<LockKeyhole className="h-4 w-4"/>}{busy?'Preparing secure checkout…':`Continue to payment · ${plan.price}`}</button>
+     <button disabled={busy||!agreed||!cfg?.configured||!planAvailable||checkoutOnAnotherDomain||plan.id==='free'} className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<LockKeyhole className="h-4 w-4"/>}{busy?'Preparing secure checkout…':`Continue to payment · ${plan.price}`}</button>
      <p className="mt-3 text-center text-xs text-slate-400">Secure payment powered by Cashfree</p>
     </form>}
     {error&&<div role="alert" className="mt-5 flex items-start gap-2 rounded-xl border border-rose-100 bg-rose-50 p-4 text-sm text-rose-700"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0"/><span>{error}</span></div>}
