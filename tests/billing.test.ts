@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
 import {Readable} from 'node:stream';
 import handler from '../api/billing.ts';
-import {billingConfig,validatedCustomer,validateProviderPayment,verifyCashfreeSignature,reconcileOrder,closeUnpaidOrder} from '../src/server/cashfree.ts';
+import {billingConfig,validatedCustomer,validateProviderPayment,verifyCashfreeSignature,reconcileOrder,checkoutPayable} from '../src/server/cashfree.ts';
 const originalFetch=globalThis.fetch;
 const originalEnv={...process.env};
 let uid='00000000-0000-4000-8000-000000000001';
 let fixtureUserIndex=1;
 const oid='ar_sandbox_00000000-0000-4000-8000-000000000003';
 const rid='00000000-0000-4000-8000-000000000002';
-const order={order_id:oid,owner_user_id:uid,plan_id:'pro',environment:'sandbox',amount_inr:599,currency:'INR',billing_days:30,request_id:rid,status:'pending'};
-function setup(){uid='00000000-0000-4000-8000-'+String(++fixtureUserIndex).padStart(12,'0');order.owner_user_id=uid;Object.assign(process.env,{CASHFREE_CLIENT_ID:'test-id',CASHFREE_CLIENT_SECRET:'test-secret',CASHFREE_ENV:'sandbox',SUPABASE_SERVICE_ROLE_KEY:'server-secret',APP_URL:'https://example.test'});}
+const order={order_id:oid,owner_user_id:uid,plan_id:'pro',environment:'sandbox',amount_inr:599,currency:'INR',billing_days:30,request_id:rid,status:'pending',payment_expires_at:new Date(Date.now()+300000).toISOString()};
+function setup(){uid='00000000-0000-4000-8000-'+String(++fixtureUserIndex).padStart(12,'0');order.owner_user_id=uid;order.payment_expires_at=new Date(Date.now()+300000).toISOString();Object.assign(process.env,{CASHFREE_CLIENT_ID:'test-id',CASHFREE_CLIENT_SECRET:'test-secret',CASHFREE_ENV:'sandbox',SUPABASE_SERVICE_ROLE_KEY:'server-secret',APP_URL:'https://example.test'});}
 function res(){return {code:0,body:null as any,headers:{} as any,setHeader(k:string,v:string){this.headers[k]=v;},status(code:number){this.code=code;return this;},json(body:any){this.body=body;return this;}};}
 function req(action:string,method='GET',body?:any){const r:any=Readable.from(body===undefined?[]:[Buffer.from(JSON.stringify(body))]);r.method=method;r.query={action};r.headers={authorization:'Bearer user-token'};return r;}
 afterEach(()=>{globalThis.fetch=originalFetch;for(const key of Object.keys(process.env))if(!(key in originalEnv))delete process.env[key];Object.assign(process.env,originalEnv);});
@@ -71,90 +71,27 @@ test('authoritative reserved price and stable idempotency key are used; browser 
  const r=res();await handler(q,r);assert.equal(r.code,200);assert.equal(r.body.order.amount,599);assert.equal(providerCalls,1);
 });
 for(const [selectedPlan,amount] of [['starter',299],['pro',599],['business',1299]] as const) {
- test('a new '+selectedPlan+' checkout safely replaces an old Starter session and uses its selected price',async()=>{
-  setup();let terminated=false,creates=0,reservations=0;
-  const old={...order,plan_id:'starter',amount_inr:299,request_id:'00000000-0000-4000-8000-000000000004',order_id:'ar_sandbox_00000000-0000-4000-8000-000000000004'};
-  const selected={...order,plan_id:selectedPlan,amount_inr:amount};
+ test('new '+selectedPlan+' checkout is independent of a stuck old Starter payment',async()=>{
+  setup();let creates=0,reservations=0;
+  const selected={...order,plan_id:selectedPlan,amount_inr:amount,checkout_state:'active'};
   globalThis.fetch=async(url:any,init:any)=>{
-   const path=String(url);
-   if(path.includes('/auth/'))return Response.json({id:uid});
-   if(path.includes('status=in.(creating,pending)'))return Response.json([old]);
-   if(path.includes('rpc/autoreply_reserve')){assert.ok(terminated,'old provider order must close before reserving the selected plan');assert.equal(JSON.parse(init.body).p_plan_id,selectedPlan);reservations++;return Response.json(selected);}
-   if(path.includes('cashfree.com')){
-    if(init.method==='PATCH'){assert.equal(JSON.parse(init.body).order_status,'TERMINATED');terminated=true;return Response.json({order_status:'TERMINATED'});}
-    if(init.method==='POST'){creates++;assert.equal(JSON.parse(init.body).order_amount,amount);return Response.json({order_id:oid,payment_session_id:'new-session'});}
-    if(path.endsWith('/payments'))return Response.json([]);
-    return Response.json({order_id:old.order_id,order_amount:299,order_currency:'INR',customer_details:{customer_id:uid},order_status:terminated?'TERMINATED':'ACTIVE',payment_session_id:'old-session'});
-   }
-   if(init.method==='PATCH')return Response.json([{...(path.includes(old.order_id)?old:selected),status:terminated?'expired':'pending'}]);
-   throw new Error('Unexpected request '+path);
+   const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
+   assert.ok(!path.includes('status=in.(creating,pending)'),'no unrelated order query or termination wait');
+   if(path.includes('rpc/autoreply_reserve_billing_checkout')){assert.equal(JSON.parse(init.body).p_plan_id,selectedPlan);reservations++;return Response.json(selected);}
+   if(path.includes('cashfree.com')){assert.equal(init.method,'POST');creates++;assert.equal(JSON.parse(init.body).order_amount,amount);return Response.json({order_id:oid,payment_session_id:'new-session'});}
+   if(init.method==='PATCH')return Response.json([{...selected,status:'pending'}]);throw Error('Unexpected request');
   };
   const r=res();await handler(req('create','POST',{planId:selectedPlan,name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
   assert.equal(r.code,200);assert.equal(r.body.order.planId,selectedPlan);assert.equal(r.body.order.amount,amount);assert.equal(r.body.paymentSessionId,'new-session');assert.equal(creates,1);assert.equal(reservations,1);
  });
 }
-test('a payment that succeeds while switching plans is confirmed without creating another payable order',async()=>{
- setup();let terminated=false,reservations=0;
- const old={...order,plan_id:'starter',amount_inr:299};
- globalThis.fetch=async(url:any,init:any)=>{
-  const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
-  if(path.includes('status=in.(creating,pending)'))return Response.json([old]);
-  if(path.includes('rpc/autoreply_reserve')){reservations++;throw new Error('Must not create a second order');}
-  if(path.includes('rpc/autoreply_confirm'))return Response.json({...old,status:'paid',activation_status:'test'});
-  if(path.includes('cashfree.com')){
-   if(init.method==='PATCH'){terminated=true;return Response.json({order_status:'PAID'});}
-   if(path.endsWith('/payments'))return Response.json(terminated?[{cf_payment_id:'456',payment_status:'SUCCESS',payment_amount:299,payment_currency:'INR'}]:[]);
-   return Response.json({order_id:oid,order_amount:299,order_currency:'INR',customer_details:{customer_id:uid},order_status:terminated?'PAID':'ACTIVE'});
-  }
-  throw new Error('Unexpected request');
- };
- const r=res();await handler(req('create','POST',{planId:'business',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
- assert.equal(r.code,200);assert.equal(r.body.order.status,'paid');assert.equal(reservations,0);
+test('a paid reservation retry returns its verified result and never charges again',async()=>{
+ setup();globalThis.fetch=async(url:any)=>{if(String(url).includes('/auth/'))return Response.json({id:uid});assert.ok(String(url).includes('rpc/autoreply_reserve_billing_checkout'));return Response.json({...order,status:'paid',activation_status:'active'});};const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,200);assert.equal(r.body.order.status,'paid');assert.equal(r.body.paymentSessionId,undefined);
 });
-test('unverified provider termination prevents a replacement checkout from becoming payable',async()=>{
- setup();let reservations=0;
- const old={...order,plan_id:'starter',amount_inr:299};
- globalThis.fetch=async(url:any,init:any)=>{
-  const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
-  if(path.includes('status=in.(creating,pending)'))return Response.json([old]);
-  if(path.includes('rpc/autoreply_reserve')){reservations++;throw new Error('Must not reserve');}
-  if(path.endsWith('/payments'))return Response.json([]);
-  if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:299,order_currency:'INR',customer_details:{customer_id:uid},order_status:init.method==='PATCH'?'TERMINATION_REQUESTED':'ACTIVE'});
-  throw new Error('Unexpected request');
- };
- const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
- assert.equal(r.code,409);assert.ok(r.body.error.includes('still closing'));assert.equal(reservations,0);
-});
-test('customer may explicitly terminate an unpaid provider order to switch plans',async()=>{
- setup();let terminateCount=0;
- globalThis.fetch=async(url:any,init:any)=>{
-  const path=String(url);
-  if(path.includes('/auth/'))return Response.json({id:uid});
-  if(path.includes('cashfree.com')){
-    if(init?.method==='PATCH'){terminateCount++;return Response.json({order_id:oid,order_status:'TERMINATED'});}
-    if(path.endsWith('/payments'))return Response.json([]);
-    return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:terminateCount?'TERMINATED':'ACTIVE',payment_session_id:'old-session'});
-  }
-  if(init?.method==='PATCH')return Response.json([{...order,status:'expired'}]);
-  return Response.json([order]);
- };
- const r=res();await handler(req('cancel','POST',{orderId:oid}),r);
- assert.equal(r.code,200);assert.equal(terminateCount,1);assert.equal(r.body.order.status,'expired');
-});
-test('provider termination request in progress never unlocks another payable order',async()=>{
- setup();
- globalThis.fetch=async(url:any,init:any)=>{
-  const path=String(url);
-  if(path.includes('/auth/'))return Response.json({id:uid});
-  if(path.includes('cashfree.com')){
-    if(init?.method==='PATCH')return Response.json({order_status:'TERMINATION_REQUESTED'});
-    if(path.endsWith('/payments'))return Response.json([]);
-    return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'ACTIVE',payment_session_id:'old-session'});
-  }
-  return Response.json([order]);
- };
- const r=res();await handler(req('cancel','POST',{orderId:oid}),r);
- assert.equal(r.code,409);assert.ok(r.body.error.includes('still closing'));
+test('closing checkout keeps its financial record without waiting for provider termination',async()=>{
+ setup();let closed=false;
+ globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.includes('rpc/autoreply_close')){closed=true;assert.equal(JSON.parse(init.body).p_owner_id,uid);return Response.json({...order,checkout_state:'closed'});}if(path.endsWith('/payments'))return Response.json([]);if(path.includes('cashfree.com')){assert.equal(init.method,'GET');return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'TERMINATION_REQUESTED'});}return Response.json([order]);};
+ const r=res();await handler(req('cancel','POST',{orderId:oid}),r);assert.equal(r.code,200);assert.equal(closed,true);assert.equal(r.body.order.status,'pending');assert.equal(r.body.order.checkoutState,'closed');
 });
 test('signed successful webhook rechecks provider and finalizes the durable order; failures never downgrade paid',async()=>{
  setup();let confirmations=0;
@@ -231,40 +168,41 @@ test('paid order verification never ignores payment-history request_invalid',asy
  globalThis.fetch=async(url:any)=>{const path=String(url);if(path.endsWith('/payments'))return Response.json({code:'request_invalid',type:'invalid_request_error'},{status:400});if(path.includes('rpc/autoreply_confirm'))confirmed++;return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'PAID'});};
  await assert.rejects(()=>reconcileOrder(order));assert.equal(confirmed,0);
 });
-test('termination request_invalid racing verified expiry safely releases the old checkout',async()=>{
- setup();let paymentReads=0;
- globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(init.method==='PATCH'&&path.includes('cashfree.com')){assert.match(init.headers['x-idempotency-key'],/^[a-f0-9-]{36}$/);assert.notEqual(init.headers['x-idempotency-key'],rid);return Response.json({code:'request_invalid',type:'invalid_request_error'},{status:400});}if(path.endsWith('/payments')){paymentReads++;throw new Error('No payment-attempt lookup is needed for a verified expired order');}if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'EXPIRED'});return Response.json([{...order,status:'expired'}]);};
- assert.equal((await closeUnpaidOrder(order)).status,'expired');assert.equal(paymentReads,0);
-});
-test('asynchronous termination is polled before returning a closed checkout',async()=>{
- setup();let reads=0;
- globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(init.method==='PATCH'&&path.includes('cashfree.com'))return Response.json({order_status:'TERMINATION_REQUESTED'});if(path.endsWith('/payments'))return Response.json([]);if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:++reads===1?'TERMINATION_REQUESTED':'TERMINATED'});return Response.json([{...order,status:'expired'}]);};
- assert.equal((await closeUnpaidOrder(order)).status,'expired');assert.equal(reads,2);
-});
-test('a rejected termination cannot release an active provider order',async()=>{
- setup();globalThis.fetch=async(url:any,init:any)=>{if(init.method==='PATCH')return Response.json({code:'request_invalid',type:'invalid_request_error'},{status:400});if(String(url).endsWith('/payments'))return Response.json([]);return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'ACTIVE'});};await assert.rejects(()=>closeUnpaidOrder(order));
-});
-
-for (const providerStatus of ['TERMINATION_REQUESTED','TERMINATION_REQ']) {
- test('already closing '+providerStatus+' never repeats termination or creates another charge',async()=>{
-  setup();let terminations=0,reservations=0;
-  const old={...order,plan_id:'starter',amount_inr:299,request_id:'00000000-0000-4000-8000-000000000004'};
-  globalThis.fetch=async(url:any,init:any)=>{
-   const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
-   if(path.includes('status=in.(creating,pending)'))return Response.json([old]);
-   if(path.includes('rpc/autoreply_reserve')){reservations++;throw Error('Must not reserve before provider closes');}
-   if(path.includes('cashfree.com')){assert.equal(init.method,'GET');if(init.method==='PATCH')terminations++;assert.ok(!path.endsWith('/payments'),'closing orders need no optional history lookup');return Response.json({order_id:oid,order_amount:299,order_currency:'INR',customer_details:{customer_id:uid},order_status:providerStatus});}
-   throw Error('Unexpected request');
-  };
-  const r=res();await handler(req('create','POST',{planId:'business',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
-  assert.equal(r.code,409);assert.equal(r.body.code,'ORDER_CLOSING');assert.equal(r.body.orderId,oid);assert.equal(terminations,0);assert.equal(reservations,0);
- });
-}
-test('rejected termination with verified closing state returns a resumable conflict',async()=>{
- setup();globalThis.fetch=async(url:any,init:any)=>{if(init.method==='PATCH')return Response.json({code:'request_invalid',type:'invalid_request_error'},{status:400});return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'TERMINATION_REQUESTED'});};
- await assert.rejects(()=>closeUnpaidOrder(order),(e:any)=>e.code==='ORDER_CLOSING'&&e.orderId===oid);
-});
 test('status never returns a payable session for an order whose termination is pending',async()=>{
  setup();globalThis.fetch=async(url:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'TERMINATION_REQUESTED',payment_session_id:'closing-session'});return Response.json([order]);};
  const q=req('status');q.query.order_id=oid;const r=res();await handler(q,r);assert.equal(r.code,200);assert.equal(r.body.order.providerStatus,'TERMINATION_REQUESTED');assert.equal(r.body.paymentSessionId,undefined);
+});
+
+test('the local five-minute expiry hides QR while preserving an ACTIVE financial order',async()=>{
+ setup();const old={...order,payment_expires_at:new Date(Date.now()-1000).toISOString(),checkout_state:'active'};
+ globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.endsWith('/payments'))return Response.json([]);if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'ACTIVE',payment_session_id:'old-session',order_expiry_time:new Date(Date.now()+86400000).toISOString()});if(init.method==='PATCH'){assert.notEqual(JSON.parse(init.body).status,'expired','never fake financial expiry');return Response.json([old]);}return Response.json([old]);};
+ const q=req('status');q.query.order_id=oid;const r=res();await handler(q,r);assert.equal(r.code,200);assert.equal(r.body.order.status,'pending');assert.equal(r.body.order.checkoutState,'expired');assert.equal(r.body.order.paymentExpiresAt,old.payment_expires_at);assert.equal(r.body.paymentSessionId,undefined);
+});
+test('verified late success on a replaced order reaches durable review without a new charge',async()=>{
+ setup();let confirmations=0;const old={...order,checkout_state:'superseded',payment_expires_at:new Date(Date.now()-60000).toISOString()};
+ globalThis.fetch=async(url:any)=>{const path=String(url);if(path.includes('rpc/autoreply_confirm')){confirmations++;return Response.json({...old,status:'paid',activation_status:'review'});}if(path.endsWith('/payments'))return Response.json([{cf_payment_id:'987',payment_status:'SUCCESS',payment_amount:599,payment_currency:'INR'}]);return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'PAID'});};
+ const r=await reconcileOrder(old);assert.equal(r.status,'paid');assert.equal(r.activation_status,'review');assert.equal(confirmations,1);
+});
+test('provider timeout retry retains immutable order, contact, deadline and idempotency key',async()=>{
+ setup();const snapshot={...order,status:'creating',customer_details:{name:'Original Person',email:'original@example.test',phone:'9876543210'}};const bodies:string[]=[];let creates=0;
+ globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.includes('rpc/autoreply_reserve'))return Response.json(snapshot);if(path.includes('cashfree.com')){assert.equal(init.headers['x-idempotency-key'],rid);bodies.push(init.body);if(++creates===1)throw Error('timeout');return Response.json({order_id:oid,payment_session_id:'same-session'});}return Response.json([{...snapshot,status:'pending'}]);};
+ const first=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),first);assert.equal(first.code,503);assert.equal(first.body.order.orderId,oid);
+ const retry=res();await handler(req('create','POST',{planId:'pro',name:'Changed Person',email:'changed@example.test',phone:'9876543211',requestId:rid}),retry);assert.equal(retry.code,200);assert.equal(bodies[0],bodies[1]);assert.equal(JSON.parse(bodies[0]).order_expiry_time,snapshot.payment_expires_at);
+});
+test('a session created concurrently with plan replacement is not returned as payable',async()=>{
+ setup();globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.includes('rpc/autoreply_reserve'))return Response.json({...order,checkout_state:'active'});if(path.includes('cashfree.com'))return Response.json({order_id:oid,payment_session_id:'obsolete-session'});return Response.json([{...order,checkout_state:'superseded'}]);};const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,200);assert.equal(r.body.order.checkoutState,'superseded');assert.equal(r.body.paymentSessionId,undefined);
+});
+
+test('provider expiry never mutates the immutable Create Order deadline',async()=>{
+ setup();const source={...order,checkout_state:'active'};const shorter=new Date(Date.now()+15000).toISOString();
+ globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.endsWith('/payments'))return Response.json([]);if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'ACTIVE',order_expiry_time:shorter,payment_session_id:'session'});const patch=JSON.parse(init.body);assert.equal(patch.payment_expires_at,undefined);assert.equal(patch.provider_expires_at,shorter);return Response.json([{...source,...patch}]);};const result=await reconcileOrder(source);assert.equal(result.payment_expires_at,source.payment_expires_at);assert.equal(result.provider_expires_at,shorter);
+});
+test('payment winning the Create Order save race returns its paid result without QR',async()=>{
+ setup();globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.includes('rpc/autoreply_reserve'))return Response.json(order);if(path.includes('cashfree.com'))return Response.json({order_id:oid,payment_session_id:'obsolete'});if(init.method==='PATCH')return Response.json([]);return Response.json([{...order,status:'paid',activation_status:'active'}]);};const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,200);assert.equal(r.body.order.status,'paid');assert.equal(r.body.paymentSessionId,undefined);
+});
+test('a missing payment deadline cannot expose a payable session',()=>{assert.equal(checkoutPayable({...order,payment_expires_at:undefined}),false);});
+
+test('payment winning an unpaid status refresh never exposes another payable QR',async()=>{
+ setup();const source={...order,checkout_state:'active'};let reads=0;
+ globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.endsWith('/payments'))return Response.json([]);if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'ACTIVE',payment_session_id:'stale-session'});if(init.method==='PATCH')return Response.json([]);reads++;return Response.json([{...source,status:'paid',activation_status:'active'}]);};const result=await reconcileOrder(source);assert.equal(reads,1);assert.equal(result.status,'paid');assert.equal(checkoutPayable(result),false);
 });

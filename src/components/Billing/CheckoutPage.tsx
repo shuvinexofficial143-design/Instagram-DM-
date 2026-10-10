@@ -57,7 +57,16 @@ export const CheckoutPage: React.FC = () => {
   const [initializing, setInitializing] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [closingId, setClosingId] = useState("");
+  const [waitingSeconds, setWaitingSeconds] = useState(0);
+  useEffect(() => {
+    setWaitingSeconds(0);
+    if (stage !== "result") return;
+    const timer = window.setInterval(
+      () => setWaitingSeconds((s) => Math.min(30, s + 1)),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, [stage, order?.orderId]);
   const [name, setName] = useState(user.name || ""),
     [email, setEmail] = useState(firebaseUser?.email || user.email || ""),
     [phone, setPhone] = useState(""),
@@ -72,8 +81,21 @@ export const CheckoutPage: React.FC = () => {
     catalog.plans.some((p) => p.id === requested && p.id !== "free");
   const paid = order?.status === "paid",
     active = paid && order.activationStatus === "active",
+    review = paid && order.activationStatus === "review",
     test = paid && order.activationStatus === "test",
-    expired = order?.status === "expired";
+    expired =
+      order?.status === "expired" ||
+      order?.checkoutState === "expired" ||
+      Boolean(
+        order?.paymentExpiresAt &&
+        Date.parse(order.paymentExpiresAt) <= Date.now(),
+      ),
+    closed =
+      !paid &&
+      (["superseded", "closed"].includes(order?.checkoutState || "") ||
+        ["TERMINATION_REQUESTED", "TERMINATION_REQ"].includes(
+          order?.providerStatus || "",
+        ));
   const amount = order
     ? fmt(order.amount)
     : quote !== undefined
@@ -94,7 +116,13 @@ export const CheckoutPage: React.FC = () => {
   const accept = (p: any, initial = false) => {
     setOrder(p.order);
     if (initial) setRequested(p.order.planId);
-    if (p.order.status === "paid" || p.order.status === "expired") {
+    if (
+      p.order.status === "paid" ||
+      p.order.status === "expired" ||
+      (p.order.checkoutState && p.order.checkoutState !== "active") ||
+      (p.order.paymentExpiresAt &&
+        Date.parse(p.order.paymentExpiresAt) <= Date.now())
+    ) {
       setSession(undefined);
       setStage("result");
     } else if (
@@ -126,7 +154,7 @@ export const CheckoutPage: React.FC = () => {
         if (initialId) {
           const p = await billingRequest("status", undefined, initialId);
           if (live) {
-            if (p.order.status === "pending") {
+            if (p.order.status === "pending" && p.paymentSessionId) {
               const methods = await billingRequest("methods", {
                 planId: p.order.planId,
               });
@@ -255,71 +283,18 @@ export const CheckoutPage: React.FC = () => {
         setError(
           "Your order is being prepared. We are checking its status before any retry.",
         );
-      }
+      } else if (p.order.status !== "paid") setStage("result");
     } catch (e: any) {
-      if (
-        e instanceof BillingRequestError &&
-        e.code === "ORDER_CLOSING" &&
-        e.orderId
-      ) {
-        setClosingId(e.orderId);
-      } else setError(e.message);
+      if (e instanceof BillingRequestError && e.order) {
+        setOrder(e.order);
+        setStage("result");
+      }
+      setError(e.message);
     } finally {
       lock.current = false;
       setBusy(false);
     }
   };
-  const startRef = useRef(start);
-  startRef.current = start;
-  const acceptRef = useRef(accept);
-  acceptRef.current = accept;
-  useEffect(() => {
-    if (!closingId) return;
-    let live = true,
-      timer: number;
-    const poll = async () => {
-      try {
-        const previous = await billingRequest("status", undefined, closingId);
-        if (!live) return;
-        if (previous.order.status === "paid") {
-          // A payment won the termination race. Confirm it; never charge twice.
-          setClosingId("");
-          setError("");
-          window.history.replaceState(
-            null,
-            "",
-            "/billing/checkout?order_id=" + encodeURIComponent(closingId),
-          );
-          acceptRef.current(previous);
-          return;
-        }
-        if (previous.order.status === "expired") {
-          // Keep the selected plan separate from the old order throughout the wait.
-          setClosingId("");
-          await startRef.current();
-          if (live) timer = window.setTimeout(() => void poll(), 4000);
-          return;
-        }
-        setError("");
-      } catch (e: any) {
-        if (live)
-          setError(
-            e.message ||
-              "Confirmation is delayed. We are still checking your previous payment.",
-          );
-      }
-      if (live)
-        timer = window.setTimeout(
-          () => void poll(),
-          document.hidden ? 15000 : 4000,
-        );
-    };
-    timer = window.setTimeout(() => void poll(), 4000);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [closingId]);
   const regenerate = async () => {
     if (lock.current || !order) return;
     lock.current = true;
@@ -330,7 +305,16 @@ export const CheckoutPage: React.FC = () => {
       accept(p);
       if (p.order.status === "paid") return;
       const closed = await billingRequest("cancel", { orderId: order.orderId });
-      if (closed.order.status !== "expired")
+      if (closed.order.status === "paid") {
+        accept(closed);
+        return;
+      }
+      if (
+        !["closed", "expired", "superseded"].includes(
+          closed.order.checkoutState || "",
+        ) &&
+        closed.order.status !== "expired"
+      )
         throw new Error(
           "The previous payment is still being checked. Please wait.",
         );
@@ -402,11 +386,17 @@ export const CheckoutPage: React.FC = () => {
               ? "Congratulations! Your plan is active."
               : test
                 ? "Test payment complete."
-                : paid
-                  ? "Activating your plan…"
-                  : expired
-                    ? "Payment session expired"
-                    : "Checking your payment…";
+                : review
+                  ? "Payment received · review needed"
+                  : paid
+                    ? "Activating your plan…"
+                    : closed
+                      ? "This checkout is closed"
+                      : expired
+                        ? "Payment session expired"
+                        : waitingSeconds >= 20
+                          ? "Payment status needs checking"
+                          : "Checking your payment…";
   return (
     <div className="ar-checkout">
       <header className="ar-checkout-nav">
@@ -462,15 +452,6 @@ export const CheckoutPage: React.FC = () => {
         {cfg?.mode === "sandbox" && (
           <div className="ar-notice">
             Sandbox checkout · Test payments do not activate a live plan.
-          </div>
-        )}
-        {closingId && (
-          <div className="ar-notice" role="status" aria-live="polite">
-            <Loader2 size={18} className="animate-spin" />
-            <span>
-              Finalizing your previous checkout. Your selected {plan.name} plan
-              will continue automatically. Please do not pay again.
-            </span>
           </div>
         )}
         {error && (
@@ -674,12 +655,12 @@ export const CheckoutPage: React.FC = () => {
               eligible={eligible}
               method={method}
               onChange={setMethod}
-              busy={busy || Boolean(closingId)}
+              busy={busy}
               onContinue={() => void start()}
             />
             <button
               className="ar-text-link ar-centered"
-              disabled={busy || Boolean(closingId)}
+              disabled={busy}
               onClick={() => {
                 setError("");
                 setStage("confirm");
@@ -727,7 +708,8 @@ export const CheckoutPage: React.FC = () => {
               </>
             ) : (
               <div className="ar-result-icon">
-                {paid || !expired ? (
+                {((paid && !review) || (!paid && !expired && !closed)) &&
+                waitingSeconds < 20 ? (
                   <Loader2 size={32} className="animate-spin" />
                 ) : (
                   <ReceiptText size={32} />
@@ -743,9 +725,13 @@ export const CheckoutPage: React.FC = () => {
                     ? order.activationStatus === "review"
                       ? "Payment received — activation needs review"
                       : "Activating your plan…"
-                    : expired
-                      ? "This QR is no longer available"
-                      : "Waiting for payment confirmation"}
+                    : closed
+                      ? "Choose a fresh checkout"
+                      : expired
+                        ? "This QR is no longer available"
+                        : waitingSeconds >= 20
+                          ? "Confirmation is delayed"
+                          : "Waiting for payment confirmation"}
             </h2>
             {paid ? (
               <>
@@ -818,26 +804,49 @@ export const CheckoutPage: React.FC = () => {
                   </p>
                 )}
               </>
-            ) : expired ? (
+            ) : expired || closed ? (
               <>
                 <p className="ar-note">
-                  We check the previous payment before allowing a new QR.
+                  {closed
+                    ? "This checkout was closed or replaced by another selection. Its payment record is retained."
+                    : "The five-minute payment window has ended. Any delayed confirmation will still be recorded."}
+                  If your bank has debited you, check this payment before paying
+                  again.
                 </p>
                 <button
                   className="ar-primary ar-full"
                   disabled={busy}
                   onClick={() => void regenerate()}
                 >
-                  {busy ? "Checking previous payment…" : "Generate new QR"}
+                  {busy
+                    ? "Checking previous payment…"
+                    : closed
+                      ? "Start a new checkout"
+                      : "Generate new QR"}
                 </button>
+                <button
+                  className="ar-text-link ar-centered"
+                  onClick={() => void refresh()}
+                >
+                  Check payment status
+                </button>
+                <a className="ar-text-link ar-centered" href="/billing">
+                  Choose another plan
+                </a>
               </>
             ) : (
               <>
                 <p className="ar-note">
-                  Confirmation can take a little longer. We are checking
-                  automatically. Please do not pay again.
+                  Payment status has not been confirmed yet. Your record is
+                  safe. If your bank has debited you, please do not pay again.
                 </p>
-                <button className="ar-text-link" onClick={() => void refresh()}>
+                <a className="ar-primary ar-full" href="/billing">
+                  Back to billing
+                </a>
+                <button
+                  className="ar-text-link ar-centered"
+                  onClick={() => void refresh()}
+                >
                   Check status
                 </button>
               </>

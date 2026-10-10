@@ -41,6 +41,7 @@ try {
       export {BillingUsagePage} from './src/components/Billing/BillingUsagePage';
       export {SettingsPage} from './src/components/Settings/SettingsPage';
       export {CheckoutPage} from './src/components/Billing/CheckoutPage';
+      export {paymentLabel} from './src/components/Billing/BillingHistory';
       export {PaymentMethods,PaymentMethodPicker} from './src/components/Billing/PaymentMethods';
       export {Header} from './src/components/Header';
       export {HomePage} from './src/components/Home/HomePage';
@@ -67,6 +68,15 @@ try {
     }}],
   });
   const ui = await import(pathToFileURL(path.join(tmp,'ui.mjs')));
+  for (const [record,label] of [
+    [{status:'pending',checkoutState:'superseded'},'Closed · plan changed'],
+    [{status:'pending',checkoutState:'closed'},'Checkout closed'],
+    [{status:'pending',checkoutState:'active',paymentExpiresAt:new Date(Date.now()-1000).toISOString()},'Payment window expired'],
+    [{status:'paid',activationStatus:'review'},'Paid · needs review'],
+    [{status:'paid',activationStatus:'active'},'Paid · active'],
+  ]) {
+    assert.equal(ui.paymentLabel(record),label,'history distinguishes payment confirmation from checkout availability');checks++;
+  }
   const catalogHtml=renderToStaticMarkup(React.createElement(ui.CatalogPreview,{products:[{id:'p',name:'Watch',price:'₹399',description:'Steel',url:'https://shop.example',active:true,images:['https://img.example/1.jpg','https://img.example/2.jpg']}]}));assert.equal((catalogHtml.match(/<article/g)||[]).length,2);assert.ok(catalogHtml.includes('snap-mandatory'));assert.ok(catalogHtml.includes('₹399'));checks++;
   for (const [route,heading] of [
     ['/','More conversations.'],['/help','Help Center'],['/help/faq','Frequently Asked Questions'],

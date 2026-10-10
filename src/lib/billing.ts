@@ -16,6 +16,8 @@ export type BillingOrder = {
   paymentId?: string;
   lastAttempt?: string;
   providerStatus?: string;
+  checkoutState?: string;
+  statusCheckedAt?: string;
 };
 export type BusinessDetails = {
   legalName: string;
@@ -35,6 +37,7 @@ export class BillingRequestError extends Error {
     message: string,
     public code?: string,
     public orderId?: string,
+    public order?: BillingOrder,
   ) {
     super(message);
   }
@@ -55,6 +58,7 @@ export async function billingRequest(
       method: body ? "POST" : "GET",
       credentials: "same-origin",
       cache: "no-store",
+      signal: AbortSignal.timeout(25000),
       headers: {
         ...(token ? { Authorization: "Bearer " + token } : {}),
         ...(body ? { "Content-Type": "application/json" } : {}),
@@ -69,6 +73,7 @@ export async function billingRequest(
         "Payments are temporarily unavailable. Check your existing order before paying again.",
       typeof payload?.code === "string" ? payload.code : undefined,
       typeof payload?.orderId === "string" ? payload.orderId : undefined,
+      payload?.order?.orderId ? payload.order : undefined,
     );
   return payload;
 }

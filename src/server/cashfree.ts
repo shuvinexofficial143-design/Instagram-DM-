@@ -1,4 +1,4 @@
-import { createHmac, createHash, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   cleanEnvironment,
   normalizeAppUrl,
@@ -288,78 +288,86 @@ export async function reconcileOrder(order: any) {
     const rows = await billingDb(
       `autoreply_billing_orders?order_id=eq.${encodeURIComponent(order.order_id)}&status=neq.paid`,
       "PATCH",
-      { status: "expired" },
+      {
+        status: "expired",
+        provider_status: provider.order_status,
+        status_checked_at: new Date().toISOString(),
+      },
     );
-    return rows?.[0] || order;
+    if (rows?.[0]) return rows[0];
+    const latest = await billingDb(
+      `autoreply_billing_orders?order_id=eq.${encodeURIComponent(order.order_id)}&limit=1`,
+    );
+    return latest?.[0] || order;
+  }
+  const lastAttempt = Array.isArray(payments)
+    ? payments
+        .slice()
+        .sort(
+          (a, b) =>
+            Date.parse(b.payment_time || "") - Date.parse(a.payment_time || ""),
+        )[0]?.payment_status
+    : undefined;
+  const patch = {
+    provider_status: provider.order_status,
+    last_attempt: lastAttempt || null,
+    status_checked_at: new Date().toISOString(),
+    provider_expires_at: provider.order_expiry_time || null,
+    status: "pending",
+    ...(provider.payment_session_id
+      ? { payment_session_id: provider.payment_session_id }
+      : {}),
+  };
+  // Persist diagnostics while allowing financial confirmation to arrive after UI expiry.
+  if (order.checkout_state) {
+    const rows = await billingDb(
+      `autoreply_billing_orders?order_id=eq.${encodeURIComponent(order.order_id)}&status=neq.paid`,
+      "PATCH",
+      patch,
+    );
+    const latest =
+      rows?.[0] ||
+      (
+        await billingDb(
+          `autoreply_billing_orders?order_id=eq.${encodeURIComponent(order.order_id)}&limit=1`,
+        )
+      )?.[0];
+    if (!latest)
+      throw new Error(
+        "Payment record is unavailable. Check status before retrying.",
+      );
+    if (latest.status === "paid") return latest;
+    order = { ...order, ...latest };
   }
   return {
     ...order,
-    status: "pending",
-    payment_expires_at: provider.order_expiry_time,
-    provider_status: provider.order_status,
-    last_attempt: Array.isArray(payments)
-      ? payments
-          .slice()
-          .sort(
-            (a, b) =>
-              Date.parse(b.payment_time || "") -
-              Date.parse(a.payment_time || ""),
-          )[0]?.payment_status
-      : undefined,
+    ...patch,
+    status: order.status === "paid" ? "paid" : "pending",
     payment_session_id: provider.payment_session_id || order.payment_session_id,
   };
 }
-export const isClosing = (status: string) =>
-  ["TERMINATION_REQUESTED", "TERMINATION_REQ"].includes(status);
-
-export async function closeUnpaidOrder(order: any) {
-  if (order.status === "paid" || order.status === "expired") return order;
-  // Release the reservation only after the provider confirms it cannot accept
-  // another payment. If a payment wins this race, confirm it instead.
-  // Termination has its own stable UUID: never reuse Create Order's key.
-  const hex = createHash("sha256")
-    .update("terminate:" + order.order_id)
-    .digest("hex");
-  const key =
-    hex.slice(0, 8) +
-    "-" +
-    hex.slice(8, 12) +
-    "-4" +
-    hex.slice(13, 16) +
-    "-8" +
-    hex.slice(17, 20) +
-    "-" +
-    hex.slice(20, 32);
-  let rejected: unknown;
-  try {
-    if (!isClosing(order.provider_status))
-      await cashfreeRequest(
-        "/orders/" + encodeURIComponent(order.order_id),
-        "PATCH",
-        { order_status: "TERMINATED" },
-        key,
-      );
-  } catch (error) {
-    rejected = error;
-  }
-  // A rejection can race expiry or payment. GET is the final authority.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const finalOrder = await reconcileOrder(order);
-    if (finalOrder.status === "paid" || finalOrder.status === "expired")
-      return finalOrder;
-    if (rejected && !isClosing(finalOrder.provider_status)) throw rejected;
-    if (attempt < 2)
-      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
-  }
-  throw new BillingError(
-    "The previous payment is still closing. Please wait a moment and continue again. No second payment order has been created.",
-    409,
-    "ORDER_CLOSING",
-    undefined,
-    undefined,
-    order.order_id,
+function paymentDeadline(order: any) {
+  const saved = Date.parse(order.payment_expires_at || ""),
+    provider = Date.parse(order.provider_expires_at || "");
+  return Number.isFinite(saved)
+    ? Number.isFinite(provider)
+      ? Math.min(saved, provider)
+      : saved
+    : provider;
+}
+export function checkoutPayable(order: any) {
+  const deadline = paymentDeadline(order);
+  return (
+    order.status === "pending" &&
+    (!order.checkout_state || order.checkout_state === "active") &&
+    Number.isFinite(deadline) &&
+    deadline > Date.now() &&
+    !isClosing(order.provider_status)
   );
 }
+
+export const isClosing = (status: string) =>
+  ["TERMINATION_REQUESTED", "TERMINATION_REQ"].includes(status);
 
 export function safeOrder(order: any) {
   return {
@@ -374,8 +382,17 @@ export function safeOrder(order: any) {
     paidAt: order.paid_at,
     activatedAt: order.activated_at,
     expiresAt: order.access_expires_at,
-    paymentExpiresAt: order.payment_expires_at,
+    paymentExpiresAt: Number.isFinite(paymentDeadline(order))
+      ? new Date(paymentDeadline(order)).toISOString()
+      : undefined,
     providerStatus: order.provider_status,
+    checkoutState:
+      order.status !== "paid" &&
+      order.checkout_state === "active" &&
+      paymentDeadline(order) <= Date.now()
+        ? "expired"
+        : order.checkout_state,
+    statusCheckedAt: order.status_checked_at,
     activationStatus: order.activation_status,
     lastAttempt: order.last_attempt,
     paymentId: order.cf_payment_id,

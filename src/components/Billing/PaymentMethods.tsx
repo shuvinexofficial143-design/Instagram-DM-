@@ -379,8 +379,8 @@ export function PaymentMethods({
               <Clock3 size={34} />
               <h3>Payment session expired</h3>
               <p>
-                Check whether your payment was received. A new checkout starts
-                only after this one is safely closed.
+                This QR is no longer available. We still record delayed payment
+                confirmations. Check your bank before starting another payment.
               </p>
               <button
                 className="ar-primary"
