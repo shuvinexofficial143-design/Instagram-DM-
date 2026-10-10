@@ -39,6 +39,7 @@ try {
     stdin:{contents:`export {default as App} from './src/App';
       export {Sidebar} from './src/components/Sidebar';
       export {BillingUsagePage} from './src/components/Billing/BillingUsagePage';
+      export {CheckoutPage} from './src/components/Billing/CheckoutPage';
       export {Header} from './src/components/Header';
       export {HomePage} from './src/components/Home/HomePage';
       export {AnalyticsPage} from './src/components/Analytics/AnalyticsPage';
@@ -183,8 +184,16 @@ try {
     assert.ok(html.includes('billing-special-plan'));
     assert.ok(html.includes('Manage subscription'));
     assert.ok(html.includes('Refund &amp; cancellation policy'));
+    if(currentPlan==='business') assert.ok(html.includes('Renew for 30 days'),'current paid plan should be renewable');
     checks++;
   }
+  window.location.pathname='/billing/checkout';window.location.search='?plan=starter';
+  globalThis.__uiFixture=fixture({firebaseUser:{uid:'test-user',email:'owner@example.test'}});
+  html=renderToStaticMarkup(React.createElement(ui.CheckoutPage));
+  for(const label of ['Available payment methods','UPI &amp; QR','Net banking','Debit / credit card','Continue to payment']) assert.ok(html.includes(label),label);
+  assert.ok(html.includes('Secure payment powered by Cashfree'));
+  checks++;
+  window.location.search='';
   globalThis.__uiFixture=fixture();
   html=renderToStaticMarkup(React.createElement(ui.Sidebar));
   assert.ok(html.includes('Contact &amp; support'));

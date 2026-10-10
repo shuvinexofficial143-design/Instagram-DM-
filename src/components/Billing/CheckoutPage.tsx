@@ -1,5 +1,5 @@
 import React, {useEffect,useRef,useState} from 'react';
-import {ArrowLeft,ArrowRight,Check,CheckCircle2,CreditCard,Loader2,LockKeyhole,ReceiptText,ShieldCheck,TriangleAlert,XCircle} from 'lucide-react';
+import {ArrowLeft,ArrowRight,Check,CheckCircle2,CreditCard,Loader2,LockKeyhole,ReceiptText,ShieldCheck,TriangleAlert,XCircle,QrCode,Landmark,Smartphone} from 'lucide-react';
 import {useApp} from '../../context/AppContext';
 import {getPlanConfig} from '../../lib/planUsage';
 import {billingRequest,openCashfreeCheckout,BillingConfiguration,BillingOrder} from '../../lib/billing';
@@ -12,6 +12,8 @@ export const CheckoutPage:React.FC=()=>{
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[waiting,setWaiting]=useState(false);
  const [name,setName]=useState(user.name||''),[email,setEmail]=useState(firebaseUser?.email||user.email||''),[phone,setPhone]=useState(''),[agreed,setAgreed]=useState(false);
  const requestId=useRef(crypto.randomUUID());
+ const checkoutOrigin=cfg?.appUrl?new URL(cfg.appUrl).origin:'';
+ const checkoutOnAnotherDomain=Boolean(checkoutOrigin&&checkoutOrigin!==window.location.origin);
  const plan=getPlanConfig(order?.planId||requested);
  const paid=order?.status==='paid', active=paid&&order.activationStatus==='active', test=paid&&order.activationStatus==='test', review=paid&&order.activationStatus==='review', expired=order?.status==='expired';
  useEffect(()=>{let live=true;billingRequest('config').then(p=>{if(live)setCfg(p);}).catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[]);
@@ -55,9 +57,18 @@ export const CheckoutPage:React.FC=()=>{
     </div>:<form onSubmit={e=>{e.preventDefault();void pay();}}>
      <div className="flex items-center gap-3"><CreditCard className="h-5 w-5 text-indigo-600"/><h2 className="text-lg font-bold text-slate-950">Billing details</h2></div><p className="mt-2 text-sm text-slate-500">These details are shared with Cashfree for your payment.</p>
      <div className="mt-6 space-y-4">{[{label:'Full name',type:'text',value:name,set:setName,autocomplete:'name'},{label:'Email address',type:'email',value:email,set:setEmail,autocomplete:'email'},{label:'Mobile number',type:'tel',value:phone,set:setPhone,autocomplete:'tel'}].map(field=><label key={field.label} className="block text-sm font-semibold text-slate-700">{field.label}<input required type={field.type} value={field.value} onChange={e=>field.set(e.target.value)} autoComplete={field.autocomplete} maxLength={field.type==='tel'?16:200} placeholder={field.type==='tel'?'10-digit Indian mobile number':undefined} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 font-normal outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"/></label>)}</div>
+     <div className="mt-6">
+      <h3 className="text-sm font-bold text-slate-900">Available payment methods</h3>
+      <p className="mt-1 text-xs leading-5 text-slate-500">Choose your payment method on the next secure Cashfree screen. Availability depends on your device and bank.</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+       {[{title:'UPI & QR',detail:'UPI apps on mobile · QR on desktop',Icon:QrCode},{title:'Net banking',detail:'Choose your bank and pay securely',Icon:Landmark},{title:'Debit / credit card',detail:'Card payment with bank verification',Icon:CreditCard}].map(({title,detail,Icon})=><div key={title} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-4"><Icon className="h-5 w-5 text-indigo-600"/><p className="mt-3 text-xs font-bold text-slate-900">{title}</p><p className="mt-1 text-[11px] leading-4 text-slate-500">{detail}</p></div>)}
+      </div>
+      <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500"><Smartphone className="h-3.5 w-3.5"/>For QR payments, scan the provider-generated code with another device.</p>
+     </div>
      <label className="mt-6 flex items-start gap-3 text-xs leading-6 text-slate-500"><input required checked={agreed} onChange={e=>setAgreed(e.target.checked)} type="checkbox" className="mt-1.5 h-4 w-4 shrink-0"/><span>I agree to the <a href="/terms" target="_blank" rel="noreferrer" className="font-semibold text-indigo-600">Terms</a>, <a href="/privacy" target="_blank" rel="noreferrer" className="font-semibold text-indigo-600">Privacy Policy</a> and <a href="/refunds" target="_blank" rel="noreferrer" className="font-semibold text-indigo-600">Refund & Cancellation Policy</a>. This is a one-time payment. No automatic renewal.</span></label>
+     {checkoutOnAnotherDomain&&<p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">Payments are configured for a different website address. To keep your sign-in and payment confirmation together, open checkout on <a className="font-bold underline" href={cfg!.appUrl+'/billing/checkout?plan='+encodeURIComponent(plan.id)}>{checkoutOrigin}</a> and sign in there.</p>}
      {!cfg?.configured&&<p role="status" className="mt-4 rounded-xl bg-slate-100 p-4 text-sm text-slate-600">Payments are being set up. Checkout will become available when the payment gateway is configured.</p>}
-     <button disabled={busy||!agreed||!cfg?.configured||plan.id==='free'} className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<LockKeyhole className="h-4 w-4"/>}{busy?'Preparing secure checkout…':`Continue to payment · ${plan.price}`}</button>
+     <button disabled={busy||!agreed||!cfg?.configured||checkoutOnAnotherDomain||plan.id==='free'} className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<LockKeyhole className="h-4 w-4"/>}{busy?'Preparing secure checkout…':`Continue to payment · ${plan.price}`}</button>
      <p className="mt-3 text-center text-xs text-slate-400">Secure payment powered by Cashfree</p>
     </form>}
     {error&&<div role="alert" className="mt-5 flex items-start gap-2 rounded-xl border border-rose-100 bg-rose-50 p-4 text-sm text-rose-700"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0"/><span>{error}</span></div>}
