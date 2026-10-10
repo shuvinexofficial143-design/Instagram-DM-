@@ -124,3 +124,51 @@ test('forged webhook is rejected before any database or provider access',async()
 test('provider timeout never creates a second order in one request',async()=>{
  setup();let calls=0;globalThis.fetch=async(url:any)=>{if(String(url).includes('/auth/'))return Response.json({id:uid});if(String(url).includes('status=in.(creating,pending)'))return Response.json([]);if(String(url).includes('/rest/'))return Response.json(order);calls++;throw new Error('timeout');};const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,503);assert.equal(calls,1);
 });
+
+test('checkout expires at the provider after five minutes and returns the same deadline to the browser',async()=>{
+ setup();let expiry='';const started=Date.now();
+ globalThis.fetch=async(url:any,init:any)=>{
+  const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
+  if(path.includes('status=in.(creating,pending)'))return Response.json([]);
+  if(path.includes('rpc/autoreply_reserve'))return Response.json(order);
+  if(path.includes('cashfree.com')){const body=JSON.parse(init.body);expiry=body.order_expiry_time;assert.ok(Date.parse(expiry)>=started+299000&&Date.parse(expiry)<=Date.now()+300000);return Response.json({order_id:oid,payment_session_id:'session',order_expiry_time:expiry});}
+  return Response.json([order]);
+ };
+ const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
+ assert.equal(r.code,200);assert.equal(r.body.order.paymentExpiresAt,expiry);assert.equal(r.body.order.status,'pending');
+});
+test('resuming an existing provider session never creates another order or extends its deadline',async()=>{
+ setup();const expiry=new Date(Date.now()+45000).toISOString();let creates=0;
+ const existing={...order,payment_session_id:'existing-session'};
+ globalThis.fetch=async(url:any,init:any)=>{
+  const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
+  if(path.includes('status=in.(creating,pending)'))return Response.json([existing]);
+  if(path.includes('rpc/autoreply_reserve'))return Response.json(existing);
+  if(path.endsWith('/payments'))return Response.json([]);
+  if(path.includes('cashfree.com')){if(init.method==='POST')creates++;return Response.json({order_id:oid,order_amount:599,order_currency:'INR',order_status:'ACTIVE',payment_session_id:'existing-session',order_expiry_time:expiry});}
+  throw new Error('Unexpected mutation');
+ };
+ const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
+ assert.equal(r.code,200);assert.equal(creates,0);assert.equal(r.body.order.paymentExpiresAt,expiry);assert.equal(r.body.paymentSessionId,'existing-session');
+});
+for(const [planId,amount] of [['starter',299],['pro',599],['business',1299]] as const) {
+ test(planId+' creates its authoritative order and activates only after a verified production payment',async()=>{
+  setup();process.env.CASHFREE_ENV='production';process.env.CASHFREE_LIVE_ENABLED='true';
+  const id='ar_production_00000000-0000-4000-8000-000000000003';
+  const selected={...order,order_id:id,environment:'production',plan_id:planId,amount_inr:amount};let confirmed=0;
+  globalThis.fetch=async(url:any,init:any)=>{
+   const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
+   if(path.includes('status=in.(creating,pending)'))return Response.json([]);
+   if(path.includes('rpc/autoreply_reserve')){assert.equal(JSON.parse(init.body).p_plan_id,planId);return Response.json(selected);}
+   if(path.includes('rpc/autoreply_confirm')){const b=JSON.parse(init.body);assert.equal(b.p_amount,amount);assert.equal(b.p_environment,'production');confirmed++;return Response.json({...selected,status:'paid',activation_status:'active'});}
+   if(path.includes('cashfree.com')){
+    if(init.method==='POST'){assert.equal(JSON.parse(init.body).order_amount,amount);return Response.json({order_id:id,payment_session_id:'session'});}
+    if(path.endsWith('/payments'))return Response.json([{cf_payment_id:'999',payment_status:'SUCCESS',payment_amount:amount,payment_currency:'INR'}]);
+    return Response.json({order_id:id,order_amount:amount,order_currency:'INR',order_status:'PAID'});
+   }
+   return Response.json([selected]);
+  };
+  const created=res();await handler(req('create','POST',{planId,name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),created);assert.equal(created.code,200);assert.equal(confirmed,0);
+  const q=req('status');q.query.order_id=id;const verified=res();await handler(q,verified);assert.equal(verified.code,200);assert.equal(verified.body.order.planId,planId);assert.equal(verified.body.order.activationStatus,'active');assert.equal(confirmed,1);
+ });
+}

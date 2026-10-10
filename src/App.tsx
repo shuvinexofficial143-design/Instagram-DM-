@@ -137,6 +137,10 @@ const AppShell: React.FC = () => {
       );
     }
 
+    if (activeTab === 'checkout') {
+      return <ErrorBoundary><Suspense fallback={<PageLoadingFallback />}><CheckoutPage /></Suspense></ErrorBoundary>;
+    }
+
     if (isAdminRoute) {
       return (
         <ErrorBoundary>

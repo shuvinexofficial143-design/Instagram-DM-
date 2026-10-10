@@ -124,16 +124,23 @@ export default async function handler(req: any, res: any) {
       throw reservationError;
     }
     if (order.status === 'paid') return res.status(200).json({ ok: true, order: safeOrder(order) });
+    if (order.status === 'expired') return res.status(200).json({ok:true,order:safeOrder(order)});
+    if (order.payment_session_id) {
+      const existing = await reconcileOrder(order);
+      return res.status(200).json({ok:true,order:safeOrder(existing),...(existing.status==='pending'?{paymentSessionId:existing.payment_session_id,mode:cfg.mode}:{})});
+    }
     // Retrying the same durable reservation uses the SAME provider id and key, never creates a second chargeable order.
+    const paymentExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const provider = await cashfreeRequest('/orders', 'POST', {
       order_id: order.order_id, order_amount: Number(order.amount_inr), order_currency: 'INR',
+      order_expiry_time: paymentExpiresAt,
       customer_details: { customer_id: user.id, customer_name: customer.name, customer_email: customer.email, customer_phone: customer.phone },
       order_meta: { return_url: cfg.appUrl + '/billing/checkout?order_id=' + encodeURIComponent(order.order_id), notify_url: cfg.appUrl + '/api/billing?action=webhook' },
       order_note: `${order.plan_id} plan · ${order.billing_days} days · one-time payment`,
     }, order.request_id);
     if (provider.order_id !== order.order_id || !provider.payment_session_id) throw new BillingError('Checkout could not be verified. Check the order before retrying.');
     await billingDb(`autoreply_billing_orders?order_id=eq.${encodeURIComponent(order.order_id)}&status=neq.paid`, 'PATCH', { status: 'pending', payment_session_id: provider.payment_session_id });
-    return res.status(200).json({ ok: true, order: safeOrder(order), paymentSessionId: provider.payment_session_id, mode: cfg.mode });
+    return res.status(200).json({ ok: true, order: safeOrder({...order,status:'pending',payment_expires_at:provider.order_expiry_time||paymentExpiresAt}), paymentSessionId: provider.payment_session_id, mode: cfg.mode });
   } catch (error: any) {
     console.error('[BILLING_REQUEST_FAILED]', { type: error?.name || 'Error', status: error?.status || 503 });
     return res.status(error instanceof BillingError ? error.status : 503).json({ ok: false, error: error instanceof BillingError ? error.message : 'Payment confirmation is temporarily unavailable. Check your existing order before paying again.' });

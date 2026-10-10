@@ -58,3 +58,14 @@ Official references:
 - https://www.cashfree.com/docs/api-reference/payments/latest/orders/get-order
 - https://www.cashfree.com/docs/api-reference/payments/latest/payments/get-payments-for-an-order
 - https://www.cashfree.com/docs/payments/online/go-live/whitelist
+
+
+## Custom checkout (10 October 2026)
+
+The authenticated checkout now opens outside the workspace navigation. Plan review and billing details lead to an Auto Replies payment page using Cashfree **Elements**, rather than embedding the complete hosted checkout. Individual `upiQr`, `upiApp`, `netbanking`, and secure card field components use Cashfree's official v3 CDN. UPI QR stays inside our layout; bank and card authorization may navigate to the bank before returning. This integration uses the browser Element SDK, not the raw S2S Order Pay API.
+
+A chargeable order is created only when the customer starts a payment method. New orders send `order_expiry_time` five minutes in the future. The UI displays the provider deadline, removes the QR at expiry and checks server status before starting another order. Resuming a session preserves its existing deadline and never creates another provider order. Historical orders retain their provider expiry.
+
+Pending payments are reconciled automatically every four seconds while visible and on browser focus. Successful SDK callbacks and redirects trigger verification but never grant access themselves. A verified production payment activates the subscription; the success page then reloads billing to refresh the account's entitlement. Signed webhooks remain active when the customer closes the page.
+
+Validation: all paid plans passed authoritative-price and activation API tests, and reservation, activation, entitlement and idempotency checks ran inside a rolled-back production database transaction. No live bank payment was made. Merchant acceptance of real QR, card and bank payments still requires an authenticated checkout/payment test on the whitelisted domain.

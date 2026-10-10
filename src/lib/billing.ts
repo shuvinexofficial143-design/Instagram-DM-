@@ -1,5 +1,5 @@
 import { auth } from './supabase';
-export type BillingOrder = { orderId:string; planId:string; amount:number; currency:string; environment:string; status:string; createdAt:string; paidAt?:string; activatedAt?:string; expiresAt?:string; activationStatus?:string; paymentId?:string; lastAttempt?:string };
+export type BillingOrder = { orderId:string; planId:string; amount:number; currency:string; environment:string; status:string; createdAt:string; paidAt?:string; activatedAt?:string; expiresAt?:string; paymentExpiresAt?:string; activationStatus?:string; paymentId?:string; lastAttempt?:string };
 export type BusinessDetails = {legalName:string;email:string;phone:string;address:string};
 export type BillingConfiguration = {configured:boolean;mode:string;legalReady:boolean;appUrl:string;business:BusinessDetails};
 export async function billingRequest(action:string, body?:unknown, orderId?:string) {
@@ -9,37 +9,4 @@ export async function billingRequest(action:string, body?:unknown, orderId?:stri
   const payload=await response.json().catch(()=>null);
   if(!response.ok||!payload?.ok) throw new Error(payload?.error||'Payments are temporarily unavailable. Check your existing order before paying again.');
   return payload;
-}
-let sdkPromise:Promise<void>|undefined;
-export async function mountCashfreeCheckout(sessionId:string, mode:string, target:HTMLElement) {
-  if(!sessionId || !target) throw new Error('The secure payment session is not ready.');
-  await loadCashfreeSdk();
-  const paymentUI = (window as any).Cashfree({mode});
-  if(!paymentUI) throw new Error('Secure payment SDK is unavailable.');
-  // Only the Cashfree SDK renders real payment choices and bank-generated QR.
-  // Neither card data nor UPI PIN ever passes through Auto Replies.
-  const width=Math.max(290,Math.min(425,Math.floor(target.clientWidth||425)));
-  return paymentUI.checkout({
-    paymentSessionId:sessionId,
-    redirectTarget:target,
-    appearance:{width:width+'px',height:'650px'}
-  });
-}
-async function loadCashfreeSdk() {
-  const win=window as any;
-  if(!win.Cashfree) {
-    if(!sdkPromise) sdkPromise=new Promise((resolve,reject)=>{
-      const script=document.createElement('script');script.src='https://sdk.cashfree.com/js/v3/cashfree.js';script.async=true;
-      const timer=window.setTimeout(()=>{sdkPromise=undefined;script.remove();reject(new Error('Secure checkout took too long to load. Please try again.'));},15000);
-      script.onload=()=>{window.clearTimeout(timer);resolve();};script.onerror=()=>{window.clearTimeout(timer);sdkPromise=undefined;script.remove();reject(new Error('Secure checkout could not load. Please try again.'));};document.head.appendChild(script);
-    });
-    await sdkPromise;
-  }
-  if(!win.Cashfree) throw new Error('Secure checkout is unavailable.');
-  return;
-}
-export async function openCashfreeCheckout(sessionId:string,mode:string) {
-  await loadCashfreeSdk();
-  const result=await (window as any).Cashfree({mode}).checkout({paymentSessionId:sessionId,redirectTarget:'_self'});
-  if(result?.error) throw new Error('Checkout was not completed. Check your payment status before trying again.');
 }

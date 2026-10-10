@@ -70,8 +70,8 @@ export async function reconcileOrder(order: any) {
     const rows = await billingDb(`autoreply_billing_orders?order_id=eq.${encodeURIComponent(order.order_id)}&status=neq.paid`, 'PATCH', { status: 'expired' });
     return rows?.[0] || order;
   }
-  return { ...order, status: 'pending', last_attempt: Array.isArray(payments) ? payments.slice().sort((a,b)=>Date.parse(b.payment_time||'')-Date.parse(a.payment_time||''))[0]?.payment_status : undefined, payment_session_id: provider.payment_session_id || order.payment_session_id };
+  return { ...order, status: 'pending', payment_expires_at: provider.order_expiry_time, last_attempt: Array.isArray(payments) ? payments.slice().sort((a,b)=>Date.parse(b.payment_time||'')-Date.parse(a.payment_time||''))[0]?.payment_status : undefined, payment_session_id: provider.payment_session_id || order.payment_session_id };
 }
 export function safeOrder(order: any) {
-  return { orderId: order.order_id, planId: order.plan_id, amount: order.amount_inr, currency: order.currency, environment: order.environment, status: order.status, createdAt: order.created_at, paidAt: order.paid_at, activatedAt: order.activated_at, expiresAt: order.access_expires_at, activationStatus: order.activation_status, lastAttempt: order.last_attempt, paymentId: order.cf_payment_id };
+  return { orderId: order.order_id, planId: order.plan_id, amount: order.amount_inr, currency: order.currency, environment: order.environment, status: order.status, createdAt: order.created_at, paidAt: order.paid_at, activatedAt: order.activated_at, expiresAt: order.access_expires_at, paymentExpiresAt: order.payment_expires_at, activationStatus: order.activation_status, lastAttempt: order.last_attempt, paymentId: order.cf_payment_id };
 }
