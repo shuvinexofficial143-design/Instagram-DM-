@@ -30,14 +30,16 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     // hashed chunk. A one-time cache-busted refresh loads the latest HTML.
     const msg=String(error?.message||error||'');
     if(/dynamically imported module|Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed/i.test(msg)){
-      const key='autoreply_chunk_recovered';
-      const last=Number(sessionStorage.getItem(key)||0);
-      if(Date.now()-last>120000){
-        sessionStorage.setItem(key,String(Date.now()));
-        const u=new URL(window.location.href);
-        u.searchParams.set('app_refresh',String(Date.now()));
-        window.location.replace(u.toString());
-      }
+      try {
+        const key='autoreply_chunk_recovered';
+        const last=Number(sessionStorage.getItem(key)||0);
+        if(Date.now()-last>120000){
+          sessionStorage.setItem(key,String(Date.now()));
+          const u=new URL(window.location.href);
+          u.searchParams.set('app_refresh',String(Date.now()));
+          window.location.replace(u.toString());
+        }
+      } catch { /* Session storage is disabled; retain the manual reload option. */ }
     }
   }
 
