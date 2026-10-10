@@ -10,10 +10,10 @@ The existing plan cards remain unchanged. Choosing a paid plan opens `/billing/c
    - `CASHFREE_CLIENT_SECRET`: test Secret Key, **Sensitive**, server only.
    - `CASHFREE_ENV`: `sandbox`.
    - `CASHFREE_LIVE_ENABLED`: `false`.
-   - `APP_URL`: `https://www.autoreplys.in` (canonical return host).
+   - `APP_URL`: `https://autoreplys.vercel.app` (canonical return host).
    - Existing `SUPABASE_SERVICE_ROLE_KEY` remains server only; do not replace it with a publishable key.
 3. Cashfree Payment Gateway → Developers → Whitelisting: register the exact HTTPS website domain. Use the same origin for checkout and APP_URL; log in on that origin to retain the return session.
-4. Payment Gateway → Developers → Webhooks: add `https://www.autoreplys.in/api/billing?action=webhook`, select Payment Success, Payment Failed, Payment User Dropped and current supported webhook version. Set this separately in test and live dashboards. Success events recheck Cashfree; failed attempts never remove paid access.
+4. Payment Gateway → Developers → Webhooks: add `https://autoreplys.vercel.app/api/billing?action=webhook`, select Payment Success, Payment Failed, Payment User Dropped and current supported webhook version. Set this separately in test and live dashboards. Success events recheck Cashfree; failed attempts never remove paid access.
 5. Redeploy Vercel after setting environment variables. Complete success, declined, abandoned, refresh/return and repeated callback tests using Cashfree sandbox details. Sandbox receipts are labelled Test and do **not** change live entitlements.
 
 Do not paste API secrets in chat, screenshots, frontend variables, source code or client storage. These keys are not required in the frontend: only the order-specific `payment_session_id` is returned to its authenticated owner.
