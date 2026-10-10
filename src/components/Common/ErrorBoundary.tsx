@@ -26,6 +26,19 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('[UNCAUGHT_REACT_ERROR]', error, errorInfo);
+    // During a deployment the previous page can point at a removed Vite
+    // hashed chunk. A one-time cache-busted refresh loads the latest HTML.
+    const msg=String(error?.message||error||'');
+    if(/dynamically imported module|Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed/i.test(msg)){
+      const key='autoreply_chunk_recovered';
+      const last=Number(sessionStorage.getItem(key)||0);
+      if(Date.now()-last>120000){
+        sessionStorage.setItem(key,String(Date.now()));
+        const u=new URL(window.location.href);
+        u.searchParams.set('app_refresh',String(Date.now()));
+        window.location.replace(u.toString());
+      }
+    }
   }
 
   private handleReload = () => {
