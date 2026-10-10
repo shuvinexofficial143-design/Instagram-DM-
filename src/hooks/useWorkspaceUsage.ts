@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { auth } from '../lib/supabase';
 import { getFallbackWorkspaceUsage, getPlanConfig } from '../lib/planUsage';
+import { usePlanCatalog } from './usePlanCatalog';
 
 type ServerUsage = {
   ok?: boolean;
@@ -15,6 +16,7 @@ type ServerUsage = {
 
 export const useWorkspaceUsage = () => {
   const { user, automations, inboxMessages } = useApp();
+  const catalog=usePlanCatalog();
   const fallback = useMemo(
     () => getFallbackWorkspaceUsage(user, automations || [], inboxMessages || []),
     [
@@ -65,7 +67,7 @@ export const useWorkspaceUsage = () => {
     };
   }, [user?.id, user?.plan]);
 
-  const plan = getPlanConfig(serverUsage?.plan || fallback.plan.id);
+  const plan = getPlanConfig(serverUsage?.plan || fallback.plan.id,catalog.plans);
   return {
     plan,
     messageUsed: Number(serverUsage?.totalUsed ?? fallback.messageUsed),
