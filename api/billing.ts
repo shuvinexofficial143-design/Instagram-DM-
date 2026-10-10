@@ -4,15 +4,26 @@ import { authenticatedUser, cleanEnvironment } from '../src/server/supabaseConfi
 import { enforceRateLimit } from './_auth.js';
 import { BillingError, billingConfig, billingDb, cashfreeRequest, reconcileOrder, safeOrder, validatedCustomer, verifyCashfreeSignature } from '../src/server/cashfree.js';
 
-// Signature verification must use the exact bytes Cashfree signed.
+// Cashfree signatures are over the ORIGINAL bytes, never parsed / re-serialized JSON.
+// Vercel's req.body is a lazy JSON-parsing getter; reading it first consumes the stream
+// and was also rejecting regular checkout JSON with "Raw payment request required".
 export const config = { api: { bodyParser: false }, maxDuration: 60 };
 export async function readBillingBody(req: any): Promise<Buffer> {
-  if (Buffer.isBuffer(req.body)) return req.body;
-  if (typeof req.body === 'string') return Buffer.from(req.body);
-  if (req.body !== undefined) throw new BillingError('Raw payment request required.', 400);
   const chunks: Buffer[] = []; let size = 0;
-  for await (const chunk of req) { const bytes = Buffer.from(chunk); size += bytes.length; if (size > 65536) throw new BillingError('Request too large.', 413); chunks.push(bytes); }
-  return Buffer.concat(chunks);
+  if (typeof req?.[Symbol.asyncIterator] === 'function' && !req.readableEnded) {
+    for await (const chunk of req) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += bytes.length;
+      if (size > 65536) throw new BillingError('Request too large.', 413);
+      chunks.push(bytes);
+    }
+    if (size > 0) return Buffer.concat(chunks);
+  }
+  // For adapter-level raw bodies only; do NOT accept parsed JSON as a signed webhook.
+  const body = req.body;
+  if (Buffer.isBuffer(body)) return body;
+  if (typeof body === 'string') return Buffer.from(body);
+  throw new BillingError('Raw payment request required.', 400);
 }
 const orderIdValid = (value: string) => /^ar_(sandbox|production)_[a-f0-9-]{36}$/.test(value);
 export default async function handler(req: any, res: any) {
