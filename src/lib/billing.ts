@@ -11,7 +11,21 @@ export async function billingRequest(action:string, body?:unknown, orderId?:stri
   return payload;
 }
 let sdkPromise:Promise<void>|undefined;
-export async function openCashfreeCheckout(sessionId:string,mode:string) {
+export async function mountCashfreeCheckout(sessionId:string, mode:string, target:HTMLElement) {
+  if(!sessionId || !target) throw new Error('The secure payment session is not ready.');
+  await loadCashfreeSdk();
+  const paymentUI = (window as any).Cashfree({mode});
+  if(!paymentUI) throw new Error('Secure payment SDK is unavailable.');
+  // Only the Cashfree SDK renders real payment choices and bank-generated QR.
+  // Neither card data nor UPI PIN ever passes through Auto Replies.
+  const width=Math.max(290,Math.min(425,Math.floor(target.clientWidth||425)));
+  return paymentUI.checkout({
+    paymentSessionId:sessionId,
+    redirectTarget:target,
+    appearance:{width:width+'px',height:'650px'}
+  });
+}
+async function loadCashfreeSdk() {
   const win=window as any;
   if(!win.Cashfree) {
     if(!sdkPromise) sdkPromise=new Promise((resolve,reject)=>{
@@ -22,6 +36,10 @@ export async function openCashfreeCheckout(sessionId:string,mode:string) {
     await sdkPromise;
   }
   if(!win.Cashfree) throw new Error('Secure checkout is unavailable.');
-  const result=await win.Cashfree({mode}).checkout({paymentSessionId:sessionId,redirectTarget:'_self'});
+  return;
+}
+export async function openCashfreeCheckout(sessionId:string,mode:string) {
+  await loadCashfreeSdk();
+  const result=await (window as any).Cashfree({mode}).checkout({paymentSessionId:sessionId,redirectTarget:'_self'});
   if(result?.error) throw new Error('Checkout was not completed. Check your payment status before trying again.');
 }
