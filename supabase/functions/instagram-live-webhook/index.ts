@@ -1200,10 +1200,11 @@ async function sendInstagramText(
 
   const payload: any = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(
-      payload?.error?.message ||
-        `Instagram Send API HTTP ${response.status}`
-    );
+    const err:any = new Error(payload?.error?.message || `Instagram Send API HTTP ${response.status}`);
+    // Explicit 4xx refusal means Meta did not accept this message.
+    // A timeout or 5xx is ambiguous: retain its reserved slot for review.
+    err.deliveryRejected = response.status >= 400 && response.status < 500;
+    throw err;
   }
 
   if (!payload?.message_id) throw new Error("Instagram did not confirm message delivery");
@@ -1284,7 +1285,11 @@ async function metaWrite(path: string, accessToken: string, body: any) {
     body: JSON.stringify(body), signal: AbortSignal.timeout(10000),
   });
   const payload: any = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.error?.message || `Instagram API HTTP ${response.status}`);
+  if (!response.ok) {
+    const err:any=new Error(payload?.error?.message || `Instagram API HTTP ${response.status}`);
+    err.deliveryRejected=response.status>=400 && response.status<500;
+    throw err;
+  }
   return payload;
 }
 
@@ -1308,6 +1313,7 @@ async function executeStaticActions(admin: any, workspaceId: string, item: any, 
   }
   const delay = actions.filter((a: any) => a.type === "add_delay").reduce((sum: number, a: any) => sum + Number(a.delay_seconds || 0), 0);
   if (!Number.isFinite(delay) || delay < 0 || delay > 20) return { ok: false, sent: false, reason: "configured_delay_exceeds_20_seconds" };
+  let unresolvedDeliveryKey="";
   try {
     if (delay) {
       intentionalDelayMs = delay * 1000;
@@ -1328,6 +1334,7 @@ async function executeStaticActions(admin: any, workspaceId: string, item: any, 
         if(catalog) text=`[Catalog: ${catalog.name}]`;
         const deliveryKey=`standard:${item.messageId||item.commentId||item.senderId}:${automation.id}:${index}:${action.type}`;
         const slot=await reserveDeliveryQuota(admin,workspaceId,deliveryKey,false);
+        if(slot.allowed) unresolvedDeliveryKey=deliveryKey;
         if(!slot.allowed) return {ok:false,sent:deliveries.length>0,reason:slot.reason||"monthly_standard_limit_reached",deliveries};
         const recipient = item.triggerType === "comment" ? { comment_id: item.commentId } : { id: item.senderId };
         const payload = catalog ? await sendInstagramCatalog(account.ig_user_id,item.senderId,account.access_token,catalog) : await metaWrite(`${encodeURIComponent(account.ig_user_id)}/messages`, account.access_token, { recipient, message: { text } });
@@ -1336,17 +1343,20 @@ async function executeStaticActions(admin: any, workspaceId: string, item: any, 
         // Reserved in the database before the Meta API call; confirmation only
         // changes the reservation state, never grants a second allowance.
         runInBackground(finishDeliveryQuota(admin,workspaceId,deliveryKey,true));
+        unresolvedDeliveryKey="";
         runInBackground(markOutboundClaim(admin, workspaceId, String(payload.message_id)));
         runInBackground(persistOutboundMessage(admin, workspaceId, item, { username: item.senderId, avatar_url: "" }, automation, text, String(payload.message_id), catalog));
       }
       if (action.type === "reply_comment" && item.triggerType === "comment" && action.comment_reply_text) {
         const deliveryKey=`standard:${item.messageId||item.commentId||item.senderId}:${automation.id}:${index}:${action.type}`;
         const slot=await reserveDeliveryQuota(admin,workspaceId,deliveryKey,false);
+        if(slot.allowed) unresolvedDeliveryKey=deliveryKey;
         if(!slot.allowed) return {ok:false,sent:deliveries.length>0,reason:slot.reason||"monthly_standard_limit_reached",deliveries};
         const payload = await metaWrite(`${encodeURIComponent(item.commentId)}/replies`, account.access_token, { message: asText(action.comment_reply_text, 1000) });
         if (!payload?.id) throw new Error("Instagram did not confirm comment reply");
         deliveries.push({ type: "reply_comment", id: String(payload.id) });
         runInBackground(finishDeliveryQuota(admin,workspaceId,deliveryKey,true));
+        unresolvedDeliveryKey="";
       }
       if (action.type === "add_tag" && action.tag_name) {
         await saveContactTags(admin, workspaceId, item.senderId, [action.tag_name]);
@@ -1356,7 +1366,10 @@ async function executeStaticActions(admin: any, workspaceId: string, item: any, 
     runInBackground(updateAutomationStats(admin, workspaceId, automation));
     return { ok: true, sent: true, deliveries, intentional_delay_ms: intentionalDelayMs,
       skipped_actions: actions.filter((a: any) => a.type === "auto_like_comment").map((a: any) => a.type) };
-  } catch (error) {
+  } catch (error:any) {
+    if(error?.deliveryRejected && unresolvedDeliveryKey) {
+      await finishDeliveryQuota(admin,workspaceId,unresolvedDeliveryKey,false);
+    }
     return { ok: false, sent: deliveries.length > 0, deliveries, reason: "automation_action_failed",
       error: error instanceof Error ? error.message : String(error), intentional_delay_ms: intentionalDelayMs };
   }
@@ -1859,11 +1872,13 @@ Instagram DM style rules:
       : null;
     const backendPreSendMs = Math.round(performance.now() - totalStart);
     const sendStart = performance.now();
+    let unresolvedAiKey="";
 
     try {
       // Separate AI allowance, reserved under an owner-level database lock.
       const aiDeliveryKey=`ai:${item.messageId||item.senderId}:${automation.id}`;
       const slot=await reserveDeliveryQuota(admin,workspaceId,aiDeliveryKey,true);
+      if(slot.allowed) unresolvedAiKey=aiDeliveryKey;
       if(!slot.allowed) {
         stopTyping();
         results.push({messageId:item.messageId,ok:true,ignored:true,reason:slot.reason||"monthly_ai_limit_reached"});
@@ -1882,6 +1897,7 @@ Instagram DM style rules:
       const instagramMessageId = String(sendResult?.message_id || "");
       if(!instagramMessageId) throw new Error("Instagram did not confirm AI reply delivery");
       runInBackground(finishDeliveryQuota(admin,workspaceId,aiDeliveryKey,true));
+      unresolvedAiKey="";
       const tagActions = (automation.actions || []).filter((a: any) => a.type === "add_tag");
       if (tagActions.length) runInBackground(saveContactTags(admin, workspaceId, item.senderId, tagActions.map((a: any) => a.tag_name)));
       runInBackground(syncAiLeadToGoogleSheet(admin, workspaceId, item.senderId, item.text, history, openaiKey, String(automation.id), item.messageId, responseText));
@@ -1986,7 +2002,10 @@ Instagram DM style rules:
         typingContextSource,
         totalMs: Math.round(performance.now() - totalStart),
       });
-    } catch (err) {
+    } catch (err:any) {
+      if(err?.deliveryRejected && unresolvedAiKey) {
+        await finishDeliveryQuota(admin,workspaceId,unresolvedAiKey,false);
+      }
       const sendMs = Math.round(performance.now() - sendStart);
       const sendError = err instanceof Error ? err.message : String(err);
 
