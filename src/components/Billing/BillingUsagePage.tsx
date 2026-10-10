@@ -8,10 +8,10 @@ import { useWorkspaceUsage } from '../../hooks/useWorkspaceUsage';
 
 const comparisonRows = [
   { label: 'Monthly price', value: (p: PlanConfig) => p.price },
-  { label: 'Standard DM/comment/story replies / month', value: (p: typeof PLAN_CATALOG[number]) => p.messages.toLocaleString() },
-  { label: 'AI replies / month', value: (p: typeof PLAN_CATALOG[number]) => p.ai.toLocaleString() },
-  { label: 'Active automations', value: (p: typeof PLAN_CATALOG[number]) => p.automations === null ? 'Unlimited' : String(p.automations) },
-  { label: 'Instagram accounts', value: (p: typeof PLAN_CATALOG[number]) => String(p.accounts) },
+  { label: 'Standard DM/comment/story replies / month', value: (p: PlanConfig) => p.messages.toLocaleString() },
+  { label: 'AI replies / month', value: (p: PlanConfig) => p.ai.toLocaleString() },
+  { label: 'Active automations', value: (p: PlanConfig) => p.automations === null ? 'Unlimited' : String(p.automations) },
+  { label: 'Instagram accounts', value: (p: PlanConfig) => String(p.accounts) },
 ];
 
 
