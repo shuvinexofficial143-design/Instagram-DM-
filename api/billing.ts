@@ -32,6 +32,13 @@ export default async function handler(req: any, res: any) {
     const action = String(req.query?.action || 'config');
     if (action === 'usage') return usageHandler(req, res);
     if (action === 'config' && req.method === 'GET') return res.status(200).json({ ok: true, ...billingConfig() });
+    // Public, read-only catalog. Checkout always re-reads authoritative prices
+    // from the database, never amounts submitted by a browser.
+    if (action === 'plans' && req.method === 'GET') {
+      const plans = await billingDb('autoreply_plans?select=id,name,price_inr,total_messages,ai_replies,instagram_accounts,automations_limit,billing_days,is_active,sort_order&is_active=eq.true&order=sort_order.asc');
+      res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=30');
+      return res.status(200).json({ ok: true, plans });
+    }
     if (action === 'webhook') {
       if (req.method !== 'POST') return res.status(405).json({ ok: false });
       const raw = await readBillingBody(req);
