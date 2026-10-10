@@ -177,6 +177,7 @@ export function PaymentMethods({
   method,
   eligible,
   changeMethod,
+  lastAttempt,
 }: {
   prepare: () => Promise<PaymentSession | null>;
   check: () => Promise<void>;
@@ -188,6 +189,7 @@ export function PaymentMethods({
   method: PaymentMethod;
   eligible: EligibleMethod[];
   changeMethod: () => void;
+  lastAttempt?: string;
 }) {
   const banks = availableBanks(eligible);
   const [bank, setBank] = useState(banks[0]?.[0] || ""),
@@ -559,6 +561,16 @@ export function PaymentMethods({
                 </div>
               )}
             </>
+          )}
+          {["FAILED", "USER_DROPPED", "CANCELLED"].includes(
+            lastAttempt || "",
+          ) && (
+            <div className="ar-alert" role="status">
+              {lastAttempt === "FAILED"
+                ? "The last payment attempt failed. No successful payment has been confirmed."
+                : "The last payment attempt was cancelled."}{" "}
+              Choose another method or check this order before retrying.
+            </div>
           )}
           {error && (
             <div className="ar-alert" role="alert">

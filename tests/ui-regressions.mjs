@@ -206,6 +206,9 @@ try {
   for(const label of ['UPI QR','Net banking','Continue']) assert.ok(html.includes(label),label);
   assert.ok(!html.includes('Debit / credit card'),'disabled merchant methods must be hidden');
   assert.ok(!html.includes('iframe'),'method selection never mounts a QR or payment field');checks++;
+  html=renderToStaticMarkup(React.createElement(ui.PaymentMethods,{method:'qr',eligible:[{type:'upi',banks:[]}],existingSession:{paymentSessionId:'test-only',mode:'sandbox',orderId:'test-only',paymentExpiresAt:new Date(Date.now()+45000).toISOString()},prepare:async()=>null,check:async()=>{},restart:async()=>{},changeMethod:()=>{},amount:'₹599',merchant:'Auto Replies',lastAttempt:'FAILED',returnUrl:'https://example.test/billing/checkout'}));
+  assert.ok(html.includes('The last payment attempt failed.'));
+  assert.ok(html.includes('Change payment method'));assert.ok(!html.includes('Your plan is active'));checks++;
   const checkoutSource=await readFile(path.join(root,'src/components/Billing/CheckoutPage.tsx'),'utf8');
   const methodsSource=await readFile(path.join(root,'src/components/Billing/PaymentMethods.tsx'),'utf8');
   assert.ok(!checkoutSource.includes('mountCashfreeCheckout'),'hosted checkout banner is removed');

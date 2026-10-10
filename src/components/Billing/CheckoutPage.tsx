@@ -157,13 +157,7 @@ export const CheckoutPage: React.FC = () => {
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   useEffect(() => {
-    if (
-      !order ||
-      active ||
-      test ||
-      order.activationStatus === "review"
-    )
-      return;
+    if (!order || active || test || order.activationStatus === "review") return;
     let live = true,
       timer: number;
     const poll = async () => {
@@ -639,6 +633,7 @@ export const CheckoutPage: React.FC = () => {
             }
             amount={amount}
             merchant={cfg?.business?.legalName || "Auto Replies"}
+            lastAttempt={order?.lastAttempt}
           />
         ) : (
           <section className="ar-checkout-card ar-result">
