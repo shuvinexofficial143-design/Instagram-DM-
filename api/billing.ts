@@ -2,7 +2,7 @@ import usageHandler from '../src/server/usage.js';
 import { randomUUID } from 'node:crypto';
 import { authenticatedUser, cleanEnvironment } from '../src/server/supabaseConfig.js';
 import { enforceRateLimit } from './_auth.js';
-import { BillingError, billingConfig, billingDb, cashfreeRequest, closeUnpaidOrder, reconcileOrder, safeOrder, validatedCustomer, verifyCashfreeSignature } from '../src/server/cashfree.js';
+import { BillingError, billingConfig, billingDb, cashfreeRequest, closeUnpaidOrder, isClosing, reconcileOrder, safeOrder, validatedCustomer, verifyCashfreeSignature } from '../src/server/cashfree.js';
 
 // Cashfree signatures are over the ORIGINAL bytes, never parsed / re-serialized JSON.
 // Vercel's req.body is a lazy JSON-parsing getter; reading it first consumes the stream
@@ -105,7 +105,7 @@ export default async function handler(req: any, res: any) {
       const rows = await billingDb(`autoreply_billing_orders?order_id=eq.${encodeURIComponent(id)}&owner_user_id=eq.${user.id}&limit=1`);
       if (!rows?.[0]) throw new BillingError('Payment order not found.', 404);
       const order = await reconcileOrder(rows[0]);
-      return res.status(200).json({ ok: true, order: safeOrder(order), ...(order.status === 'pending' ? { paymentSessionId: order.payment_session_id, mode: order.environment } : {}) });
+      return res.status(200).json({ ok: true, order: safeOrder(order), ...(order.status === 'pending' && !isClosing(order.provider_status) ? { paymentSessionId: order.payment_session_id, mode: order.environment } : {}) });
     }
     const cfg = billingConfig();
     if (!cfg.configured) throw new BillingError('Payments are being set up. No money has been taken. Please try again later.');
@@ -117,7 +117,7 @@ export default async function handler(req: any, res: any) {
     if(current?.[0]) {
       let existing=await reconcileOrder(current[0]);
       if(existing.status==='paid') return res.status(200).json({ok:true,order:safeOrder(existing)});
-      if(['creating','pending'].includes(existing.status) && (existing.request_id!==body.requestId || existing.plan_id!==body.planId)) {
+      if(['creating','pending'].includes(existing.status) && (isClosing(existing.provider_status) || existing.request_id!==body.requestId || existing.plan_id!==body.planId)) {
         existing=await closeUnpaidOrder(existing);
         if(existing.status==='paid') return res.status(200).json({ok:true,order:safeOrder(existing)});
       }
@@ -140,7 +140,7 @@ export default async function handler(req: any, res: any) {
     if (order.status === 'expired') return res.status(200).json({ok:true,order:safeOrder(order)});
     if (order.payment_session_id) {
       const existing = await reconcileOrder(order);
-      return res.status(200).json({ok:true,order:safeOrder(existing),...(existing.status==='pending'?{paymentSessionId:existing.payment_session_id,mode:cfg.mode}:{})});
+      return res.status(200).json({ok:true,order:safeOrder(existing),...(existing.status==='pending' && !isClosing(existing.provider_status)?{paymentSessionId:existing.payment_session_id,mode:cfg.mode}:{})});
     }
     // Retrying the same durable reservation uses the SAME provider id and key, never creates a second chargeable order.
     const paymentExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
@@ -156,6 +156,6 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ ok: true, order: safeOrder({...order,status:'pending',payment_expires_at:provider.order_expiry_time||paymentExpiresAt}), paymentSessionId: provider.payment_session_id, mode: cfg.mode });
   } catch (error: any) {
     console.error('[BILLING_REQUEST_FAILED]', { type: error?.name || 'Error', status: error?.status || 503 });
-    return res.status(error instanceof BillingError ? error.status : 503).json({ ok: false, code: error instanceof BillingError ? error.code : 'BILLING_UNAVAILABLE', error: error instanceof BillingError ? error.message : 'Payment confirmation is temporarily unavailable. Check your existing order before paying again.' });
+    return res.status(error instanceof BillingError ? error.status : 503).json({ ok: false, ...(error instanceof BillingError && error.code === 'ORDER_CLOSING' && error.orderId ? {orderId:error.orderId} : {}), code: error instanceof BillingError ? error.code : 'BILLING_UNAVAILABLE', error: error instanceof BillingError ? error.message : 'Payment confirmation is temporarily unavailable. Check your existing order before paying again.' });
   }
 }

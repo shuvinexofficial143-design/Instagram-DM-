@@ -15,6 +15,7 @@ import { getPlanConfig } from "../../lib/planUsage";
 import { usePlanCatalog } from "../../hooks/usePlanCatalog";
 import {
   billingRequest,
+  BillingRequestError,
   BillingConfiguration,
   BillingOrder,
 } from "../../lib/billing";
@@ -56,6 +57,7 @@ export const CheckoutPage: React.FC = () => {
   const [initializing, setInitializing] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [closingId, setClosingId] = useState("");
   const [name, setName] = useState(user.name || ""),
     [email, setEmail] = useState(firebaseUser?.email || user.email || ""),
     [phone, setPhone] = useState(""),
@@ -93,6 +95,13 @@ export const CheckoutPage: React.FC = () => {
     setOrder(p.order);
     if (initial) setRequested(p.order.planId);
     if (p.order.status === "paid" || p.order.status === "expired") {
+      setSession(undefined);
+      setStage("result");
+    } else if (
+      ["TERMINATION_REQUESTED", "TERMINATION_REQ"].includes(
+        p.order.providerStatus,
+      )
+    ) {
       setSession(undefined);
       setStage("result");
     } else if (p.paymentSessionId) {
@@ -248,12 +257,69 @@ export const CheckoutPage: React.FC = () => {
         );
       }
     } catch (e: any) {
-      setError(e.message);
+      if (
+        e instanceof BillingRequestError &&
+        e.code === "ORDER_CLOSING" &&
+        e.orderId
+      ) {
+        setClosingId(e.orderId);
+      } else setError(e.message);
     } finally {
       lock.current = false;
       setBusy(false);
     }
   };
+  const startRef = useRef(start);
+  startRef.current = start;
+  const acceptRef = useRef(accept);
+  acceptRef.current = accept;
+  useEffect(() => {
+    if (!closingId) return;
+    let live = true,
+      timer: number;
+    const poll = async () => {
+      try {
+        const previous = await billingRequest("status", undefined, closingId);
+        if (!live) return;
+        if (previous.order.status === "paid") {
+          // A payment won the termination race. Confirm it; never charge twice.
+          setClosingId("");
+          setError("");
+          window.history.replaceState(
+            null,
+            "",
+            "/billing/checkout?order_id=" + encodeURIComponent(closingId),
+          );
+          acceptRef.current(previous);
+          return;
+        }
+        if (previous.order.status === "expired") {
+          // Keep the selected plan separate from the old order throughout the wait.
+          setClosingId("");
+          await startRef.current();
+          if (live) timer = window.setTimeout(() => void poll(), 4000);
+          return;
+        }
+        setError("");
+      } catch (e: any) {
+        if (live)
+          setError(
+            e.message ||
+              "Confirmation is delayed. We are still checking your previous payment.",
+          );
+      }
+      if (live)
+        timer = window.setTimeout(
+          () => void poll(),
+          document.hidden ? 15000 : 4000,
+        );
+    };
+    timer = window.setTimeout(() => void poll(), 4000);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [closingId]);
   const regenerate = async () => {
     if (lock.current || !order) return;
     lock.current = true;
@@ -396,6 +462,15 @@ export const CheckoutPage: React.FC = () => {
         {cfg?.mode === "sandbox" && (
           <div className="ar-notice">
             Sandbox checkout · Test payments do not activate a live plan.
+          </div>
+        )}
+        {closingId && (
+          <div className="ar-notice" role="status" aria-live="polite">
+            <Loader2 size={18} className="animate-spin" />
+            <span>
+              Finalizing your previous checkout. Your selected {plan.name} plan
+              will continue automatically. Please do not pay again.
+            </span>
           </div>
         )}
         {error && (
@@ -599,12 +674,12 @@ export const CheckoutPage: React.FC = () => {
               eligible={eligible}
               method={method}
               onChange={setMethod}
-              busy={busy}
+              busy={busy || Boolean(closingId)}
               onContinue={() => void start()}
             />
             <button
               className="ar-text-link ar-centered"
-              disabled={busy}
+              disabled={busy || Boolean(closingId)}
               onClick={() => {
                 setError("");
                 setStage("confirm");
