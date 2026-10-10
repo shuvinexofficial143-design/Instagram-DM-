@@ -855,6 +855,14 @@ Deno.serve(async (req: Request) => {
           .select("workspace_id,owner_user_id").eq("ig_user_id",account.ig_user_id).maybeSingle();
         if (lookupError) throw lookupError;
         if (existing && existing.owner_user_id !== ownerId) return reply(409,{ok:false,error:"This Instagram account is already connected to another login."});
+        if (!existing) {
+          const {data:limits,error:limitsError}=await admin.rpc("autoreply_billing_entitlement",{p_workspace_id:ownerId});
+          if(limitsError || !limits) return reply(503,{ok:false,error:"Unable to verify account allowance"});
+          const {count,error:countError}=await admin.from("autoreply_instagram_memberships")
+            .select("workspace_id",{count:"exact",head:true}).eq("owner_user_id",ownerId);
+          if(countError) return reply(503,{ok:false,error:"Unable to verify connected accounts"});
+          if((count||0)>=Number(limits.accounts||0)) return reply(403,{ok:false,code:"INSTAGRAM_ACCOUNT_LIMIT_REACHED",error:"Your plan's Instagram account limit is reached. Upgrade to connect more accounts."});
+        }
         if (existing) workspaceId = existing.workspace_id;
         else {
           const {data:occupied,error} = await admin.from("autoreply_instagram_memberships").select("workspace_id,owner_user_id").eq("workspace_id",workspaceId).maybeSingle();
