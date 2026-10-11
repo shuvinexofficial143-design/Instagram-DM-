@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
 import {Readable} from 'node:stream';
 import handler from '../api/billing.ts';
-import {billingConfig,validatedCustomer,validateProviderPayment,verifyCashfreeSignature,reconcileOrder,checkoutPayable} from '../src/server/cashfree.ts';
+import {billingConfig,validatedCustomer,validateProviderPayment,verifyCashfreeSignature,reconcileOrder,checkoutPayable,cashfreeOrderExpiry} from '../src/server/cashfree.ts';
 const originalFetch=globalThis.fetch;
 const originalEnv={...process.env};
 let uid='00000000-0000-4000-8000-000000000001';
@@ -104,17 +104,17 @@ test('provider timeout never creates a second order in one request',async()=>{
  setup();let calls=0;globalThis.fetch=async(url:any)=>{if(String(url).includes('/auth/'))return Response.json({id:uid});if(String(url).includes('status=in.(creating,pending)'))return Response.json([]);if(String(url).includes('/rest/'))return Response.json(order);calls++;throw new Error('timeout');};const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,503);assert.equal(calls,1);
 });
 
-test('checkout expires at the provider after five minutes and returns the same deadline to the browser',async()=>{
+test('gateway order expiry exceeds its 15-minute minimum while the browser keeps five minutes',async()=>{
  setup();let expiry='';const started=Date.now();
  globalThis.fetch=async(url:any,init:any)=>{
   const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});
   if(path.includes('status=in.(creating,pending)'))return Response.json([]);
   if(path.includes('rpc/autoreply_reserve'))return Response.json(order);
-  if(path.includes('cashfree.com')){const body=JSON.parse(init.body);expiry=body.order_expiry_time;assert.ok(Date.parse(expiry)>=started+299000&&Date.parse(expiry)<=Date.now()+300000);return Response.json({order_id:oid,payment_session_id:'session',order_expiry_time:expiry});}
-  return Response.json([order]);
+  if(path.includes('cashfree.com')){const body=JSON.parse(init.body);expiry=body.order_expiry_time;assert.ok(Date.parse(expiry)>=started+1499000&&Date.parse(expiry)<=Date.now()+1500000);return Response.json({order_id:oid,payment_session_id:'session',order_expiry_time:expiry});}
+  return Response.json([{...order,provider_expires_at:expiry}]);
  };
  const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
- assert.equal(r.code,200);assert.equal(r.body.order.paymentExpiresAt,expiry);assert.equal(r.body.order.status,'pending');
+ assert.equal(r.code,200);assert.equal(r.body.order.paymentExpiresAt,order.payment_expires_at);assert.ok(Date.parse(expiry)-Date.parse(r.body.order.paymentExpiresAt)>=1199000);assert.equal(r.body.order.status,'pending');
 });
 test('resuming an existing provider session never creates another order or extends its deadline',async()=>{
  setup();const expiry=new Date(Date.now()+45000).toISOString();let creates=0;
@@ -187,7 +187,7 @@ test('provider timeout retry retains immutable order, contact, deadline and idem
  setup();const snapshot={...order,status:'creating',customer_details:{name:'Original Person',email:'original@example.test',phone:'9876543210'}};const bodies:string[]=[];let creates=0;
  globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.includes('rpc/autoreply_reserve'))return Response.json(snapshot);if(path.includes('cashfree.com')){assert.equal(init.headers['x-idempotency-key'],rid);bodies.push(init.body);if(++creates===1)throw Error('timeout');return Response.json({order_id:oid,payment_session_id:'same-session'});}return Response.json([{...snapshot,status:'pending'}]);};
  const first=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),first);assert.equal(first.code,503);assert.equal(first.body.order.orderId,oid);
- const retry=res();await handler(req('create','POST',{planId:'pro',name:'Changed Person',email:'changed@example.test',phone:'9876543211',requestId:rid}),retry);assert.equal(retry.code,200);assert.equal(bodies[0],bodies[1]);assert.equal(JSON.parse(bodies[0]).order_expiry_time,snapshot.payment_expires_at);
+ const retry=res();await handler(req('create','POST',{planId:'pro',name:'Changed Person',email:'changed@example.test',phone:'9876543211',requestId:rid}),retry);assert.equal(retry.code,200);assert.equal(bodies[0],bodies[1]);assert.equal(JSON.parse(bodies[0]).order_expiry_time,cashfreeOrderExpiry(snapshot.payment_expires_at));
 });
 test('a session created concurrently with plan replacement is not returned as payable',async()=>{
  setup();globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.includes('rpc/autoreply_reserve'))return Response.json({...order,checkout_state:'active'});if(path.includes('cashfree.com'))return Response.json({order_id:oid,payment_session_id:'obsolete-session'});return Response.json([{...order,checkout_state:'superseded'}]);};const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,200);assert.equal(r.body.order.checkoutState,'superseded');assert.equal(r.body.paymentSessionId,undefined);
@@ -212,4 +212,25 @@ test('choosing a plan changes only the authenticated latest selection without a 
 });
 test('an older selection retry gives a clear error instead of silently replacing the latest plan',async()=>{
  setup();globalThis.fetch=async(url:any)=>String(url).includes('/auth/')?Response.json({id:uid}):Response.json({current:false,plan_id:'starter'});const r=res();await handler(req('choose','POST',{planId:'starter',requestId:rid}),r);assert.equal(r.code,409);assert.ok(r.body.error.includes('newer checkout'));
+});
+
+for(const planId of ['starter','pro','business'])test(planId+' canonicalizes real Postgres expiry without resetting five minutes',async()=>{
+ setup();const original=new Date(Date.now()+300000).toISOString().replace(/\.(\d{3})Z$/,'.$1000+00:00');const stored={...order,status:'creating',plan_id:planId,payment_expires_at:original};let sent='';
+ globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.includes('rpc/autoreply_reserve'))return Response.json(stored);if(path.includes('cashfree.com')){sent=JSON.parse(init.body).order_expiry_time;assert.match(sent,/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);assert.ok(Date.parse(sent)-Date.parse(original)>1199000&&Date.parse(sent)-Date.parse(original)<=1200000);return Response.json({order_id:oid,payment_session_id:'session',order_expiry_time:sent});}return Response.json([{...stored,status:'pending',provider_expires_at:sent}]);};
+ const r=res();await handler(req('create','POST',{planId,name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,200);assert.equal(Date.parse(r.body.order.paymentExpiresAt),Date.parse(original));assert.ok(Date.parse(sent)-Date.now()>15*60000);
+});
+test('explicit Create Order expiry rejection is not a payment awaiting confirmation',async()=>{
+ setup();const stored={...order,status:'creating',checkout_state:'active'};
+ globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.includes('rpc/autoreply_reserve'))return Response.json(stored);if(path.includes('cashfree.com'))return Response.json({code:'order_expiry_time_invalid',type:'invalid_request_error',message:'private-provider-details'},{status:400});assert.match(path,/status=eq.creating&payment_session_id=is.null/);const patch=JSON.parse(init.body);assert.equal(patch.provider_status,'CREATE_REJECTED');return Response.json([{...stored,...patch}]);};
+ const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,503);assert.equal(r.body.order.creationStatus,'rejected');assert.equal(r.body.paymentSessionId,undefined);assert.ok(!JSON.stringify(r.body).includes('private-provider-details'));
+});
+test('provider 404 on a creating order offers setup recovery without pretending payment is delayed',async()=>{
+ setup();const stored={...order,status:'creating',checkout_state:'active'};let lookedUp=false;
+ globalThis.fetch=async(url:any,init:any)=>{if(String(url).includes('cashfree.com')){lookedUp=true;return Response.json({code:'order_not_found'},{status:404});}assert.ok(lookedUp);return Response.json([{...stored,...JSON.parse(init.body)}]);};
+ const r=await reconcileOrder(stored);assert.equal(r.provider_status,'NOT_CREATED');assert.equal(r.status,'creating');assert.equal(checkoutPayable(r),false);
+});
+test('a concurrently recovered session wins the creation-failure diagnostics race',async()=>{
+ setup();const stored={...order,status:'creating',checkout_state:'active'},paid={...stored,status:'paid',activation_status:'active'};
+ globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});if(path.includes('rpc/autoreply_reserve'))return Response.json(stored);if(path.includes('cashfree.com'))return Response.json({code:'order_expiry_time_invalid'},{status:400});if(init.method==='PATCH')return Response.json([]);return Response.json([paid]);};
+ const r=res();await handler(req('create','POST',{planId:'pro',name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);assert.equal(r.code,200);assert.equal(r.body.order.status,'paid');assert.equal(r.body.order.creationStatus,undefined);assert.equal(r.body.paymentSessionId,undefined);
 });

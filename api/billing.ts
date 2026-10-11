@@ -10,6 +10,7 @@ import {
   billingConfig,
   billingDb,
   cashfreeRequest,
+  cashfreeOrderExpiry,
   checkoutPayable,
   reconcileOrder,
   safeOrder,
@@ -324,7 +325,7 @@ export default async function handler(req: any, res: any) {
       });
     }
     // Retrying the same durable reservation uses the SAME provider id and key, never creates a second chargeable order.
-    const paymentExpiresAt = order.payment_expires_at;
+    const paymentExpiresAt = cashfreeOrderExpiry(order.payment_expires_at);
     if (!paymentExpiresAt)
       throw new BillingError("Payment expiry could not be verified.", 503);
     const contact = order.customer_details || customer;
@@ -387,10 +388,29 @@ export default async function handler(req: any, res: any) {
         : {}),
     });
   } catch (error: any) {
+    if (req.query?.action === "create" && reserved && error instanceof BillingError &&
+        [400, 422].includes(error.providerStatus || 0)) {
+      // A rejected Create Order is not a payment awaiting confirmation. Keep
+      // its record, and do not overwrite a concurrently recovered/paid order.
+      try {
+        const rows = await billingDb(
+          `autoreply_billing_orders?order_id=eq.${encodeURIComponent(reserved.order_id)}&status=eq.creating&payment_session_id=is.null`,
+          "PATCH", { provider_status: "CREATE_REJECTED", status_checked_at: new Date().toISOString() },
+        );
+        reserved = rows?.[0] || (await billingDb(
+          `autoreply_billing_orders?order_id=eq.${encodeURIComponent(reserved.order_id)}&limit=1`,
+        ))?.[0] || reserved;
+      } catch {
+        // Return the explicit rejection even if diagnostics cannot be saved.
+        reserved = { ...reserved, provider_status: "CREATE_REJECTED" };
+      }
+    }
     console.error("[BILLING_REQUEST_FAILED]", {
       type: error?.name || "Error",
       status: error?.status || 503,
     });
+    if (reserved?.status === "paid")
+      return res.status(200).json({ ok: true, order: safeOrder(reserved) });
     return res.status(error instanceof BillingError ? error.status : 503).json({
       ok: false,
       ...(reserved ? { order: safeOrder(reserved) } : {}),

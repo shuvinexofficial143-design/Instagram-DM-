@@ -101,6 +101,7 @@ export const CheckoutPage: React.FC = () => {
     : quote !== undefined
       ? fmt(quote)
       : plan.price;
+  const setupFailed = !paid && ["rejected", "not_created"].includes(order?.creationStatus || "");
   const blocked = Boolean(
     cfg?.appUrl && new URL(cfg.appUrl).origin !== window.location.origin,
   );
@@ -119,6 +120,7 @@ export const CheckoutPage: React.FC = () => {
     if (
       p.order.status === "paid" ||
       p.order.status === "expired" ||
+      ["rejected", "not_created"].includes(p.order.creationStatus) ||
       (p.order.checkoutState && p.order.checkoutState !== "active") ||
       (p.order.paymentExpiresAt &&
         Date.parse(p.order.paymentExpiresAt) <= Date.now())
@@ -291,6 +293,8 @@ export const CheckoutPage: React.FC = () => {
       if (e instanceof BillingRequestError && e.order) {
         setOrder(e.order);
         setStage("result");
+        window.history.replaceState(null, "", "/billing/checkout?order_id=" +
+          encodeURIComponent(e.order.orderId) + "&method=" + method);
       }
       setError(e.message);
     } finally {
@@ -353,7 +357,12 @@ export const CheckoutPage: React.FC = () => {
       if (next.order.status === "pending" && next.paymentSessionId)
         setStage("pay");
     } catch (e: any) {
-      await refreshRef.current();
+      if (e instanceof BillingRequestError && e.order) {
+        setOrder(e.order);
+        setStage("result");
+        window.history.replaceState(null, "", "/billing/checkout?order_id=" +
+          encodeURIComponent(e.order.orderId) + "&method=" + method);
+      } else await refreshRef.current();
       setError(e.message);
     } finally {
       lock.current = false;
@@ -374,7 +383,7 @@ export const CheckoutPage: React.FC = () => {
       : `${plan.automations} automations`,
   ];
   const step =
-    stage === "plan" ? 0 : stage === "confirm" ? 1 : stage === "result" ? 3 : 2;
+    stage === "plan" ? 0 : stage === "confirm" ? 1 : stage === "result" && !setupFailed ? 3 : 2;
   const heading =
     stage === "plan"
       ? "A little more possibility."
@@ -394,6 +403,8 @@ export const CheckoutPage: React.FC = () => {
                   ? "Payment received · review needed"
                   : paid
                     ? "Activating your plan…"
+                    : setupFailed
+                      ? "Payment setup could not complete"
                     : closed
                       ? "This checkout is closed"
                       : expired
@@ -712,7 +723,7 @@ export const CheckoutPage: React.FC = () => {
               </>
             ) : (
               <div className="ar-result-icon">
-                {((paid && !review) || (!paid && !expired && !closed)) &&
+                {((paid && !review) || (!paid && !expired && !closed && !setupFailed)) &&
                 waitingSeconds < 20 ? (
                   <Loader2 size={32} className="animate-spin" />
                 ) : (
@@ -729,6 +740,8 @@ export const CheckoutPage: React.FC = () => {
                     ? order.activationStatus === "review"
                       ? "Payment received — activation needs review"
                       : "Activating your plan…"
+                    : setupFailed
+                      ? "No payment session was created"
                     : closed
                       ? "Choose a fresh checkout"
                       : expired
@@ -807,6 +820,22 @@ export const CheckoutPage: React.FC = () => {
                     Returning to billing in about 4 seconds…
                   </p>
                 )}
+              </>
+            ) : setupFailed ? (
+              <>
+                <p className="ar-note">
+                  The QR or bank checkout did not open. We will check this order
+                  with Cashfree before starting a fresh payment session for {plan.name}.
+                  If your bank has debited you, use Check payment status first.
+                </p>
+                <button className="ar-primary ar-full" disabled={busy}
+                  onClick={() => void regenerate()}>
+                  {busy ? "Checking previous checkout…" : "Retry payment setup"}
+                </button>
+                <button className="ar-text-link ar-centered" onClick={() => void refresh()}>
+                  Check payment status
+                </button>
+                <a className="ar-text-link ar-centered" href="/billing">Choose another plan</a>
               </>
             ) : expired || closed ? (
               <>

@@ -11,6 +11,8 @@ export function paymentLabel(o: BillingOrder) {
           : "Paid · activating";
   if (o.checkoutState === "superseded") return "Closed · plan changed";
   if (o.checkoutState === "closed") return "Checkout closed";
+  if (["rejected", "not_created"].includes(o.creationStatus || ""))
+    return "Checkout not started";
   if (
     o.status === "expired" ||
     o.checkoutState === "expired" ||

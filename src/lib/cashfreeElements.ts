@@ -135,7 +135,9 @@ export async function payWithElement(
   });
   if (result?.error)
     throw new Error(
-      "Your payment could not be completed. Check payment status before trying again.",
+      result.error.code === "payment_method_unsupported"
+        ? "This bank or payment method is not enabled. Choose another available bank or payment method."
+        : "Your payment could not be completed. Check payment status before trying again.",
     );
   // A SDK callback is never an entitlement; the caller verifies on the server.
   return result;

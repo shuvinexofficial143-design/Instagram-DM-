@@ -16,6 +16,7 @@ export type BillingOrder = {
   paymentId?: string;
   lastAttempt?: string;
   providerStatus?: string;
+  creationStatus?: "checking" | "rejected" | "not_created";
   checkoutState?: string;
   statusCheckedAt?: string;
 };

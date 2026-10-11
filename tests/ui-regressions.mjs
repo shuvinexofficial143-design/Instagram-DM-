@@ -43,6 +43,7 @@ try {
       export {CheckoutPage} from './src/components/Billing/CheckoutPage';
       export {paymentLabel} from './src/components/Billing/BillingHistory';
       export {PaymentMethods,PaymentMethodPicker} from './src/components/Billing/PaymentMethods';
+      export {payWithElement} from './src/lib/cashfreeElements';
       export {Header} from './src/components/Header';
       export {HomePage} from './src/components/Home/HomePage';
       export {AnalyticsPage} from './src/components/Analytics/AnalyticsPage';
@@ -71,6 +72,8 @@ try {
   for (const [record,label] of [
     [{status:'pending',checkoutState:'superseded'},'Closed · plan changed'],
     [{status:'pending',checkoutState:'closed'},'Checkout closed'],
+    [{status:'creating',checkoutState:'active',creationStatus:'rejected'},'Checkout not started'],
+    [{status:'creating',checkoutState:'active',creationStatus:'not_created'},'Checkout not started'],
     [{status:'pending',checkoutState:'active',paymentExpiresAt:new Date(Date.now()-1000).toISOString()},'Payment window expired'],
     [{status:'paid',activationStatus:'review'},'Paid · needs review'],
     [{status:'paid',activationStatus:'active'},'Paid · active'],
@@ -235,6 +238,9 @@ try {
   assert.ok(html.includes('automatically detect your payment'));
   assert.ok(html.includes('No manual redirect is needed'));
   assert.ok(html.includes('role="note"'));checks++;
+  html=renderToStaticMarkup(React.createElement(ui.PaymentMethods,{method:'netbanking',eligible:[{type:'netbanking',banks:[{name:'Union Bank of India',nick:'union_bank_of_india'},{name:'Central Bank of India',nick:'central_bank_of_india'}]}],existingSession:{paymentSessionId:'test-only',mode:'sandbox',orderId:'test-only',paymentExpiresAt:new Date(Date.now()+45000).toISOString()},prepare:async()=>null,check:async()=>{},restart:async()=>{},changeMethod:()=>{},amount:'₹599',merchant:'Auto Replies',returnUrl:'https://example.test/billing/checkout'}));
+  assert.ok(html.includes('Union Bank of India'));assert.ok(html.includes('Central Bank of India'));assert.ok(!html.includes('HDFC Bank'),'ineligible banks are not offered');checks++;
+  await assert.rejects(()=>ui.payWithElement({pay:async()=>({error:{code:'payment_method_unsupported',message:'private-provider-message'}})},{isComplete:()=>true},{paymentSessionId:'test-only',paymentExpiresAt:new Date(Date.now()+45000).toISOString()},'https://example.test/billing'),/Choose another available bank or payment method/);checks++;
   const checkoutSource=await readFile(path.join(root,'src/components/Billing/CheckoutPage.tsx'),'utf8');
   const methodsSource=await readFile(path.join(root,'src/components/Billing/PaymentMethods.tsx'),'utf8');
   assert.ok(!checkoutSource.includes('mountCashfreeCheckout'),'hosted checkout banner is removed');

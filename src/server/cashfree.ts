@@ -101,6 +101,16 @@ export function validatedCustomer(body: any) {
     );
   return { name, email, phone };
 }
+export function cashfreeOrderExpiry(value: string) {
+  const deadline = Date.parse(value);
+  if (!Number.isFinite(deadline) || deadline <= Date.now())
+    throw new BillingError("This payment window has ended. Start a new checkout.", 409, "CHECKOUT_EXPIRED");
+  // Live Cashfree rejects expiry <=15 minutes. Keep the saved five-minute UI
+  // window separate; its immutable timestamp determines a 25-minute gateway
+  // order window, including enough margin for a retry just before UI expiry.
+  // The provider order remains reconcilable for delayed bank confirmations.
+  return new Date(deadline + 20 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
 export async function billingDb(path: string, method = "GET", body?: any) {
   const secret = cleanEnvironment(process.env.SUPABASE_SERVICE_ROLE_KEY);
   if (!secret) throw new BillingError("Payment storage is not configured.");
@@ -167,7 +177,9 @@ export async function cashfreeRequest(
       type,
     });
     const message =
-      response.status === 404
+      code === "order_expiry_time_invalid"
+        ? "Payment setup could not complete. Please restart this checkout; no new payment has been confirmed."
+        : response.status === 404
         ? "Payment order is not available yet. Check again shortly."
         : response.status === 401 || response.status === 403
           ? "Cashfree merchant authentication failed. Contact support; do not retry payment."
@@ -237,8 +249,17 @@ export async function reconcileOrder(order: any) {
       order.status === "creating" &&
       error instanceof BillingError &&
       error.code === "CASHFREE_ORDER_NOT_FOUND"
-    )
-      return order;
+    ) {
+      const patch = { provider_status: "NOT_CREATED", status_checked_at: new Date().toISOString() };
+      const rows = await billingDb(
+        `autoreply_billing_orders?order_id=eq.${encodeURIComponent(order.order_id)}&status=eq.creating&payment_session_id=is.null`,
+        "PATCH", patch,
+      );
+      // A concurrent create/webhook may already have recovered this order.
+      return rows?.[0] || (await billingDb(
+        `autoreply_billing_orders?order_id=eq.${encodeURIComponent(order.order_id)}&limit=1`,
+      ))?.[0] || order;
+    }
     throw error;
   }
   // Validate the authoritative order before consulting optional attempt history.
@@ -386,6 +407,10 @@ export function safeOrder(order: any) {
       ? new Date(paymentDeadline(order)).toISOString()
       : undefined,
     providerStatus: order.provider_status,
+    creationStatus: order.status === "creating"
+      ? order.provider_status === "CREATE_REJECTED" ? "rejected"
+        : order.provider_status === "NOT_CREATED" ? "not_created" : "checking"
+      : undefined,
     checkoutState:
       order.status !== "paid" &&
       order.checkout_state === "active" &&
