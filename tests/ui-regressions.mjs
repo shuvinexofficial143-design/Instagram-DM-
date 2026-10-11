@@ -228,9 +228,12 @@ try {
   assert.ok(!html.includes('Almost there. Make it official.'));
   checks++;
   html=renderToStaticMarkup(React.createElement(ui.PaymentMethodPicker,{eligible:[{type:'upi',banks:[]},{type:'netbanking',banks:[{name:'HDFC Bank',nick:'hdfc_bank'}]}],method:'qr',onChange:()=>{},onContinue:()=>{},busy:false}));
-  for(const label of ['UPI QR','Net banking','Continue']) assert.ok(html.includes(label),label);
+  for(const label of ['UPI','Net banking','Continue','ar-upi-wordmark','ar-method-continue']) assert.ok(html.includes(label),label);
   assert.ok(!html.includes('Debit / credit card'),'disabled merchant methods must be hidden');
   assert.ok(!html.includes('iframe'),'method selection never mounts a QR or payment field');checks++;
+  html=renderToStaticMarkup(React.createElement(ui.PaymentMethodPicker,{eligible:[{type:'upi',banks:[]},{type:'card',banks:[]},{type:'netbanking',banks:[{name:'HDFC Bank',nick:'hdfc_bank'}]}],method:'qr',onChange:()=>{},onContinue:()=>{},busy:false}));
+  for(const label of ['UPI','Net banking','Debit / credit card','VISA','RuPay','ar-card-brands-desktop']) assert.ok(html.includes(label),label);
+  checks++;
   html=renderToStaticMarkup(React.createElement(ui.PaymentMethods,{method:'qr',eligible:[{type:'upi',banks:[]}],existingSession:{paymentSessionId:'test-only',mode:'sandbox',orderId:'test-only',paymentExpiresAt:new Date(Date.now()+45000).toISOString()},prepare:async()=>null,check:async()=>{},restart:async()=>{},changeMethod:()=>{},amount:'₹599',merchant:'Auto Replies',lastAttempt:'FAILED',returnUrl:'https://example.test/billing/checkout'}));
   assert.ok(html.includes('The last payment attempt failed.'));
   assert.ok(html.includes('Change payment method'));assert.ok(!html.includes('Your plan is active'));checks++;
