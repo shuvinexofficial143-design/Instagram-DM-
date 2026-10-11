@@ -915,6 +915,7 @@
   font-weight:900; font-style:italic; font-size:17px; letter-spacing:-.65px; color:#1c2460;
 }
 .ar-rupay-mark span { font-style:normal; font-size:13px; color:#1c955a; margin-left:2px; }
+.ar-checkout-method-step .ar-method > .ar-radio { grid-column:4; }
 .ar-checkout-method-step .ar-radio {
   width:30px; height:30px; margin-left:0; border:2px solid #ccd0d8;
   border-radius:50%; color:#fff;
@@ -973,6 +974,7 @@
   .ar-mastercard-mark i + i { margin-left:-5px; }
   .ar-rupay-mark { font-size:12px; }
   .ar-rupay-mark span { font-size:10px; }
+  .ar-checkout-method-step .ar-method > .ar-radio { grid-column:3; }
   .ar-checkout-method-step .ar-radio { width:23px; height:23px; }
   .ar-checkout-method-step .ar-radio svg { width:14px; height:14px; }
   .ar-checkout-method-step .ar-method-continue { min-height:55px; font-size:17px !important; }
