@@ -101,7 +101,8 @@ export const CheckoutPage: React.FC = () => {
     : quote !== undefined
       ? fmt(quote)
       : plan.price;
-  const setupFailed = !paid && ["rejected", "not_created"].includes(order?.creationStatus || "");
+  const setupFailed = !paid && !closed &&
+    ["rejected", "not_created"].includes(order?.creationStatus || "");
   const blocked = Boolean(
     cfg?.appUrl && new URL(cfg.appUrl).origin !== window.location.origin,
   );
