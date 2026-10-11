@@ -414,7 +414,7 @@ export const CheckoutPage: React.FC = () => {
                           ? "Payment status needs checking"
                           : "Checking your payment…";
   return (
-    <div className="ar-checkout">
+    <div className={"ar-checkout" + (stage === "methods" ? " ar-checkout-method-step" : "")}>
       <header className="ar-checkout-nav">
         <a className="ar-back" href="/billing">
           <ArrowLeft size={16} />

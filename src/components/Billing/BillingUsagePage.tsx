@@ -47,24 +47,21 @@ export const BillingUsagePage:React.FC=()=>{
       </header>
 
       <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white text-slate-950 shadow-[0_8px_30px_rgba(15,23,42,.04)]">
-        <div className="grid gap-4 p-5 sm:p-6 lg:grid-cols-[1fr_auto] lg:items-center">
-          <div>
-            <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-violet-700">{plan.name} plan</span><span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><ShieldCheck className="h-3.5 w-3.5"/>Current subscription · Active</span></div>
-            <div className="mt-3 flex items-end gap-2"><span className="text-[38px] font-black tracking-tight text-slate-950 sm:text-[48px]">{plan.price}</span><span className="pb-2 text-xs font-semibold text-slate-500">/ month</span></div>
-            {usage.expiresAt&&<p className="mt-2 text-xs text-slate-500">Active until {new Date(usage.expiresAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>}
-            <button type="button" onClick={()=>setShowTopUps(value=>!value)} aria-expanded={showTopUps} aria-controls="reply-top-ups" className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-50"><Plus className="h-4 w-4"/>Add Money</button>
-            <p className="mt-3 text-xs text-slate-500">Need more replies? Explore extra capacity for your current plan.</p>
-            <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">Each calendar month, standard DM/comment/story replies and AI replies have independent limits.</p>
+        <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-6 sm:py-5">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-violet-700">{plan.name} plan</span>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><ShieldCheck className="h-3.5 w-3.5"/>Current subscription · Active</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-baseline gap-2">
+              <span className="text-[34px] font-black tracking-tight text-slate-950 sm:text-[40px]">{plan.price}</span>
+              <span className="text-xs font-semibold text-slate-500">/ month</span>
+              {usage.expiresAt&&<span className="text-xs text-slate-500">· Active until {new Date(usage.expiresAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span>}
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-xs backdrop-blur-md sm:gap-x-9">
-            <div><p className="text-slate-500">Standard replies</p><p className="mt-1 text-lg font-black text-slate-950">{usage.baseMessageLimit.toLocaleString()}</p><FreeBonus amount={usage.freeBonusMessages}/></div>
-            <div><p className="text-slate-500">AI replies</p><p className="mt-1 text-lg font-black text-slate-950">{usage.baseAiLimit.toLocaleString()}</p><FreeBonus amount={usage.freeBonusAi}/></div>
-            <div><p className="text-slate-500">Automations</p><p className="mt-1 text-lg font-black text-slate-950">{plan.automations===null?'Unlimited':plan.automations}</p></div>
-            <div><p className="text-slate-500">IG accounts</p><p className="mt-1 text-lg font-black text-slate-950">{plan.accounts}</p></div>
-          </div>
+          <button type="button" onClick={()=>setShowTopUps(value=>!value)} aria-expanded={showTopUps} aria-controls="reply-top-ups" className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800 transition hover:bg-slate-50"><Plus className="h-4 w-4"/>Add Money</button>
         </div>
       </section>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800"><span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4"/>Secure payments by Cashfree · Your plan is activated only after server verification.</span><span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1"><Check className="h-3.5 w-3.5"/>No automatic renewal</span></div>
       {showTopUps&&<section id="reply-top-ups" className="rounded-2xl border border-indigo-200 bg-white p-5 sm:p-6" aria-labelledby="top-up-heading">
         <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="top-up-heading" className="text-lg font-bold text-slate-950">Extra reply packs</h2><p className="mt-1 text-sm text-slate-600">Add more replies to your current subscription when your monthly allowance runs out.</p></div><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">Coming soon · payments unavailable</span></div>
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
