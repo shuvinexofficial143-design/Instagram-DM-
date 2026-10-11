@@ -4,13 +4,11 @@ import {
   Check,
   Clock3,
   CreditCard,
-  Landmark,
   Loader2,
   LockKeyhole,
   QrCode,
   RefreshCw,
   ShieldCheck,
-  Smartphone,
 } from "lucide-react";
 import {
   getCashfreeElements,
@@ -81,88 +79,89 @@ export function PaymentMethodPicker({
     /Android|iPhone|iPad/i.test(navigator.userAgent);
   const upi = eligible.some((m) => m.type === "upi");
   const choices = [
-    ...(upi
-      ? [
-          {
-            id: "qr" as const,
-            Icon: QrCode,
-            name: "UPI QR",
-            note: "Scan with any UPI app",
-          },
-          ...(mobile
-            ? [
-                {
-                  id: "app" as const,
-                  Icon: Smartphone,
-                  name: "UPI app",
-                  note: "Open your UPI app on this device",
-                },
-              ]
-            : []),
-        ]
-      : []),
+    ...(upi ? [{ id: "qr" as const, name: "UPI", note: "Scan with any UPI app" }] : []),
     ...(availableBanks(eligible).length
-      ? [
-          {
-            id: "netbanking" as const,
-            Icon: Landmark,
-            name: "Net banking",
-            note: "Continue securely to your bank",
-          },
-        ]
+      ? [{ id: "netbanking" as const, name: "Net banking", note: "Pay securely through your bank" }]
       : []),
-    ...(eligible.some((m) =>
-      ["card", "credit_card", "debit_card"].includes(m.type),
-    )
-      ? [
-          {
-            id: "card" as const,
-            Icon: CreditCard,
-            name: "Debit / credit card",
-            note: "Pay using secure card fields",
-          },
-        ]
+    ...(eligible.some((m) => ["card", "credit_card", "debit_card"].includes(m.type))
+      ? [{ id: "card" as const, name: "Debit / credit card", note: "Visa, Mastercard and RuPay" }]
       : []),
   ];
+  const marks = (variant: string) => (
+    <span className={"ar-card-brands " + variant} aria-hidden="true">
+      <span className="ar-visa-mark">VISA</span>
+      <span className="ar-mastercard-mark"><i /><i /></span>
+      <span className="ar-rupay-mark">RuPay<span>❯</span></span>
+    </span>
+  );
   return (
     <>
       <h2 className="ar-method-heading">Choose a payment method</h2>
       <div className="ar-methods" role="group" aria-label="Payment method">
-        {choices.map(({ id, Icon, name, note }) => (
-          <button
-            key={id}
-            className={"ar-method " + (method === id ? "selected" : "")}
-            disabled={busy}
-            onClick={() => onChange(id)}
-            aria-pressed={method === id}
-          >
-            <span className="ar-method-icon">
-              <Icon size={23} />
-            </span>
-            <span>
-              <strong>{name}</strong>
-              <small>{note}</small>
-            </span>
-            <span className="ar-radio">
-              {method === id && <Check size={12} />}
-            </span>
-          </button>
-        ))}
+        {choices.map(({ id, name, note }) => {
+          const selected = id === "qr"
+            ? method === "qr" || method === "app"
+            : method === id;
+          return (
+            <button
+              type="button"
+              key={id}
+              className={"ar-method " + (selected ? "selected" : "")}
+              disabled={busy}
+              onClick={() => onChange(id)}
+              aria-pressed={selected}
+            >
+              <span className={"ar-method-icon ar-method-icon-" + id} aria-hidden="true">
+                {id === "qr" ? (
+                  <span className="ar-upi-wordmark"><span>UPI</span><i className="ar-upi-green" /><i className="ar-upi-orange" /></span>
+                ) : id === "netbanking" ? (
+                  <span className="ar-bank-emoji">🏦</span>
+                ) : (
+                  <span className="ar-demo-card">
+                    <span className="ar-demo-chip" />
+                    <span className="ar-demo-card-lines">━━<br />━━</span>
+                    <span className="ar-demo-circles"><i /><i /></span>
+                  </span>
+                )}
+              </span>
+              <span className="ar-method-copy">
+                <strong>{name}</strong>
+                <small>{note}</small>
+                {id === "card" && marks("ar-card-brands-mobile")}
+              </span>
+              {id === "card" && marks("ar-card-brands-desktop")}
+              <span className="ar-radio" aria-hidden="true">
+                {selected && <Check size={19} strokeWidth={3} />}
+              </span>
+            </button>
+          );
+        })}
       </div>
       {!choices.length && (
         <div className="ar-alert">
-          No supported payment method is currently available. Please contact
-          support.
+          No supported payment method is currently available. Please contact support.
         </div>
       )}
       <button
-        className="ar-primary ar-full"
-        disabled={busy || !choices.some((c) => c.id === method)}
+        type="button"
+        className="ar-primary ar-full ar-method-continue"
+        disabled={busy || !(choices.some((c) => c.id === method) || (upi && mobile && method === "app"))}
         onClick={onContinue}
       >
         {busy ? "Preparing payment…" : "Continue"}
-        <ArrowRight size={17} />
+        <ArrowRight size={22} />
       </button>
+      {mobile && upi && (
+        <button
+          type="button"
+          disabled={busy}
+          className="ar-text-link ar-upi-alternative"
+          onClick={() => onChange(method === "app" ? "qr" : "app")}
+        >
+          {method === "app" ? "Use UPI QR instead" : "Pay using a UPI app on this phone"}
+        </button>
+      )}
+      <div className="ar-method-security"><LockKeyhole size={17} />Secure payments by Cashfree</div>
     </>
   );
 }
@@ -496,7 +495,7 @@ export function PaymentMethods({
                   ].map(([id, label]) => (
                     <div key={id}>
                       <span className="ar-label">{label}</span>
-                      <div id={"ar-" + id} aria-label={label} />
+                      <div id={"ar-" + id} className="ar-secure-mount" aria-label={label} />
                     </div>
                   ))}
                 </div>
