@@ -93,6 +93,7 @@ export default async function handler(req: any, res: any) {
         "pending",
         "cancel",
         "methods",
+        "choose",
       ].includes(action)
     )
       return res
@@ -100,7 +101,7 @@ export default async function handler(req: any, res: any) {
         .json({ ok: false, error: "Unknown billing action." });
     if (
       req.method !==
-      (["create", "cancel", "methods"].includes(action) ? "POST" : "GET")
+      (["create", "cancel", "methods", "choose"].includes(action) ? "POST" : "GET")
     )
       return res.status(405).json({ ok: false, error: "Method not allowed." });
     const user = await authenticatedUser(req);
@@ -119,6 +120,19 @@ export default async function handler(req: any, res: any) {
         ok: false,
         error: "Too many payment requests. Please wait a moment.",
       });
+    }
+    if (action === "choose") {
+      const data = JSON.parse((await readBillingBody(req)).toString("utf8"));
+      if (!["starter", "pro", "business"].includes(data.planId) ||
+          !/^[a-f0-9-]{36}$/i.test(String(data.requestId || "")))
+        throw new BillingError("Select a valid plan checkout.", 400);
+      const choice = await billingDb("rpc/autoreply_choose_billing_plan", "POST", {
+        p_owner_id: user.id, p_environment: billingConfig().mode,
+        p_plan_id: data.planId, p_request_id: data.requestId,
+      });
+      if (!choice.current)
+        throw new BillingError("You chose another plan in a newer checkout. Open that checkout or choose your plan again from billing.", 409);
+      return res.status(200).json({ ok: true, planId: choice.plan_id });
     }
     if (action === "methods") {
       const data = JSON.parse((await readBillingBody(req)).toString("utf8"));

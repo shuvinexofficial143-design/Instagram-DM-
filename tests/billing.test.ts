@@ -206,3 +206,10 @@ test('payment winning an unpaid status refresh never exposes another payable QR'
  setup();const source={...order,checkout_state:'active'};let reads=0;
  globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.endsWith('/payments'))return Response.json([]);if(path.includes('cashfree.com'))return Response.json({order_id:oid,order_amount:599,order_currency:'INR',customer_details:{customer_id:uid},order_status:'ACTIVE',payment_session_id:'stale-session'});if(init.method==='PATCH')return Response.json([]);reads++;return Response.json([{...source,status:'paid',activation_status:'active'}]);};const result=await reconcileOrder(source);assert.equal(reads,1);assert.equal(result.status,'paid');assert.equal(checkoutPayable(result),false);
 });
+
+test('choosing a plan changes only the authenticated latest selection without a provider request',async()=>{
+ setup();let selected=0;globalThis.fetch=async(url:any,init:any)=>{const path=String(url);if(path.includes('/auth/'))return Response.json({id:uid});assert.ok(path.includes('rpc/autoreply_choose_billing_plan'));const body=JSON.parse(init.body);assert.equal(body.p_owner_id,uid);assert.equal(body.p_plan_id,'business');assert.equal(body.p_request_id,rid);selected++;return Response.json({current:true,plan_id:'business'});};const r=res();await handler(req('choose','POST',{planId:'business',requestId:rid,ownerId:'other'}),r);assert.equal(r.code,200);assert.equal(r.body.planId,'business');assert.equal(selected,1);
+});
+test('an older selection retry gives a clear error instead of silently replacing the latest plan',async()=>{
+ setup();globalThis.fetch=async(url:any)=>String(url).includes('/auth/')?Response.json({id:uid}):Response.json({current:false,plan_id:'starter'});const r=res();await handler(req('choose','POST',{planId:'starter',requestId:rid}),r);assert.equal(r.code,409);assert.ok(r.body.error.includes('newer checkout'));
+});

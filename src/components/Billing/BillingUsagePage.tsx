@@ -15,7 +15,8 @@ const comparisonRows = [
 ];
 
 
-const Usage=({icon:Icon,label,used,limit,note}:{icon:any,label:string,used:number,limit:number,note:string})=>{
+export const FreeBonus=({amount}:{amount:number})=>amount>0?<span title="Unused Free credits carried into your first paid plan" className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700"><Plus className="h-3 w-3" aria-hidden="true"/>{amount.toLocaleString()} Free bonus</span>:null;
+const Usage=({icon:Icon,label,used,limit,note,bonus=0}:{icon:any,label:string,used:number,limit:number,note:string,bonus?:number})=>{
   const pct=Math.min(100,Math.round(used/Math.max(limit,1)*100));
   return <div className="rounded-[24px] border border-white bg-white p-4 shadow-[0_16px_42px_rgba(31,23,76,.06)] sm:p-6">
     <div className="flex items-start justify-between gap-3">
@@ -23,7 +24,7 @@ const Usage=({icon:Icon,label,used,limit,note}:{icon:any,label:string,used:numbe
       <span className="text-xs font-bold text-slate-500">{pct}% used</span>
     </div>
     <p className="mt-4 text-xs font-semibold text-slate-500">{label}</p>
-    <p className="mt-1 text-2xl font-black tracking-tight text-slate-950">{used.toLocaleString()} <span className="text-sm font-semibold text-slate-400">/ {limit.toLocaleString()}</span></p>
+    <p className="mt-1 text-2xl font-black tracking-tight text-slate-950">{used.toLocaleString()} <span className="text-sm font-semibold text-slate-400">/ {(limit-bonus).toLocaleString()}</span>{bonus>0&&<span className="ml-2 inline-block align-middle"><FreeBonus amount={bonus}/></span>}</p>
     <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-violet-700 to-indigo-500 transition-all" style={{width:`${pct}%`}}/></div>
     <p className="mt-2 min-h-8 text-xs leading-4 text-slate-500">{note}</p>
   </div>
@@ -46,18 +47,18 @@ export const BillingUsagePage:React.FC=()=>{
       </header>
 
       <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white text-slate-950 shadow-[0_8px_30px_rgba(15,23,42,.04)]">
-        <div className="grid gap-5 p-6 sm:p-9 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div className="grid gap-4 p-5 sm:p-6 lg:grid-cols-[1fr_auto] lg:items-center">
           <div>
             <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-violet-700">{plan.name} plan</span><span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><ShieldCheck className="h-3.5 w-3.5"/>Current subscription · Active</span></div>
-            <div className="mt-5 flex items-end gap-2"><span className="text-[38px] font-black tracking-tight text-slate-950 sm:text-[48px]">{plan.price}</span><span className="pb-2 text-xs font-semibold text-slate-500">/ month</span></div>
+            <div className="mt-3 flex items-end gap-2"><span className="text-[38px] font-black tracking-tight text-slate-950 sm:text-[48px]">{plan.price}</span><span className="pb-2 text-xs font-semibold text-slate-500">/ month</span></div>
             {usage.expiresAt&&<p className="mt-2 text-xs text-slate-500">Active until {new Date(usage.expiresAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>}
-            <button type="button" onClick={()=>setShowTopUps(value=>!value)} aria-expanded={showTopUps} aria-controls="reply-top-ups" className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-50"><Plus className="h-4 w-4"/>Add Money</button>
+            <button type="button" onClick={()=>setShowTopUps(value=>!value)} aria-expanded={showTopUps} aria-controls="reply-top-ups" className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800 hover:bg-slate-50"><Plus className="h-4 w-4"/>Add Money</button>
             <p className="mt-3 text-xs text-slate-500">Need more replies? Explore extra capacity for your current plan.</p>
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">Each calendar month, standard DM/comment/story replies and AI replies have independent limits.</p>
           </div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-5 text-xs backdrop-blur-md sm:gap-x-9">
-            <div><p className="text-slate-500">Standard replies</p><p className="mt-1 text-lg font-black text-slate-950">{usage.messageLimit.toLocaleString()}</p></div>
-            <div><p className="text-slate-500">AI replies</p><p className="mt-1 text-lg font-black text-slate-950">{usage.aiLimit.toLocaleString()}</p></div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-xs backdrop-blur-md sm:gap-x-9">
+            <div><p className="text-slate-500">Standard replies</p><p className="mt-1 text-lg font-black text-slate-950">{usage.baseMessageLimit.toLocaleString()}</p><FreeBonus amount={usage.freeBonusMessages}/></div>
+            <div><p className="text-slate-500">AI replies</p><p className="mt-1 text-lg font-black text-slate-950">{usage.baseAiLimit.toLocaleString()}</p><FreeBonus amount={usage.freeBonusAi}/></div>
             <div><p className="text-slate-500">Automations</p><p className="mt-1 text-lg font-black text-slate-950">{plan.automations===null?'Unlimited':plan.automations}</p></div>
             <div><p className="text-slate-500">IG accounts</p><p className="mt-1 text-lg font-black text-slate-950">{plan.accounts}</p></div>
           </div>
@@ -77,8 +78,8 @@ export const BillingUsagePage:React.FC=()=>{
       <section>
         <div className="mb-3"><h2 className="text-base font-bold text-slate-950">Monthly usage</h2><p className="mt-0.5 text-xs text-slate-500">Your current workspace limits and consumption.</p></div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Usage icon={BarChart3} label="Standard replies" used={usage.messageUsed} limit={usage.messageLimit} note={usage.source==='server'?"Monthly automation messages":"Monthly outgoing automation messages"}/>
-          <Usage icon={Bot} label="AI Replies" used={usage.aiUsed} limit={usage.aiLimit} note="Independent AI allowance"/>
+          <Usage icon={BarChart3} label="Standard replies" used={usage.messageUsed} limit={usage.messageLimit} bonus={usage.freeBonusMessages} note={usage.source==='server'?"Monthly automation messages":"Monthly outgoing automation messages"}/>
+          <Usage icon={Bot} label="AI Replies" used={usage.aiUsed} limit={usage.aiLimit} bonus={usage.freeBonusAi} note="Independent AI allowance"/>
           <Usage icon={Zap} label="Automations" used={usage.automationUsed} limit={autoLimit} note={usage.automationLimit===null?"Unlimited on this plan":"Workspace automations"}/>
           <Usage icon={Instagram} label="Instagram Accounts" used={instagramAccount?1:0} limit={plan.accounts} note="Connected Instagram accounts"/>
         </div>

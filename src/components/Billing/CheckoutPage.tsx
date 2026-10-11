@@ -162,6 +162,8 @@ export const CheckoutPage: React.FC = () => {
             }
             if (live) accept(p, true);
           }
+        } else if (["starter", "pro", "business"].includes(requested)) {
+          await billingRequest("choose", { planId: requested, requestId: requestId.current });
         }
       } catch (e: any) {
         if (live) setError(e.message);
@@ -261,6 +263,7 @@ export const CheckoutPage: React.FC = () => {
         setStage("pay");
         return;
       }
+      await billingRequest("choose", { planId: requested, requestId: requestId.current });
       const p = await billingRequest("create", {
         planId: requested,
         name,
@@ -319,6 +322,7 @@ export const CheckoutPage: React.FC = () => {
           "The previous payment is still being checked. Please wait.",
         );
       requestId.current = crypto.randomUUID();
+      await billingRequest("choose", { planId: requested, requestId: requestId.current });
       setOrder(null);
       setSession(undefined);
       window.history.replaceState(

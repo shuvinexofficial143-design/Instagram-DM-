@@ -206,6 +206,18 @@ try {
   html=renderToStaticMarkup(React.createElement(ui.SettingsPage));
   assert.ok(html.includes('Manage subscription'));
   assert.ok(html.includes('Refund &amp; cancellation policy'));checks++;
+  for (const [planId,standard,ai,expires,visible] of [
+    ['pro',1200,1000,new Date(Date.now()+86400000).toISOString(),true],
+    ['pro',0,0,new Date(Date.now()+86400000).toISOString(),false],
+    ['pro',1500,1500,new Date(Date.now()-1000).toISOString(),false],
+    ['free',1500,1500,new Date(Date.now()+86400000).toISOString(),false],
+  ]) {
+    globalThis.__uiFixture=fixture({user:{...empty.user,plan:planId,carry_forward_messages:standard,carry_forward_ai_replies:ai,carry_forward_expires_at:expires}});
+    const billing=renderToStaticMarkup(React.createElement(ui.BillingUsagePage));
+    assert.equal(billing.includes('Free bonus'),visible,'only unexpired real carry credits appear on paid plans');
+    if(visible){assert.ok(billing.includes('1,200'));assert.ok(billing.includes('1,000'));assert.ok(billing.includes('25,000'));assert.ok(billing.includes('text-emerald-700'));}
+    checks++;
+  }
   window.location.pathname='/billing/checkout';window.location.search='?plan=starter';
   globalThis.__uiFixture=fixture({firebaseUser:{uid:'test-user',email:'owner@example.test'}});
   html=renderToStaticMarkup(React.createElement(ui.CheckoutPage));
@@ -219,6 +231,10 @@ try {
   html=renderToStaticMarkup(React.createElement(ui.PaymentMethods,{method:'qr',eligible:[{type:'upi',banks:[]}],existingSession:{paymentSessionId:'test-only',mode:'sandbox',orderId:'test-only',paymentExpiresAt:new Date(Date.now()+45000).toISOString()},prepare:async()=>null,check:async()=>{},restart:async()=>{},changeMethod:()=>{},amount:'₹599',merchant:'Auto Replies',lastAttempt:'FAILED',returnUrl:'https://example.test/billing/checkout'}));
   assert.ok(html.includes('The last payment attempt failed.'));
   assert.ok(html.includes('Change payment method'));assert.ok(!html.includes('Your plan is active'));checks++;
+  assert.ok(html.includes('Keep this page open until payment is confirmed'));
+  assert.ok(html.includes('automatically detect your payment'));
+  assert.ok(html.includes('No manual redirect is needed'));
+  assert.ok(html.includes('role="note"'));checks++;
   const checkoutSource=await readFile(path.join(root,'src/components/Billing/CheckoutPage.tsx'),'utf8');
   const methodsSource=await readFile(path.join(root,'src/components/Billing/PaymentMethods.tsx'),'utf8');
   assert.ok(!checkoutSource.includes('mountCashfreeCheckout'),'hosted checkout banner is removed');

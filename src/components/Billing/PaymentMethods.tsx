@@ -436,6 +436,15 @@ export function PaymentMethods({
               )}
               {method === "qr" && (
                 <div className="ar-qr-panel">
+                  {session && (
+                    <div className="ar-qr-guidance" role="note">
+                      <LockKeyhole size={20} aria-hidden="true" />
+                      <div>
+                        <strong>Keep this page open until payment is confirmed</strong>
+                        <p>Please don't press Back or close this tab. We automatically detect your payment, activate your plan after verification, and take you back to billing. No manual redirect is needed.</p>
+                      </div>
+                    </div>
+                  )}
                   <span className="ar-qr-label">PAYING {merchant}</span>
                   <strong className="ar-payment-amount">{amount}</strong>
                   {session ? (

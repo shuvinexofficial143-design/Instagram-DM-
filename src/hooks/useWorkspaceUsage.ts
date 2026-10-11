@@ -12,6 +12,10 @@ type ServerUsage = {
   totalLimit?: number;
   aiLimit?: number;
   expiresAt?: string;
+  baseMessageLimit?: number;
+  baseAiLimit?: number;
+  freeBonusMessages?: number;
+  freeBonusAi?: number;
 };
 
 export const useWorkspaceUsage = () => {
@@ -68,12 +72,17 @@ export const useWorkspaceUsage = () => {
   }, [user?.id, user?.plan]);
 
   const plan = getPlanConfig(serverUsage?.plan || fallback.plan.id,catalog.plans);
+  const freeBonusMessages = plan.id === 'free' ? 0 : Math.max(0, Number(serverUsage?.freeBonusMessages ?? (fallback.messageLimit - fallback.plan.messages)));
+  const freeBonusAi = plan.id === 'free' ? 0 : Math.max(0, Number(serverUsage?.freeBonusAi ?? (fallback.aiLimit - fallback.plan.ai)));
+  const baseMessageLimit = Number(serverUsage?.baseMessageLimit ?? plan.messages);
+  const baseAiLimit = Number(serverUsage?.baseAiLimit ?? plan.ai);
   return {
     plan,
     messageUsed: Number(serverUsage?.totalUsed ?? fallback.messageUsed),
-    messageLimit: Number(serverUsage?.totalLimit ?? fallback.messageLimit),
+    messageLimit: Number(serverUsage?.totalLimit ?? (baseMessageLimit + freeBonusMessages)),
     aiUsed: Number(serverUsage?.aiUsed ?? fallback.aiUsed),
-    aiLimit: Number(serverUsage?.aiLimit ?? fallback.aiLimit),
+    aiLimit: Number(serverUsage?.aiLimit ?? (baseAiLimit + freeBonusAi)),
+    baseMessageLimit, baseAiLimit, freeBonusMessages, freeBonusAi,
     automationUsed: fallback.automationUsed,
     automationLimit: plan.automations,
     expiresAt: serverUsage?.expiresAt,

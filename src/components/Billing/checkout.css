@@ -451,6 +451,21 @@
 .ar-qr-panel {
   text-align: center;
 }
+.ar-qr-guidance {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid #dcd3f8;
+  border-radius: 14px;
+  background: #f5f1ff;
+  text-align: left;
+  color: #533394;
+}
+.ar-qr-guidance > svg { flex-shrink: 0; margin-top: 2px; }
+.ar-qr-guidance strong { display: block; font-size: 15px; line-height: 1.5; }
+.ar-qr-panel .ar-qr-guidance p { margin: 6px 0 0; font-size: 14px; line-height: 1.65; color: #514667; }
 .ar-qr-label {
   font-size: 12px;
   letter-spacing: 1.4px;
