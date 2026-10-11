@@ -65,7 +65,8 @@ export function mountPaymentElement(
     values,
     style: {
       base: {
-        fontSize: "18px",
+        fontSize: "16px",
+        lineHeight: "1.4",
         fontFamily: "Arial, sans-serif",
         color: "#0f172a",
         padding: "12px",
