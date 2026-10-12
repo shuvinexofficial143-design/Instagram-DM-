@@ -104,6 +104,12 @@ export const BillingUsagePage:React.FC=()=>{
         </div>
       </section>
 
+      <section className="rounded-[24px] border border-indigo-100 bg-white p-5 shadow-sm sm:p-7" aria-labelledby="manage-requests-heading">
+        <h2 id="manage-requests-heading" className="text-lg font-bold text-slate-950">Manage plan & support requests</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">Paid access is a one-time 30-day purchase with no automatic renewal. You can request early cancellation or a refund; submitting a request never automatically terminates your plan or sends a payout.</p>
+        <div className="mt-4 flex flex-wrap gap-3"><a href="/contact?type=cancellation" className="inline-flex min-h-12 items-center rounded-xl border border-slate-300 px-5 text-sm font-semibold text-slate-800">Request cancellation</a><a href="/contact?type=refund" className="inline-flex min-h-12 items-center rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white">Request refund</a><a href="/contact?type=payment" className="inline-flex min-h-12 items-center rounded-xl border border-indigo-200 px-5 text-sm font-semibold text-indigo-700">Payment issue</a></div>
+        <a href="/refunds" className="mt-4 inline-block text-xs font-semibold text-indigo-600 underline">Read refund & cancellation policy</a>
+      </section>
       <section className="rounded-[24px] border border-white bg-white p-5 shadow-[0_15px_35px_rgba(31,23,76,.05)] sm:p-7" aria-labelledby="billing-history-heading">
         <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-600"><ReceiptText className="h-5 w-5"/></span><div><h2 id="billing-history-heading" className="text-base font-bold text-slate-900">Billing history</h2><p className="mt-1 text-sm text-slate-500">Your payment records, confirmation status and plan activation details.</p></div></div>
         <BillingHistory />
