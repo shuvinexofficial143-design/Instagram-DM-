@@ -46,6 +46,9 @@ jobs:
       - name: DM runtime regressions
         run: bun run test:dm
 
+      - name: Guest store authorization contract
+        run: bun run test:security
+
       - name: Billing and payment regressions
         run: bun run test:billing
 
