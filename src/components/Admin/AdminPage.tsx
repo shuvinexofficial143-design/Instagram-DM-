@@ -41,6 +41,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { AdminUserOverviewItem, AdminOverviewResponse } from '../../types';
 import { UserAvatar } from '../Common/UserAvatar';
+import { AdminSupportDesk } from '../Support/SupportDesk';
 import { supabase } from '../../lib/supabase';
 
 const Metric: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
@@ -73,7 +74,7 @@ export const AdminPage: React.FC = () => {
 
   // Selected User Detail Modal
   const [selectedUser, setSelectedUser] = useState<AdminUserOverviewItem | null>(null);
-  const [adminSection, setAdminSection] = useState<'dashboard' | 'users' | 'instagram' | 'automations' | 'plans' | 'payments' | 'ai' | 'health' | 'activity' | 'settings'>('dashboard');
+  const [adminSection, setAdminSection] = useState<'dashboard' | 'users' | 'instagram' | 'automations' | 'plans' | 'payments' | 'support' | 'ai' | 'health' | 'activity' | 'settings'>('dashboard');
   const [platformData, setPlatformData] = useState<any>(null);
   const [planDrafts, setPlanDrafts] = useState<Record<string, any>>({});
   const [savingPlan, setSavingPlan] = useState<string>('');
@@ -491,6 +492,7 @@ export const AdminPage: React.FC = () => {
             ['automations', 'Automations', Zap],
             ['plans', 'Plans', CreditCard],
             ['payments', 'Payments', ReceiptText],
+            ['support', 'Customer Support', MessageSquare],
             ['ai', 'AI Usage', Bot],
             ['health', 'System Health', HeartPulse],
             ['activity', 'Admin Activity', Activity],
@@ -509,10 +511,10 @@ export const AdminPage: React.FC = () => {
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-indigo-500">Admin Control Center</p>
               <h2 className="mt-1 text-2xl font-black text-slate-900">
-                {{instagram:'Instagram Accounts',automations:'Automations',plans:'Plans & Pricing',payments:'Payments & Receipts',ai:'AI Usage',health:'System Health',activity:'Admin Activity',settings:'Platform Settings'}[adminSection]}
+                {{instagram:'Instagram Accounts',automations:'Automations',plans:'Plans & Pricing',payments:'Payments & Receipts',support:'Customer Support',ai:'AI Usage',health:'System Health',activity:'Admin Activity',settings:'Platform Settings'}[adminSection]}
               </h2>
               <p className="mt-2 max-w-2xl text-sm text-slate-500">
-                {{instagram:'Monitor connected Instagram channels and connection health without exposing access tokens.',automations:'Review active and paused workflows across customer workspaces.',plans:'Manage the central subscription catalog, quotas and account limits.',payments:'Track purchases, payment status, renewals and receipt records.',ai:'Monitor AI replies and usage so quotas and costs stay visible.',health:'Watch webhook, database, AI and Instagram delivery health from one place.',activity:'Keep an audit trail of sensitive administrator actions.',settings:'Manage global platform controls and operational configuration.'}[adminSection]}
+                {{instagram:'Monitor connected Instagram channels and connection health without exposing access tokens.',automations:'Review active and paused workflows across customer workspaces.',plans:'Manage the central subscription catalog, quotas and account limits.',payments:'Track purchases, payment status, renewals and receipt records.',support:'Respond to customer tickets, track refund applications and review cancellations.',ai:'Monitor AI replies and usage so quotas and costs stay visible.',health:'Watch webhook, database, AI and Instagram delivery health from one place.',activity:'Keep an audit trail of sensitive administrator actions.',settings:'Manage global platform controls and operational configuration.'}[adminSection]}
               </p>
             </div>
             <div className="rounded-2xl bg-indigo-50 p-3 text-indigo-600"><Database className="h-5 w-5" /></div>
@@ -524,6 +526,7 @@ export const AdminPage: React.FC = () => {
             {adminSection === 'health' && <><Metric label="Message Claims" value={platformData?.messageClaims?.length || 0} /><Metric label="Stored Documents" value={platformData?.documents?.length || 0} /><Metric label="Runtime Contexts" value={platformData?.runtimeContexts?.length || 0} /><Metric label="DM History Threads" value={platformData?.dmHistory?.length || 0} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.runtimeContexts || []).map((row:any)=><div key={row.ig_user_id} className="rounded-xl border border-slate-200 p-3 text-xs"><strong>{row.automation?.name || row.automation_id || 'Runtime'}</strong> · {row.automation?.status || 'unknown'} · IG {row.ig_user_id}<span className="float-right text-slate-400">{formatDateTime(row.updated_at)}</span></div>)}</div></>}
             {adminSection === 'plans' && <div className="sm:col-span-2 lg:col-span-4 grid gap-4 lg:grid-cols-2">{(platformData?.plans || []).map((plan:any) => { const p=planDrafts[plan.id] || plan; const field=(key:string,label:string)=><label className="text-xs font-bold text-slate-600">{label}<input type="number" value={p[key] ?? ''} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,[key]:e.target.value}}))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"/></label>; return <div key={plan.id} className="rounded-2xl border border-slate-200 p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-lg font-black text-slate-900">{p.name}</p><p className="text-xs text-slate-400">{plan.id}</p></div><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={Boolean(p.is_active)} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,is_active:e.target.checked}}))}/> Active</label></div><label className="mb-3 block text-xs font-bold text-slate-600">Display name<input value={p.name||''} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,name:e.target.value}}))} maxLength={64} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"/></label><div className="grid grid-cols-2 gap-3">{field('price_inr','Price ₹')}{field('billing_days','Billing days')}{field('total_messages','Standard replies · DM/comment/story')}{field('ai_replies','AI replies (separate)')}{field('instagram_accounts','Instagram accounts')}{field('automations_limit','Automations (blank = unlimited)')}</div><p className="my-3 text-xs text-slate-500">Standard and AI monthly reply quotas are independent. Price changes apply to new Cashfree orders; existing orders keep their original amount.</p><button onClick={()=>savePlan(p)} disabled={savingPlan===plan.id} className="mt-4 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">{savingPlan===plan.id?'Saving...':'Save Plan'}</button></div>})}</div>}
             {adminSection === 'activity' && <div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.auditLogs || []).length ? platformData.auditLogs.map((log:any)=><div key={log.id} className="flex justify-between rounded-xl border border-slate-200 p-3 text-xs"><span><strong>{log.action}</strong> · {log.entity_type} {log.entity_id || ''}</span><span className="text-slate-400">{formatDateTime(log.created_at)}</span></div>) : <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">No admin changes recorded yet.</div>}</div>}
+            {adminSection === 'support' && <div className="sm:col-span-2 lg:col-span-4"><AdminSupportDesk /></div>}
             {adminSection === 'payments' && <div className="sm:col-span-2 lg:col-span-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="text-base font-bold text-slate-950">Verified payment orders</h3>
               <p className="mt-1 text-xs text-slate-500">Only Cashfree-verified paid orders can activate a subscription. Pending orders do not grant access.</p>

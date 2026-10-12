@@ -49,6 +49,9 @@ jobs:
       - name: Guest store authorization contract
         run: bun run test:security
 
+      - name: Customer support security regressions
+        run: bun run test:support
+
       - name: Billing and payment regressions
         run: bun run test:billing
 

@@ -13,6 +13,7 @@
     "test:connections": "node --import tsx --test tests/connections.test.ts",
     "test:dm": "node --test tests/dm-runtime.test.mjs",
     "test:security": "node --import tsx --test tests/guest-store-auth.test.mjs",
+    "test:support": "node --test tests/support-security.test.mjs",
     "test:automations": "node --test tests/automation-delivery.test.mjs tests/instagram-subscription.test.mjs tests/instagram-accounts.test.mjs tests/customer-sheets.test.mjs",
     "test:billing": "node --import tsx --test tests/billing.test.ts"
   },
