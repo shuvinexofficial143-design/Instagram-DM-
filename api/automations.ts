@@ -82,6 +82,19 @@ export default async function handler(req: any, res: any) {
       if (!automation || typeof automation !== 'object') {
         return res.status(400).json({ ok: false, error: 'Automation data is required.' });
       }
+      // Reject malformed work before any Google Sheets API side effects.
+      // The Edge store still enforces the authoritative plan limits.
+      const automationId = String(automation.id || '');
+      const automationName = String(automation.name || '').trim();
+      if (!/^auto_[a-zA-Z0-9_-]{4,}$/.test(automationId) ||
+          !automationName ||
+          !String(automation.trigger_type || '').trim() ||
+          !Array.isArray(automation.actions)) {
+        return res.status(400).json({ ok: false, error: 'Automation data is incomplete.' });
+      }
+      if (JSON.stringify(automation).length > 100000) {
+        return res.status(413).json({ ok: false, error: 'Automation is too large.' });
+      }
 
       if(automation.trigger_type==='dm_ai_conversation') {
         await ensureAutomationSheet(workspaceId,String(req.headers?.authorization || '').replace(/^Bearer\s+/i,''),String(automation.id),String(automation.name)+' AI Leads',automation.trigger_config?.sheet_fields || ['Name','Phone','Product','City']);

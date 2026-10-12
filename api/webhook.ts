@@ -203,9 +203,10 @@ export default async function handler(req: any, res: any) {
     } catch (err: any) {
       console.error('[LIVE_DM_AI] Processor failed', err?.message || err);
 
-      // Still acknowledge Meta; the failure is now visible in Vercel logs and
-      // the user can retry by sending a new DM without webhook retry storms.
-      return res.status(200).json({
+      // Do not acknowledge an unprocessed event as successfully delivered.
+      // Meta may retry the signed event; message claims prevent duplicate replies.
+      res.setHeader('Retry-After', '5');
+      return res.status(503).json({
         received: true,
         processed: false,
         reason: 'processor_failed',
