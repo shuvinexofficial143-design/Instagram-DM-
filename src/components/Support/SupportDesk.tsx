@@ -7,7 +7,7 @@ type TicketStatus='open'|'in_review'|'waiting_customer'|'resolved'|'closed'|'app
 type SupportTicket={id:string;ticket_number:number;owner_user_id:string;ticket_type:TicketType;subject:string;reason:string;order_id:string|null;status:TicketStatus;admin_note:string|null;created_at:string;updated_at:string;last_message_at:string};
 type SupportMessage={id:string;ticket_id:string;sender_role:'customer'|'support';body:string;created_at:string};
 type SupportOrder={order_id:string;plan_id:string;amount_inr:number;status:string;environment:string;created_at:string;access_expires_at:string|null};
-const labels:Record<TicketType,string>={general:'General question',technical:'Automation / technical issue',payment:'Payment problem',refund:'Refund request',cancellation:'Stop paid plan / cancellation',account_deletion:'Account or data deletion'};
+const labels:Record<TicketType,string>={general:'General question',technical:'Automation / technical issue',payment:'Payment problem',refund:'Refund request',cancellation:'Request cancellation / stop paid plan',account_deletion:'Account or data deletion'};
 const statusLabel:Record<TicketStatus,string>={open:'Received',in_review:'In review',waiting_customer:'Awaiting your reply',resolved:'Resolved',closed:'Closed',approved:'Approved',rejected:'Declined',refund_initiated:'Refund initiated',refunded:'Refunded'};
 const fmt=(v:string)=>new Date(v).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});
 const reference=(t:SupportTicket)=>'AR-'+String(t.ticket_number).padStart(6,'0');
