@@ -1,3 +1,4 @@
+import supportHandler from '../src/server/support.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../src/server/supabaseConfig.js';
 
@@ -36,6 +37,13 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000)
 }
 
 export default async function handler(req: any, res: any) {
+  // Route authenticated support actions through an existing Vercel function.
+  // Keeps Hobby deployment under the 12-function limit without changing
+  // existing GET /api/workspace-data guest automation behavior.
+  if (String(req.query?.action || '').startsWith('support-')) {
+    return supportHandler(req, res);
+  }
+
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
