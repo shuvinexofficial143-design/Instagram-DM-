@@ -1,3 +1,4 @@
+import { guestStoreHeaders } from '../../src/server/guestStoreAuth.js';
 import { resolveAiIdentity } from '../_auth.js';
 import { authenticatedWorkspace } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
@@ -29,7 +30,7 @@ export default async function handler(req: any, res: any) {
       `${SUPABASE_URL}/functions/v1/instagram-account-store`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(identity?.userId ? { Authorization: String(req.headers.authorization || '') } : {}) },
+        headers: { 'Content-Type': 'application/json', ...guestStoreHeaders(), ...(identity?.userId ? { Authorization: String(req.headers.authorization || '') } : {}) },
         body: JSON.stringify({
           action: 'refresh_contact_profiles',
           workspaceId,

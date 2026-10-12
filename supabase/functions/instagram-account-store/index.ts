@@ -382,6 +382,26 @@ Deno.serve(async (req: Request) => {
 
   const action = String(payload?.action || "");
   let workspaceId = payload?.workspaceId;
+
+  // Guest workspaces are bearer-cookie capabilities, not Supabase JWT users.
+  // Browser clients must go through the Vercel API, which validates the
+  // HttpOnly guest cookie and authenticates to this Edge service privately.
+  // Otherwise a leaked guest workspace ID could be used directly here.
+  if (String(workspaceId || "").startsWith("guest_") && action !== "save") {
+    const supplied = String(req.headers.get("x-autoreply-guest-secret") || "");
+    const expected = String(Deno.env.get("INSTAGRAM_APP_SECRET") || "").trim();
+    if (!expected || supplied.length !== expected.length) {
+      return reply(401, { ok: false, error: "Guest workspace server authorization required" });
+    }
+    let mismatch = 0;
+    for (let i = 0; i < expected.length; i++) {
+      mismatch |= supplied.charCodeAt(i) ^ expected.charCodeAt(i);
+    }
+    if (mismatch !== 0) {
+      return reply(401, { ok: false, error: "Guest workspace server authorization required" });
+    }
+  }
+
   if (action === "list_accounts") {
     const admin = getAdminClient();
     const jwt = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();

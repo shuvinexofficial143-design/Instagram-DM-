@@ -1,3 +1,4 @@
+import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
 import { ensureAutomationSheet } from './google-sheets.js';
 import { SUPABASE_URL, authenticatedWorkspace, UpstreamError } from '../src/server/supabaseConfig.js';
 
@@ -32,7 +33,7 @@ async function callStore(body: Record<string, unknown>, authorization: string, t
       `${SUPABASE_URL}/functions/v1/instagram-account-store`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(authorization ? {Authorization:authorization} : {}) },
+        headers: { 'Content-Type': 'application/json', ...guestStoreHeaders(), ...(authorization ? {Authorization:authorization} : {}) },
         body: JSON.stringify(body),
         signal: controller.signal,
       }
