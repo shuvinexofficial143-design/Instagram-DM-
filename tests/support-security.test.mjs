@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const read = p => readFileSync(new URL('../'+p, import.meta.url),'utf8');
-const api=read('api/support.ts');
+const api=read('src/server/support.ts');
 const sql=read('supabase/migrations/20261012_customer_support_tickets.sql');
 const ui=read('src/components/Support/SupportDesk.tsx');
 const help=read('src/components/Support/SupportPage.tsx');
@@ -39,4 +39,10 @@ test('no promises of instant refund or automatic cancellation',()=>{
   assert.match(ui,/does not automatically/);
   assert.match(help,/no automatic renewal/);
   assert.match(api,/Never change billing entitlement/);
+});
+
+test('support reuses the existing workspace-data Vercel function',()=>{
+  const route=read('api/workspace-data.ts');
+  assert.match(route,/supportHandler\(req, res\)/);
+  assert.match(ui,/\/api\/workspace-data\?action=support-/);
 });

@@ -15,7 +15,7 @@ const paymentTypes:TicketType[]=['payment','refund','cancellation'];
 async function request(action:string,method='GET',body?:unknown,query=''){
   const token=await auth.currentUser?.getIdToken();
   if(!token)throw new Error('Sign in to send a support request.');
-  const response=await fetch('/api/support?action='+encodeURIComponent(action)+(query?'&'+query:''),{
+  const response=await fetch('/api/workspace-data?action=support-'+encodeURIComponent(action)+(query?'&'+query:''),{
     method,cache:'no-store',credentials:'same-origin',
     headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},
     ...(body?{body:JSON.stringify(body)}:{}),

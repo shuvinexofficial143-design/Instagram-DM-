@@ -1,5 +1,5 @@
-import { authenticatedUser, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '../src/server/supabaseConfig.js';
-import { cleanEnvironment } from '../src/server/supabaseConfig.js';
+import { authenticatedUser, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabaseConfig.js';
+import { cleanEnvironment } from './supabaseConfig.js';
 
 // All requests need a verified Supabase session. Only this server uses the
 // service-role REST API; support tables have RLS and no client grants.
@@ -60,7 +60,7 @@ export default async function handler(req:any,res:any){
   try{
     const user=await authenticatedUser(req);
     if(!user?.id)return res.status(401).json({ok:false,error:'Sign in to contact support.'});
-    const action=String(req.query?.action||'list');
+    const action=String(req.query?.action||'support-list').replace(/^support-/, '');
     const adminActions=['admin-list','admin-update'];
     const isAdmin=adminActions.includes(action)?await verifiedAdmin(req,user.id):false;
     if(adminActions.includes(action)&&!isAdmin)return res.status(403).json({ok:false,error:'Support administrator access required.'});
