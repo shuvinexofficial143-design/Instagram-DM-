@@ -1,3 +1,4 @@
+import { guestStoreHeaders } from '../../src/server/guestStoreAuth.js';
 import { authenticatedUser } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
 
@@ -45,7 +46,7 @@ async function callStore(action: 'load' | 'delete', workspaceId: string) {
     `${SUPABASE_URL}/functions/v1/instagram-account-store`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...guestStoreHeaders() },
       body: JSON.stringify({ action, workspaceId }),
     }
   );

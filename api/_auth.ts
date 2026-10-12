@@ -1,3 +1,4 @@
+import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
 import { SUPABASE_URL, authenticatedUser } from '../src/server/supabaseConfig.js';
 
 const ACCOUNT_STORE_URL = SUPABASE_URL + '/functions/v1/instagram-account-store';
@@ -48,7 +49,7 @@ async function verifyGuestWorkspace(req: any): Promise<Identity | null> {
   if (!/^guest_[a-f0-9-]{16,}$/i.test(workspaceId)) return null;
   const response = await fetch(ACCOUNT_STORE_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...guestStoreHeaders() },
     body: JSON.stringify({ action: 'load', workspaceId }),
   });
   const payload: any = await response.json().catch(() => null);

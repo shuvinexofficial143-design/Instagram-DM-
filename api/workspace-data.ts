@@ -1,3 +1,4 @@
+import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../src/server/supabaseConfig.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
@@ -55,7 +56,7 @@ export default async function handler(req: any, res: any) {
       `${SUPABASE_URL}/functions/v1/instagram-account-store`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...guestStoreHeaders() },
         body: JSON.stringify({
           action: 'list_workspace_data',
           workspaceId,
