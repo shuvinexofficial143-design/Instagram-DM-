@@ -18,6 +18,11 @@ const faqs=[
   ['Billing','How do I buy or upgrade a plan?','Open Billing & Usage, choose the plan you want and continue through the plan flow. When the payment gateway is connected, checkout will confirm payment before the new plan is activated.'],
   ['Billing','How do I cancel a paid plan?','Paid checkout is a one-time purchase. You can stop renewing at any time; access continues until its expiry. See the Refund & Cancellation Policy for payment issues.'],
   ['Account','How do I disconnect Instagram?','Open Settings or the Instagram account controls and use Disconnect. Disconnecting Instagram does not cancel a paid subscription.'],
+  ['Troubleshooting','Why does a connected Instagram account stop replying?','A connected badge does not guarantee delivery. Check the active automation, latest Activity Logs, webhook delivery, Meta permissions and monthly reply allowance. Reconnect only if the authorization is invalid.'],
+  ['Troubleshooting','Why did the same customer appear twice?','A username and an Instagram user ID can differ between events. If duplicate threads appear, use the permanent Instagram identity and contact support with the affected conversation, rather than deleting message history.'],
+  ['Google Sheets','Why are new leads not appearing in Google Sheets?','Check Integrations for a connected Google account and confirm the automation has its spreadsheet. Review Activity for sync errors. Reconnect Google Sheets if authorization has expired.'],
+  ['Payments','I paid but my plan is still pending. What should I do?','Open Billing History and check the same order before starting a new payment. Contact billing support with the order reference if your bank shows a debit but activation remains pending. Never share your UPI PIN or card details.'],
+  ['Security','Can another user read my Instagram conversations?','Workspaces have access controls to separate accounts. Keep your login secure, connect only accounts you own, and contact support immediately if you notice unexpected activity.'],
 ];
 
 export const SupportPage:React.FC<{page:Page}>=({page})=>{
@@ -71,6 +76,17 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
           <PathStep number="02" title="Configure" text="Create the automation and verify its trigger and reply."/>
           <PathStep number="03" title="Verify" text="Check Inbox, Activity and Usage after a real test message."/>
         </div>
+      </section>
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-7" aria-labelledby="help-diagnostics-heading">
+        <p className="support-eyebrow">Troubleshoot safely</p>
+        <h2 id="help-diagnostics-heading" className="mt-2 text-xl font-bold text-slate-900">Not receiving Instagram replies?</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">Start with your connection and automation status. If you have a logged-in workspace, check the latest Activity errors before reconnecting or recreating anything.</p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <button type="button" className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:border-indigo-300" onClick={()=>firebaseUser?setActiveTab('settings'):window.location.assign('/login')}>1. Check Instagram connection <ArrowRight className="ml-1 inline h-4 w-4" /></button>
+          <button type="button" className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:border-indigo-300" onClick={()=>go('automations')}>2. Check active automation <ArrowRight className="ml-1 inline h-4 w-4" /></button>
+          <button type="button" className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:border-indigo-300" onClick={()=>firebaseUser?setActiveTab('activity'):window.location.assign('/login')}>3. Review Activity Logs <ArrowRight className="ml-1 inline h-4 w-4" /></button>
+        </div>
+        <p className="mt-4 text-xs leading-5 text-slate-500">Still stuck? Contact support below with the approximate time of the failure and the automation name. Never share passwords, OTPs or access tokens.</p>
       </section>
     </>
   );

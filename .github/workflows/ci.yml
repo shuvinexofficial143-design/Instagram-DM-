@@ -43,6 +43,9 @@ jobs:
       - name: Automation and customer Sheet regressions
         run: bun run test:automations
 
+      - name: DM runtime regressions
+        run: bun run test:dm
+
       - name: Billing and payment regressions
         run: bun run test:billing
 
