@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ArrowLeft, ArrowRight, BadgeCheck, CreditCard, ExternalLink, HelpCircle,
   Instagram, LifeBuoy, MessageCircleQuestion, ReceiptText, ShieldCheck,
   Sparkles, WalletCards, XCircle
 } from 'lucide-react';
 import { BusinessContact } from './BusinessContact';
+import { SupportDesk } from './SupportDesk';
 import { useApp } from '../../context/AppContext';
 
 type Page='help'|'faq'|'billing-help'|'privacy'|'terms'|'contact'|'refunds';
@@ -27,6 +28,7 @@ const faqs=[
 
 export const SupportPage:React.FC<{page:Page}>=({page})=>{
   const{setActiveTab,setIsConnectModalOpen,setIsRenewModalOpen,firebaseUser}=useApp();
+  const [faqQuery,setFaqQuery]=useState('');
 
   const go=(tab:'home'|'automations'|'faq'|'billing-help'|'billing')=>{
     if(firebaseUser){setActiveTab(tab);return;}
@@ -62,6 +64,7 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
       <section className="support-card-grid" aria-label="Popular help topics">
         <SupportCard icon={Instagram} label="Instagram" title="Connect or reconnect Instagram" text="Authorize your professional Instagram account through Meta and fix connection issues." action="Open connection" onClick={connect}/>
         <SupportCard icon={Sparkles} label="Automation" title="Build and test an automation" text="Create DM, comment and AI-assisted workflows, then test them before switching them on." action="Open Automations" onClick={()=>go('automations')}/>
+        <SupportCard icon={LifeBuoy} label="Contact" title="Message customer support" text="Send a private ticket, track refunds and receive replies from our team." action="Contact support" onClick={()=>firebaseUser?setActiveTab('contact'):window.location.assign('/login')}/>
         <SupportCard icon={MessageCircleQuestion} label="Answers" title="Browse common questions" text="Quick answers for connection, automations, inbox, usage, plans and account controls." action="Read FAQ" onClick={()=>go('faq')}/>
         <SupportCard icon={WalletCards} label="Billing" title="Plans, payments and cancellation" text="See how upgrades, usage, billing history and self-service plan cancellation are designed to work." action="Open billing guide" onClick={()=>go('billing-help')}/>
       </section>
@@ -88,6 +91,7 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
         </div>
         <p className="mt-4 text-xs leading-5 text-slate-500">Still stuck? Contact support below with the approximate time of the failure and the automation name. Never share passwords, OTPs or access tokens.</p>
       </section>
+      {firebaseUser&&<div className="mt-6"><SupportDesk /></div>}
     </>
   );
 
@@ -103,7 +107,8 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
         <button onClick={()=>go('billing-help')}>Need billing help?<ArrowRight/></button>
       </aside>
       <div className="support-faq-list">
-        {faqs.map(([category,q,a])=><details key={q} className="support-faq-item">
+        <label className="mb-4 block text-sm font-semibold text-slate-700">Search help articles<input type="search" value={faqQuery} onChange={e=>setFaqQuery(e.target.value)} placeholder="Search payments, Instagram, automations…" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm"/></label>
+        {faqs.filter(([category,q,a])=>(category+' '+q+' '+a).toLowerCase().includes(faqQuery.toLowerCase())).map(([category,q,a])=><details key={q} className="support-faq-item">
           <summary><span><small>{category}</small>{q}</span><span className="support-faq-plus">+</span></summary>
           <p>{a}</p>
         </details>)}
@@ -111,17 +116,18 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
     </div>
   );
 
-  if(page==='contact')return shell('Contact Us','Customer support','Contact the Auto Replies business for account, billing and payment assistance.',<Legal sections={[
-    ['Payment support','Include your order reference, account email and a short description when contacting support. Do not send card details, OTPs, UPI PINs or payment API secrets.'],
-    ['Account and data requests','Use the support contact below for account access, privacy and deletion requests. We may need to verify that you control the account before making changes.'],
-  ]}/>);
+  if(page==='contact')return shell('Customer Support','Contact & requests','Send a private message, request a refund, or track a cancellation request.',<>
+    {firebaseUser?<SupportDesk />:<div className="rounded-2xl border border-slate-200 bg-white p-6"><p className="text-sm text-slate-700">Sign in to send a private message and track replies. You can also use the business email below.</p><a href="/login" className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-indigo-600 px-5 font-semibold text-white">Sign in to contact support</a></div>}
+  </>);
 
   if(page==='refunds')return shell('Refund & Cancellation Policy','Paid plan policies','Clear information about one-time purchases, payment issues and refund requests.',<Legal sections={[
-    ['One-time purchases and renewal','Paid plans are purchased for 30 days. There is no automatic renewal or AutoPay in this checkout. You can stop renewing at any time; your existing access lasts until its stated expiry date. Disconnecting Instagram does not request a refund.'],
+    ['One-time purchases and renewal','Paid plans are one-time purchases for 30 days. There is currently no automatic renewal or future debit to cancel. Existing access normally lasts until its recorded expiry date. Disconnecting Instagram does not request a refund.'],
+    ['Early cancellation','Signed-in customers may request early cancellation at any time in Contact Support. A request does not automatically end service, delete data or trigger a payout. Our team aims to acknowledge support requests within two business days.'],
+    ['First-time unused purchases','If your first paid purchase was accidental and unused, you may request a discretionary refund review within 48 hours. Approval is not guaranteed. Nothing here excludes applicable legal rights.'],
     ['Payment verification and activation','Access is granted only after payment is verified by our server. A pending payment or bank debit alone does not mean your plan is active. Check your existing order before paying again. Test payments do not activate live paid access.'],
     ['Duplicate charges and failed activation','Contact billing support with your order and payment references if you were charged more than once or paid access was not delivered. We investigate the payment and activation records and arrange correction or an eligible refund.'],
-    ['Refund requests','Refunds are reviewed individually based on the payment records, service delivery and applicable law. They are not guaranteed by closing checkout, switching plans or disconnecting an account. Submit your request through the business support email on this page.'],
-    ['Refund processing','An approved refund is returned through the original payment route. The payment provider and bank determine when the credit appears. A support request is not a completed refund; retain your refund reference after it is issued.'],
+    ['Refund requests','Refunds are reviewed individually based on the payment records, service delivery and applicable law. They are not guaranteed by closing checkout, switching plans or disconnecting an account. Submit a private ticket through Contact Support and follow its progress there.'],
+    ['Refund processing','An approved refund is returned through the original payment route. Once the merchant initiates an approved refund, provider and bank processing typically takes 5–7 business days and may vary. A support ticket or approval is not itself a completed refund; keep the provider reference after issuance.'],
     ['Plan changes and usage','Renewing the same active plan extends its expiry by 30 days. A different plan replaces it immediately with a new 30-day period; unused paid time is not credited. Message allowances are measured by calendar month and purchases do not reset usage.'],
     ['Your rights','This policy does not limit any non-excludable rights or remedies available under applicable law.'],
   ]}/>);
