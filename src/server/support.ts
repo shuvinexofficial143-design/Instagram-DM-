@@ -2,6 +2,7 @@ import { authenticatedUser, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './sup
 import { cleanEnvironment } from './supabaseConfig.js';
 import { randomUUID } from 'node:crypto';
 import { notifySupportEvent } from './supportNotify.js';
+import { billingConfig, cashfreeRequest } from './cashfree.js';
 
 // All requests need a verified Supabase session. Only this server uses the
 // service-role REST API; support tables have RLS and no client grants.
@@ -67,7 +68,7 @@ export default async function handler(req:any,res:any){
     const user=await authenticatedUser(req);
     if(!user?.id)return res.status(401).json({ok:false,error:'Sign in to contact support.'});
     const action=String(req.query?.action||'support-list').replace(/^support-/, '');
-    const adminActions=['admin-list','admin-update'];
+    const adminActions=['admin-list','admin-update','admin-refund','admin-refund-status'];
     const isAdmin=adminActions.includes(action)?await verifiedAdmin(req,user.id):false;
     if(adminActions.includes(action)&&!isAdmin)return res.status(403).json({ok:false,error:'Support administrator access required.'});
     if(req.method==='GET'){
@@ -93,6 +94,38 @@ export default async function handler(req:any,res:any){
         const ticket=await getTicket(String(req.query?.id||''),user.id,true);
         const messages=await db('autoreply_support_messages?select='+selectMessage+'&ticket_id=eq.'+encodeURIComponent(ticket.id)+'&order=created_at.asc&limit=300');
         return res.status(200).json({ok:true,ticket,messages,attachments:await ticketAttachments(ticket.id)});
+      }
+      if(action==='admin-refund-status'){
+        const ticket=await getTicket(String(req.query?.ticketId||''),user.id,true);
+        if(ticket.ticket_type!=='refund')throw new SupportError('Not a refund ticket.');
+        const existing=await db('autoreply_support_refunds?select=*&ticket_id=eq.'+encodeURIComponent(ticket.id)+'&limit=1');
+        const reserved=existing[0];
+        if(!reserved)return res.status(200).json({ok:true,refund:null});
+        if(billingConfig().mode!== 'production')throw new SupportError('Switch payment environment to live before verifying production refunds.',409);
+        try{
+          const result=await cashfreeRequest('/orders/'+encodeURIComponent(reserved.order_id)+'/refunds/'+encodeURIComponent(reserved.refund_id));
+          const status=String(result?.refund_status||'').toUpperCase();
+          if(result?.order_id!==reserved.order_id || String(result?.refund_id)!==reserved.refund_id ||
+              Number(result?.refund_amount)!==Number(reserved.amount_inr))
+            throw new SupportError('Refund provider response failed payment verification.',503);
+          const state=status==='SUCCESS'?'success':status==='PENDING'||status==='ONHOLD'||status==='INITIATED'?'initiated':'requires_review';
+          const rows=await db('autoreply_support_refunds?ticket_id=eq.'+encodeURIComponent(ticket.id),'PATCH',{
+            state,provider_status:status,provider_ref:String(result?.cf_refund_id||'').slice(0,100),updated_at:new Date().toISOString()
+          });
+          if(state==='success'){
+            await db('autoreply_support_tickets?id=eq.'+encodeURIComponent(ticket.id),'PATCH',{status:'refunded',updated_at:new Date().toISOString()});
+            // Never modify a later, unrelated paid purchase.
+            await db('autoreply_billing_subscriptions?owner_user_id=eq.'+encodeURIComponent(reserved.owner_user_id)
+              +'&last_order_id=eq.'+encodeURIComponent(reserved.order_id),'PATCH',{expires_at:new Date().toISOString()});
+          }else if(state==='initiated'&&ticket.status!=='refund_initiated'){
+            await db('autoreply_support_tickets?id=eq.'+encodeURIComponent(ticket.id),'PATCH',{status:'refund_initiated',updated_at:new Date().toISOString()});
+          }
+          return res.status(200).json({ok:true,refund:rows[0]||reserved});
+        }catch(e:any){
+          if(e instanceof SupportError)throw e;
+          console.warn('[REFUND_RECONCILE_PENDING]',{name:e?.name||'provider_error'});
+          return res.status(503).json({ok:false,error:'Cashfree refund status is unavailable. Do not initiate another refund.'});
+        }
       }
       if(action==='attachment-link'){
         const id=String(req.query?.attachmentId||'');
@@ -218,6 +251,65 @@ export default async function handler(req:any,res:any){
       });
       await notifySupportEvent(admin?'support_replied':'customer_replied',ticket,admin?await ownerEmail(ticket.owner_user_id):'').catch(()=>{});
       return res.status(200).json({ok:true,message:rows[0]});
+    }
+    if(action==='admin-refund'){
+      // Only the verified support administrator can initiate a full refund.
+      // A separate review must already have marked this ticket as approved.
+      const ticket=await getTicket(String(body.ticketId||''),user.id,true);
+      if(ticket.ticket_type!=='refund'||ticket.status!=='approved'||!ticket.order_id)
+        throw new SupportError('Only approved refund requests can be initiated.',409);
+      if(process.env.CASHFREE_REFUNDS_ENABLED!=='true')
+        throw new SupportError('Refund payouts are not enabled yet. Configure and verify the merchant workflow.',503);
+      if(billingConfig().mode!=='production')throw new SupportError('Live payments are required for live refunds.',409);
+      if(String(body.confirmRefund||'')!=='REFUND '+ticket.order_id)
+        throw new SupportError('Confirm the exact order reference before refunding.',400);
+      const existing=await db('autoreply_support_refunds?select=*&ticket_id=eq.'+encodeURIComponent(ticket.id)+'&limit=1');
+      if(existing[0])return res.status(409).json({ok:false,error:'Refund already reserved. Check provider status; never create another refund.',refund:existing[0]});
+      const o=await db('autoreply_billing_orders?select=order_id,owner_user_id,status,amount_inr,currency,environment,cf_payment_id'
+         +'&order_id=eq.'+encodeURIComponent(ticket.order_id)
+         +'&owner_user_id=eq.'+encodeURIComponent(ticket.owner_user_id)+'&limit=1');
+      const order=o[0];
+      if(!order||order.status!=='paid'||order.environment!=='production'||order.currency!=='INR'
+        ||!Number.isSafeInteger(order.amount_inr)||order.amount_inr<=0||!order.cf_payment_id)
+        throw new SupportError('Order has not been verified for a live full refund.',409);
+      // Confirm the existing payment directly with provider before any write.
+      const provider=await cashfreeRequest('/orders/'+encodeURIComponent(order.order_id));
+      if(provider?.order_id!==order.order_id || provider?.order_status!=='PAID'
+        ||provider?.order_currency!=='INR'||Number(provider?.order_amount)!==order.amount_inr)
+        throw new SupportError('Cashfree does not confirm this original payment.',409);
+      const refundId='arref_'+ticket.id.replaceAll('-','');
+      // Immutable one-order reservation guarantees at most one payout call,
+      // including parallel clicks and ambiguous Cashfree network failures.
+      await db('autoreply_support_refunds','POST',{
+        ticket_id:ticket.id,order_id:order.order_id,owner_user_id:order.owner_user_id,
+        refund_id:refundId,amount_inr:order.amount_inr,state:'reserved'
+      });
+      let result:any;
+      try{
+        result=await cashfreeRequest('/orders/'+encodeURIComponent(order.order_id)+'/refunds','POST',{
+          refund_id:refundId,refund_amount:order.amount_inr,refund_note:'Approved support ticket '+ticket.ticket_number,
+          refund_speed:'STANDARD'
+        },refundId);
+      }catch(e:any){
+        console.warn('[REFUND_PROVIDER_UNCERTAIN]',{name:e?.name||'provider_error'});
+        return res.status(503).json({ok:false,error:'Refund has been reserved. Check Cashfree status before any further action; do not retry payout creation.'});
+      }
+      if(result?.order_id!==order.order_id || result?.refund_id!==refundId || Number(result?.refund_amount)!==order.amount_inr)
+        throw new SupportError('Refund created but response needs manual provider verification. Do not retry.',503);
+      const status=String(result?.refund_status||'').toUpperCase();
+      const state=status==='SUCCESS'?'success':status==='PENDING'||status==='INITIATED'?'initiated':'requires_review';
+      const rows=await db('autoreply_support_refunds?ticket_id=eq.'+encodeURIComponent(ticket.id),'PATCH',{
+        state,provider_status:status,provider_ref:String(result?.cf_refund_id||'').slice(0,100),updated_at:new Date().toISOString()
+      });
+      await db('autoreply_support_tickets?id=eq.'+encodeURIComponent(ticket.id),'PATCH',{
+        status:state==='success'?'refunded':state==='initiated'?'refund_initiated':'in_review',updated_at:new Date().toISOString()
+      });
+      if(state==='success'){
+        await db('autoreply_billing_subscriptions?owner_user_id=eq.'+encodeURIComponent(order.owner_user_id)
+          +'&last_order_id=eq.'+encodeURIComponent(order.order_id),'PATCH',{expires_at:new Date().toISOString()});
+      }
+      await notifySupportEvent('status_changed',ticket,await ownerEmail(ticket.owner_user_id)).catch(()=>{});
+      return res.status(200).json({ok:true,refund:rows[0]});
     }
     if(action==='admin-update'){
       const ticket=await getTicket(String(body.ticketId||''),user.id,true);
