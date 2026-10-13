@@ -15,7 +15,7 @@ const originalFetch = globalThis.fetch;
 const noop = () => {};
 const empty = {
   user:{id:'test-workspace',name:'Sample owner',email:'owner@example.test',plan:'free',created_at:'2026-10-01',trial_expires_at:'2026-11-01'},
-  firebaseUser:null,authLoading:false,isAdmin:false,isGuestMode:false,activeTab:'home',
+  firebaseUser:null,authLoading:false,workspaceHydrating:false,workspaceDataLoading:false,workspaceDataError:false,isAdmin:false,isGuestMode:false,activeTab:'home',
   instagramAccount:null,instagramAccounts:[],workspaceId:'test-workspace',accountSwitching:false,accountError:'',instagramConnectMode:'reconnect',automations:[],contacts:[],inboxMessages:[],webhookLogs:[],pausedAiUsers:[],
   isBuilderOpen:false,isConnectModalOpen:false,isRenewModalOpen:false,editingAutomation:null,
   isAiPausedForUser:()=>false,
