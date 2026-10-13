@@ -586,7 +586,7 @@ export const AnalyticsPage: React.FC = () => {
                         <td className="px-4 py-4 text-right text-sm font-semibold text-slate-700">{(automation.stats?.runs || 0).toLocaleString()}</td>
                         <td className="px-4 py-4 text-right text-sm font-semibold text-slate-700">{(automation.stats?.dms_sent || 0).toLocaleString()}</td>
                         <td className="px-4 py-4 text-right text-sm font-semibold text-slate-700">{(automation.stats?.unique_users || 0).toLocaleString()}</td>
-                        <td className="px-5 py-4 text-right text-sm font-bold text-violet-800">{Number(automation.stats?.open_rate || 0).toFixed(0)}%</td>
+                        <td className="px-5 py-4 text-right text-sm font-bold text-violet-800">Not tracked</td>
                       </tr>
                     ))}
                   </tbody>

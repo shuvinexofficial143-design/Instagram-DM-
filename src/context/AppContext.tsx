@@ -198,7 +198,7 @@ const sanitizeAutomationRecord = (auto: any): Automation => ({
     runs: Number(auto?.stats?.runs) || 0,
     dms_sent: Number(auto?.stats?.dms_sent) || 0,
     unique_users: Number(auto?.stats?.unique_users) || 0,
-    open_rate: typeof auto?.stats?.open_rate === 'number' && Number.isFinite(auto.stats.open_rate) ? auto.stats.open_rate : 0,
+    open_rate: -1, // No verified Meta open rate: never claim 98% or 100%.
   },
   created_at: auto?.created_at || new Date().toISOString(),
   updated_at: auto?.updated_at || new Date().toISOString(),
@@ -829,7 +829,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const { access_token: _serverOnlyToken, ...safeAccount } = saved as any;
           setInstagramAccountState(safeAccount as InstagramAccount);
         } else {
-          setInstagramAccountState(null);
+          // The membership response may already have provided connected metadata.
+          // Missing optional "primary" must not erase that verified account.
+          setInstagramAccountState(current=>current?.username?current:null);
         }
       } catch (err) {
         if (cancelled) return;
@@ -876,6 +878,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setInstagramAccounts(payload.accounts || []);
       const target = payload.activeWorkspaceId || firebaseUser.uid;
       if (target !== (workspaceId || firebaseUser.uid)) {setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);setPausedAiUsers([]);setInstagramAccountState(null);setEditingAutomation(null);setIsBuilderOpen(false);}
+      const selected=(payload.accounts||[]).find((a:any)=>a.workspaceId===target)?.account;
+      if(selected?.username){
+        const {access_token:_serverOnly,...safe}=selected;
+        setInstagramAccountState(safe as InstagramAccount);
+      } else {
+        setInstagramAccountState(null);
+      }
       setWorkspaceId(target); setIsConnectModalOpen(false); setInstagramConnectMode('reconnect');
       setAccountError('');
     } catch(error:any) {
@@ -1047,7 +1056,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         runs: 0,
         dms_sent: 0,
         unique_users: 0,
-        open_rate: 100,
+        open_rate: -1,
       },
     };
 
