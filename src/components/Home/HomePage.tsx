@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { billingRequest } from '../../lib/billing';
 import {
   Zap, ChevronRight, ArrowRight, Send, Plus, Instagram,
   Users, Activity, CheckCircle2, AlertTriangle, Bot, Settings,
@@ -6,14 +7,36 @@ import {
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../Common/UserAvatar';
 
-type Period = 'today' | '7d' | '30d';
+type Period = 'today' | '7d' | '30d' | 'all';
 
 export const HomePage: React.FC = () => {
   const {
-    user, instagramAccount, automations, inboxMessages, contacts,
+    user, instagramAccount, automations, inboxMessages, contacts, workspaceDataLoading, workspaceDataError,
     setActiveTab, setIsConnectModalOpen, setIsBuilderOpen,
   } = useApp();
-  const [period, setPeriod] = useState<Period>('today');
+  // Default to verified lifetime totals; otherwise earlier successful AI replies
+  // disappear whenever Today is selected or their inbox automation_id is absent.
+  const [period, setPeriod] = useState<Period>('all');
+  const [verifiedAi,setVerifiedAi]=useState<{all:number;month:number}|null>(null);
+  const [aiError,setAiError]=useState(false);
+  useEffect(()=>{
+    let live=true;
+    setVerifiedAi(null);setAiError(false);
+    const load=async()=>{
+      if(!user?.id)return;
+      try{
+        const data=await billingRequest('dashboard-metrics');
+        if(live){setVerifiedAi({all:Number(data.aiRepliesAllTime)||0,month:Number(data.aiRepliesThisMonth)||0});setAiError(false);}
+      }catch{
+        if(live){setAiError(true);setVerifiedAi(null);}
+      }
+    };
+    void load();
+    const timer=window.setInterval(()=>{if(!document.hidden)void load();},60000);
+    const focus=()=>{void load();};
+    window.addEventListener('focus',focus);
+    return()=>{live=false;window.clearInterval(timer);window.removeEventListener('focus',focus);};
+  },[user?.id]);
 
   const isConnected = Boolean(instagramAccount?.username);
   const accountExpired = instagramAccount?.status === 'expired' || instagramAccount?.status === 'action_required';
@@ -28,7 +51,7 @@ export const HomePage: React.FC = () => {
       now.setHours(0, 0, 0, 0);
       return now.getTime();
     }
-    return Date.now() - (period === '7d' ? 7 : 30) * 24 * 60 * 60 * 1000;
+    return period==='all' ? 0 : Date.now() - (period === '7d' ? 7 : 30) * 24 * 60 * 60 * 1000;
   }, [period]);
   const periodMessages = useMemo(
     () => (inboxMessages || []).filter((m) => new Date(m.timestamp || 0).getTime() >= periodStart),
@@ -36,7 +59,12 @@ export const HomePage: React.FC = () => {
   );
   const totalDmsSent = periodMessages.filter((m) => m.direction === 'out').length;
   const aiIds = new Set(automations.filter(a=>a.trigger_type==='dm_ai_conversation').map(a=>a.id));
-  const aiReplies = periodMessages.filter(m=>m.direction==='out'&&m.is_automated&&m.automation_id&&aiIds.has(m.automation_id)).length;
+  // Short-range data is from tagged inbox messages only. The backend stores
+  // authoritative AI quota in monthly buckets (not timestamps per reply).
+  const taggedAiReplies = periodMessages.filter(m=>m.direction==='out'&&m.is_automated&&m.automation_id&&aiIds.has(m.automation_id)).length;
+  const aiReplies:number|null = period==='all'
+    ? (verifiedAi?.all ?? null)
+    : workspaceDataLoading||workspaceDataError ? null : taggedAiReplies;
   const newLeads = (contacts || []).filter((c) => new Date(c.first_interaction_at || 0).getTime() >= periodStart).length;
 
   const topAutomations = useMemo(
@@ -62,10 +90,10 @@ export const HomePage: React.FC = () => {
 
   const unread = inboxMessages.filter(m=>m.direction==='in'&&!m.is_read).length;
   const kpis = [
-    { label:'Active Automations', value:activeAutomations.length, icon:Zap, tone:'text-violet-600 bg-violet-50' },
-    { label:'DMs Sent', value:totalDmsSent, icon:Send, tone:'text-blue-600 bg-blue-50' },
+    { label:'Active Automations', value:workspaceDataLoading||workspaceDataError?null:activeAutomations.length, icon:Zap, tone:'text-violet-600 bg-violet-50' },
+    { label:'DMs Sent', value:workspaceDataLoading||workspaceDataError?null:totalDmsSent, icon:Send, tone:'text-blue-600 bg-blue-50' },
     { label:'AI Replies', value:aiReplies, icon:Bot, tone:'text-pink-600 bg-pink-50' },
-    { label:'New Leads', value:newLeads, icon:Users, tone:'text-orange-600 bg-orange-50' },
+    { label:'New Leads', value:workspaceDataLoading||workspaceDataError?null:newLeads, icon:Users, tone:'text-orange-600 bg-orange-50' },
   ];
 
   return (
@@ -77,12 +105,16 @@ export const HomePage: React.FC = () => {
             <p className="mt-1 text-sm font-medium text-slate-500">Here’s what’s happening with your Instagram automation in the selected period.</p>
           </div>
           <div className="inline-flex self-start rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-            {([['today','Today'],['7d','7 Days'],['30d','30 Days']] as const).map(([id,label]) => (
+            {([['all','All Time'],['today','Today'],['7d','7 Days'],['30d','30 Days']] as const).map(([id,label]) => (
               <button key={id} onClick={() => setPeriod(id)} className={`min-h-10 rounded-lg px-3 text-xs font-semibold transition ${period === id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>{label}</button>
             ))}
           </div>
         </header>
 
+        {workspaceDataError && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Some workspace records could not be loaded. Metrics are withheld rather than displaying an incorrect zero. Refresh to retry.</p>}
+        {period==='all' && verifiedAi && <p className="text-sm font-medium text-slate-600">AI Replies uses verified billing counters: <strong>{verifiedAi.all.toLocaleString('en-IN')} all time</strong> · {verifiedAi.month.toLocaleString('en-IN')} this month. Other cards use your recorded Inbox and Automations.</p>}
+        {period!=='all' && <p className="text-xs text-slate-500">Short-period AI replies are counted only when an Inbox message has a recorded AI automation ID; this can undercount older messages. All Time uses the verified usage ledger.</p>}
+        {period==='all' && aiError && <p role="alert" className="text-sm text-amber-700">Verified AI totals could not be loaded. No unverified zero is shown.</p>}
         {isConnected && !accountExpired && automations.length>0 && <div className="dashboard-next-action"><div><strong>{unread>0?`${unread} unread messages`:'Your workspace is ready'}</strong><p>{unread>0?'Check conversations that may need your attention.':'Review your inbox or create another automation.'}</p></div><button onClick={()=>setActiveTab('inbox')}>Open inbox <ArrowRight/></button></div>}
 
         <section className="relative overflow-hidden rounded-[18px] border border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 p-4 shadow-[0_8px_28px_rgba(76,88,160,.08)] sm:p-5">
@@ -137,7 +169,7 @@ export const HomePage: React.FC = () => {
             <div key={label} className="rounded-[18px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_8px_26px_rgba(30,41,59,.05)] transition hover:-translate-y-0.5 hover:shadow-md sm:p-5">
               <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4.5 w-4.5" /></div>
               <p className="mt-3 text-xs font-semibold text-slate-500">{label}</p>
-              <p className="mt-0.5 text-2xl font-bold tracking-tight text-slate-950">{value.toLocaleString()}</p>
+              <p className="mt-0.5 text-2xl font-bold tracking-tight text-slate-950">{value===null?'—':value.toLocaleString('en-IN')}</p>
               
             </div>
           ))}
@@ -149,7 +181,7 @@ export const HomePage: React.FC = () => {
             <div><h2 className="flex items-center gap-2 text-base font-bold text-slate-950"><Zap className="h-4.5 w-4.5 text-violet-600" />Top Performing Automations</h2><p className="mt-1 text-xs font-medium text-slate-500">Performance from your existing automation data.</p></div>
             <button onClick={() => setActiveTab('automations')} className="inline-flex min-h-10 items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800">View All <ArrowRight className="h-3.5 w-3.5" /></button>
           </div>
-          {topAutomations.length === 0 ? (
+          {workspaceDataLoading ? <p className="py-8 text-sm text-slate-500">Loading your automation history…</p> : topAutomations.length === 0 ? (
             <div className="py-6 text-center">
               <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Zap className="h-5 w-5" /></div>
               <p className="mt-3 text-sm font-bold text-slate-800">No automations yet</p>
@@ -167,7 +199,7 @@ export const HomePage: React.FC = () => {
                     <p className="mt-1 text-xs capitalize text-slate-500">{auto.trigger_type.replaceAll('_',' ')} automation</p>
                     <div className="mt-2 h-1.5 max-w-md overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-500" style={{width:`${pct}%`}} /></div>
                   </div>
-                  <div className="flex gap-5 text-xs sm:text-right"><div><p className="font-bold text-slate-900">{runs.toLocaleString()}</p><p className="text-slate-400">Triggered</p></div><div><p className="font-bold text-slate-900">{sent.toLocaleString()}</p><p className="text-slate-400">DMs sent</p></div><div><p className="font-bold text-slate-900">{pct}%</p><p className="text-slate-400">Delivery</p></div></div>
+                  <div className="flex gap-5 text-xs sm:text-right"><div><p className="font-bold text-slate-900">{runs.toLocaleString()}</p><p className="text-slate-400">Triggered</p></div><div><p className="font-bold text-slate-900">{sent.toLocaleString()}</p><p className="text-slate-400">DMs sent</p></div><div><p className="font-bold text-slate-900">{runs>0?`${pct}%`:'—'}</p><p className="text-slate-400">Sent per trigger</p></div></div>
                 </div>;
               })}
             </div>
@@ -175,7 +207,7 @@ export const HomePage: React.FC = () => {
         </section>
           <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4"><h2 className="text-base font-bold text-slate-950">Recent Activity</h2><button onClick={() => setActiveTab('inbox')} className="inline-flex min-h-10 items-center gap-1 text-xs font-bold text-indigo-600">View All <ChevronRight className="h-4 w-4" /></button></div>
-            {recentActivity.length === 0 ? <div className="py-8 text-center"><Activity className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-700">No recent activity yet</p><p className="mt-1 text-xs text-slate-500">New Instagram conversations will appear here.</p></div> :
+            {workspaceDataLoading ? <p className="py-8 text-sm text-slate-500">Loading recent activity…</p> : recentActivity.length === 0 ? <div className="py-8 text-center"><Activity className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-700">No recent activity yet</p><p className="mt-1 text-xs text-slate-500">New Instagram conversations will appear here.</p></div> :
               <div className="divide-y divide-slate-100">{recentActivity.map(msg => <div key={msg.id} className="flex items-center gap-3 py-3.5"><UserAvatar src={msg.from_avatar} username={msg.from_username} size="sm" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{msg.direction==='out' ? `DM sent to @${msg.from_username}` : `@${msg.from_username} sent a DM`}</p><p className="truncate text-xs text-slate-500">{msg.message_text}</p></div><span className="shrink-0 text-xs text-slate-400">{relativeTime(msg.timestamp)}</span></div>)}</div>}
           </section>
           <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">

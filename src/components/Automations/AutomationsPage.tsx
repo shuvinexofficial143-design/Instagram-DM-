@@ -178,7 +178,7 @@ export const AutomationsPage: React.FC = () => {
           runs: 0,
           dms_sent: 0,
           unique_users: 0,
-          open_rate: 100,
+          open_rate: 0,
         },
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

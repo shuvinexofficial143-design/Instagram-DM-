@@ -6,7 +6,9 @@ export const PlanBanner: React.FC = () => {
   const { user, setIsRenewModalOpen } = useApp();
 
   const isTrial = user?.plan === 'trial';
-  if (!isTrial) return null;
+  const expiry=Date.parse(user?.trial_expires_at||'');
+  if (!isTrial || !Number.isFinite(expiry)) return null;
+  const daysLeft=Math.max(0,Math.ceil((expiry-Date.now())/86400000));
 
   return (
     <div className="bg-[#FDEAEA] border-b border-red-200/80 px-6 py-3 flex items-center justify-between text-xs text-red-900 shadow-2xs">
@@ -17,7 +19,7 @@ export const PlanBanner: React.FC = () => {
         <div>
           <span className="font-bold text-red-950">Free Trial Expiring Soon: </span>
           <span className="text-red-800">
-            You have 5 days remaining in your trial. Connect your Meta App credentials and renew now to avoid DM automation downtime.
+            You have {daysLeft} day{daysLeft===1?'':'s'} remaining in your trial. Connect your Meta App credentials and renew now to avoid DM automation downtime.
           </span>
         </div>
       </div>
