@@ -455,7 +455,7 @@ async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:s
  try {
   const [{data:binding,error:bindingError},{data:connection,error:connectionError},{data:contacts,error:contactError}]=await Promise.all([
    admin.from('autoreply_documents').select('data').eq('user_id',workspaceId).eq('collection','google_sheets_automations').eq('id',automationId).maybeSingle(),
-   admin.from('autoreply_documents').select('data').eq('user_id',workspaceId).eq('collection','google_sheets_connections').eq('id','primary').maybeSingle(),
+   admin.from('autoreply_google_connections_secure').select('data').eq('workspace_id',workspaceId).maybeSingle(),
    admin.from('autoreply_documents').select('id,data').eq('user_id',workspaceId).eq('collection','contacts')]);
   if(bindingError||connectionError||contactError)throw new Error('Could not load Google Sheets sync settings');
   const cfg=binding?.data,connectionCfg=connection?.data;
