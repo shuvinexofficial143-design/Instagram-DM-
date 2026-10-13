@@ -317,6 +317,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     let isMounted = true;
+    let previousAuthenticatedUid: string | null = null;
 
     // Handle any incoming redirect result (e.g. from Google Sign-In redirect on mobile/desktop)
     getRedirectResult(auth)
@@ -324,6 +325,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!isMounted) return;
         if (result && result.user) {
           console.log('[SUPABASE_REDIRECT_SUCCESS] Successfully authenticated via redirect:', result.user.email);
+          previousAuthenticatedUid=result.user.uid;
+          setWorkspaceHydrating(true);
           setFirebaseUser(result.user);
           setIsGuestMode(false);
           const userProfile: UserProfile = {
@@ -356,6 +359,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubscribe = onAuthStateChanged(auth, async (currUser) => {
       if (!isMounted) return;
+      if(currUser?.uid && currUser.uid!==previousAuthenticatedUid) setWorkspaceHydrating(true);
+      previousAuthenticatedUid=currUser?.uid||null;
       setFirebaseUser(currUser);
       if (currUser) {
         setIsGuestMode(false);
