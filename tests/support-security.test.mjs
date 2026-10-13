@@ -68,3 +68,18 @@ test('optional alerts never include message contents or payment information',()=
   assert.match(source,/SUPPORT_TELEGRAM_BOT_TOKEN/);
   assert.doesNotMatch(source,/JSON\.stringify\(ticket\)/);
 });
+
+test('Cashfree refund is admin-only, approved, full-amount and idempotent',()=>{
+ const src=read('src/server/support.ts');
+ const migration=read('supabase/migrations/20261013_support_refunds.sql');
+ assert.match(src,/action==='admin-refund'/);
+ assert.match(src,/verifiedAdmin\(req,user\.id\)/);
+ assert.match(src,/ticket\.status!=='approved'/);
+ assert.match(src,/CASHFREE_REFUNDS_ENABLED/);
+ assert.match(src,/confirmRefund/);
+ assert.match(src,/refund_amount:order\.amount_inr/);
+ assert.match(src,/refundId/);
+ assert.match(src,/refund_initiated/);
+ assert.match(migration,/autoreply_support_refunds_one_per_order/);
+ assert.match(migration,/revoke all on public\.autoreply_support_refunds from public,anon,authenticated/);
+});
