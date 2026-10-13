@@ -1,4 +1,5 @@
 import supportHandler from '../src/server/support.js';
+import lifecycleHandler from '../src/server/customerLifecycle.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../src/server/supabaseConfig.js';
 
@@ -40,6 +41,9 @@ export default async function handler(req: any, res: any) {
   // Route authenticated support actions through an existing Vercel function.
   // Keeps Hobby deployment under the 12-function limit without changing
   // existing GET /api/workspace-data guest automation behavior.
+  if (String(req.query?.action || '').startsWith('mail-')) {
+    return lifecycleHandler(req,res);
+  }
   if (String(req.query?.action || '').startsWith('support-')) {
     return supportHandler(req, res);
   }
