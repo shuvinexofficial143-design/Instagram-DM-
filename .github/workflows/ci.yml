@@ -64,5 +64,8 @@ jobs:
       - name: Customer lifecycle emails and visual receipt regressions
         run: bun run test:lifecycle
 
+      - name: Verified dashboard and workspace hydration regressions
+        run: bun run test:dashboard
+
       - name: Production build
         run: bun run build
