@@ -12,7 +12,7 @@ test('payment invoice creates a valid vector PDF with customer and order details
  assert.ok(pdf.length>1200);assert.match(raw,/^%PDF-1\.4/);
  assert.match(raw,/\/Type \/Catalog/);assert.match(raw,/xref\n0 7/);assert.match(raw,/%%EOF/);
  assert.match(raw,/PAYMENT INVOICE/);assert.match(raw,/ar_p_00000000-0000-4000-8000-000000000001/);
- assert.match(raw,/Alice \\(North\\)/);assert.match(raw,/INR 499/);
+ assert.ok(raw.includes(String.raw`Alice \\(North\\)`));assert.match(raw,/INR 499/);
  assert.match(raw,/not a GST tax invoice/);
  const off=Number(raw.match(/startxref\n(\d+)/)?.[1]||-1);
  assert.equal(raw.slice(off,off+4),'xref');
