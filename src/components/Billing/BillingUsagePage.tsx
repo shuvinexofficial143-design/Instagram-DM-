@@ -38,6 +38,7 @@ export const BillingUsagePage:React.FC=()=>{
   const plans=catalog.plans.map(p=>({...p,popular:p.id==='pro',special:p.id==='business'}));
   const [showTopUps,setShowTopUps]=useState(false);
   const plan=usage.plan;
+  const usageVerified=usage.source==='server';
   const autoLimit=usage.automationLimit===null?Math.max(usage.automationUsed,1):usage.automationLimit;
 
   return <div className="min-h-full bg-[#f5f6fc] px-4 py-6 sm:px-7 lg:px-8">
@@ -51,13 +52,13 @@ export const BillingUsagePage:React.FC=()=>{
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-6 sm:py-5">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-violet-700">{plan.name} plan</span>
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><ShieldCheck className="h-3.5 w-3.5"/>Current subscription · Active</span>
+              <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-violet-700">{usageVerified?plan.name+' plan':'Checking plan…'}</span>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><ShieldCheck className="h-3.5 w-3.5"/>{usageVerified?'Subscription verified':'Verifying subscription'}</span>
             </div>
             <div className="mt-2 flex flex-wrap items-baseline gap-2">
-              <span className="text-[34px] font-black tracking-tight text-slate-950 sm:text-[40px]">{plan.price}</span>
-              <span className="text-xs font-semibold text-slate-500">{plan.id==='free'?'Free plan':'one-time / 30 days'}</span>
-              {usage.expiresAt&&<span className="text-xs text-slate-500">· Active until {new Date(usage.expiresAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span>}
+              <span className="text-[34px] font-black tracking-tight text-slate-950 sm:text-[40px]">{usageVerified?plan.price:'—'}</span>
+              <span className="text-xs font-semibold text-slate-500">{usageVerified?(plan.id==='free'?'Free plan':'one-time / 30 days'):'Checking live billing data'}</span>
+              {usageVerified&&usage.expiresAt&&<span className="text-xs text-slate-500">· Active until {new Date(usage.expiresAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span>}
             </div>
           </div>
           <button type="button" onClick={()=>setShowTopUps(value=>!value)} aria-expanded={showTopUps} aria-controls="reply-top-ups" className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800 transition hover:bg-slate-50"><Plus className="h-4 w-4"/>Add Money</button>
@@ -75,18 +76,18 @@ export const BillingUsagePage:React.FC=()=>{
 
       <section>
         <div className="mb-3"><h2 className="text-base font-bold text-slate-950">Monthly usage</h2><p className="mt-0.5 text-xs text-slate-500">Your current workspace limits and consumption.</p></div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {usageVerified ? <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Usage icon={BarChart3} label="Standard replies" used={usage.messageUsed} limit={usage.messageLimit} bonus={usage.freeBonusMessages} note={usage.source==='server'?"Monthly automation messages":"Monthly outgoing automation messages"}/>
           <Usage icon={Bot} label="AI Replies" used={usage.aiUsed} limit={usage.aiLimit} bonus={usage.freeBonusAi} note="Independent AI allowance"/>
           <Usage icon={Zap} label="Automations" used={usage.automationUsed} limit={autoLimit} note={usage.automationLimit===null?"Unlimited on this plan":"Workspace automations"}/>
           <Usage icon={Instagram} label="Instagram Accounts" used={Math.max(instagramAccounts.filter(({account})=>account?.status==='connected').length,instagramAccount?1:0)} limit={plan.accounts} note="Connected Instagram accounts"/>
-        </div>
+        </div> : <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">Live usage totals are being verified. Incorrect zero values and fallback limits are hidden until the billing server responds. Your invoice history below is still available.</div>}
       </section>
 
       <section>
         <div className="mb-3 flex items-end justify-between gap-3"><div><h2 className="text-base font-bold text-slate-950">Plans & pricing</h2><p className="mt-0.5 text-xs text-slate-500">Choose the capacity that fits your workspace.</p></div><CreditCard className="h-5 w-5 text-slate-300"/></div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {!catalog.synced&&<p role="status" className="col-span-full text-xs text-amber-800">Live plan prices are loading. Purchases are available when prices are confirmed.</p>}
+          {!catalog.synced&&<p role="status" className="col-span-full text-sm text-amber-800">{catalog.error||'Checking current live plan prices…'} Purchases are available only after prices are verified.</p>}
           {plans.map(p=>{const active=p.id===plan.id;return <article key={p.name} className={`relative flex flex-col rounded-[24px] border bg-white p-6 shadow-[0_16px_40px_rgba(32,24,83,.06)] transition-transform hover:-translate-y-1 ${p.special?'billing-special-plan border-amber-300 bg-gradient-to-b from-amber-50 via-white to-white':p.popular?'border-violet-400 ring-2 ring-violet-100':'border-slate-200/80'}`}>
             <div className="flex items-start justify-between gap-2"><div><h3 className="text-lg font-black text-slate-950">{p.name}{active&&<span className="ml-2 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">Current plan</span>}</h3><div className="mt-2"><span className="text-[32px] font-black tracking-tight text-[#211748]">{p.price}</span><span className="text-xs font-semibold text-slate-400">{p.id==='free'?' / free':' / 30 days'}</span></div></div>{p.special&&<span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">Top tier</span>}{p.popular&&<span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-bold uppercase tracking-wide text-indigo-700">Popular</span>}</div>
             <div className="my-4 h-px bg-slate-100"/>

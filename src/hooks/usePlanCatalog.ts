@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { PLAN_CATALOG, PlanConfig } from '../lib/planUsage';
+import { PlanConfig } from '../lib/planUsage';
 
 /** Public plan prices and limits are owned by Supabase, never client constants. */
 export function usePlanCatalog() {
-  const [plans,setPlans] = useState<PlanConfig[]>(PLAN_CATALOG);
+  const [plans,setPlans] = useState<PlanConfig[]>([]); // Never present unverified static prices.
   const [synced,setSynced] = useState(false);
   const [error,setError] = useState('');
   useEffect(() => {

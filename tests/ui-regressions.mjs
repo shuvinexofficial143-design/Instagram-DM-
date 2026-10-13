@@ -103,7 +103,7 @@ try {
   checks++;
   window.location.pathname='/';
   html=await streamRender(React.createElement(ui.App));
-  for(const price of ['₹0','₹299','₹599','₹1,299'])assert.ok(html.includes(price));
+  assert.ok(html.includes('Checking live plan prices and limits'), 'unverified static plan prices must be hidden during loading');
   assert.ok(html.includes('Example conversation'));assert.ok(html.includes('1,500 standard DM/comment/story replies'));checks++;
   window.location.pathname='/login';window.location.search='?mode=signup';
   html=await streamRender(React.createElement(ui.App));
