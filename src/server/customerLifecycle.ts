@@ -49,10 +49,23 @@ export async function deliverOnboardingBatch(){
   const current=state?.[0];
   if(!current?.marketing_opt_in||current.onboarding_stage!==stage||!current.onboarding_claimed_at
     ||Date.now()-Date.parse(current.last_seen_at)<3*(stage+1)*86400000)continue;
+  // Show the verified current plan only in the plan-focused reminder.
+  // Expired/free users must never be described as having paid access.
+  let planLine='';
+  if(stage===2){
+    const subs=await billingDb('autoreply_billing_subscriptions?select=plan_id,expires_at&owner_user_id=eq.'+
+      encodeURIComponent(row.user_id)+'&limit=1').catch(()=>[]);
+    const sub=subs?.[0];
+    const valid=sub?.expires_at&&Date.parse(sub.expires_at)>Date.now();
+    planLine=valid
+      ?'Current paid plan: '+String(sub.plan_id).slice(0,45)+'. Valid until '+
+          new Date(sub.expires_at).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata'})+'.'
+      :'No active paid plan is confirmed. Check Billing & Usage for your current status.';
+  }
   const campaign=drips[stage],name=htmlEscape(trimmed(row.display_name,60)||'there');
   const optout='https://autoreplys.vercel.app/api/workspace-data?action=mail-unsubscribe&token='+encodeURIComponent(row.unsubscribe_token);
-  const plain=`Hi ${trimmed(row.display_name,60)||'there'},\n\n${campaign.tip}\n\nOpen: ${href[stage]}\n\nThis is tip ${stage+1} of 4, because you opted in for onboarding emails. We stop if you return to the website.\nUnsubscribe: ${optout}`;
-  const html=`<div style="max-width:620px;margin:auto;padding:30px;background:#fff7ed;border-radius:20px;font:16px/1.7 Arial,sans-serif"><p style="color:#c2410c;letter-spacing:2px;font-weight:700">AUTO REPLIES</p><h2 style="color:#0f172a">${campaign.headline}</h2><p>Hi ${name},</p><p>${campaign.tip}</p><a href="${href[stage]}" style="display:inline-block;background:#c2410c;padding:12px 20px;color:#fff;text-decoration:none;border-radius:10px">${campaign.cta}</a><p style="margin-top:30px;font-size:13px;color:#64748b">Tip ${stage+1} of 4 · You opted in to product tips. <a href="${optout}">Unsubscribe with one click</a>.</p></div>`;
+  const plain=`Hi ${trimmed(row.display_name,60)||'there'},\n\n${campaign.tip}\n${planLine?planLine+'\\n':''}\nOpen: ${href[stage]}\n\nThis is tip ${stage+1} of 4, because you opted in for onboarding emails. We stop if you return to the website.\nUnsubscribe: ${optout}`;
+  const html=`<div style="max-width:620px;margin:auto;padding:30px;background:#fff7ed;border-radius:20px;font:16px/1.7 Arial,sans-serif"><p style="color:#c2410c;letter-spacing:2px;font-weight:700">AUTO REPLIES</p><h2 style="color:#0f172a">${campaign.headline}</h2><p>Hi ${name},</p><p>${campaign.tip}</p>${planLine?'<p style="font-weight:700">'+htmlEscape(planLine)+'</p>':''}<a href="${href[stage]}" style="display:inline-block;background:#c2410c;padding:12px 20px;color:#fff;text-decoration:none;border-radius:10px">${campaign.cta}</a><p style="margin-top:30px;font-size:13px;color:#64748b">Tip ${stage+1} of 4 · You opted in to product tips. <a href="${optout}">Unsubscribe with one click</a>.</p></div>`;
   try{
     const id=await sendProvider(row.email,campaign.subject,plain,html,'autoreply-onboard/'+row.user_id+'/'+stage);
     if(id){
