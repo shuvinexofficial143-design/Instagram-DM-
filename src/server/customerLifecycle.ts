@@ -1,6 +1,6 @@
 import {timingSafeEqual} from 'node:crypto';
 import {authenticatedUser,cleanEnvironment} from './supabaseConfig.js';
-import {billingDb} from './cashfree.js';
+import {billingDb,businessDetails} from './cashfree.js';
 
 const validEmail=(email:string)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)&&email.length<200;
 const mask=(email:string)=>email.replace(/^(.{2}).*(@[^@]+)$/,'$1***$2');
@@ -39,7 +39,7 @@ const drips=[
 const href=['https://autoreplys.vercel.app/','https://autoreplys.vercel.app/','https://autoreplys.vercel.app/billing','https://autoreplys.vercel.app/contact'];
 export async function deliverOnboardingBatch(){
  if(!mailConfigured())return {configured:false,sent:0};
- const rows=await billingDb('rpc/autoreply_claim_onboarding_emails','POST',{p_limit:10});
+ const rows=await billingDb('rpc/autoreply_claim_onboarding_emails','POST',{p_limit:4});
  let sent=0;
  for(const row of Array.isArray(rows)?rows:[]){
   const stage=Number(row.onboarding_stage);
@@ -62,10 +62,12 @@ export async function deliverOnboardingBatch(){
           new Date(sub.expires_at).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata'})+'.'
       :'No active paid plan is confirmed. Check Billing & Usage for your current status.';
   }
+  const company=businessDetails();
+  const footer=htmlEscape(trimmed(company.legalName,100)+' · '+trimmed(company.address,160));
   const campaign=drips[stage],name=htmlEscape(trimmed(row.display_name,60)||'there');
   const optout='https://autoreplys.vercel.app/api/workspace-data?action=mail-unsubscribe&token='+encodeURIComponent(row.unsubscribe_token);
-  const plain=`Hi ${trimmed(row.display_name,60)||'there'},\n\n${campaign.tip}\n${planLine?planLine+'\\n':''}\nOpen: ${href[stage]}\n\nThis is tip ${stage+1} of 4, because you opted in for onboarding emails. We stop if you return to the website.\nUnsubscribe: ${optout}`;
-  const html=`<div style="max-width:620px;margin:auto;padding:30px;background:#fff7ed;border-radius:20px;font:16px/1.7 Arial,sans-serif"><p style="color:#c2410c;letter-spacing:2px;font-weight:700">AUTO REPLIES</p><h2 style="color:#0f172a">${campaign.headline}</h2><p>Hi ${name},</p><p>${campaign.tip}</p>${planLine?'<p style="font-weight:700">'+htmlEscape(planLine)+'</p>':''}<a href="${href[stage]}" style="display:inline-block;background:#c2410c;padding:12px 20px;color:#fff;text-decoration:none;border-radius:10px">${campaign.cta}</a><p style="margin-top:30px;font-size:13px;color:#64748b">Tip ${stage+1} of 4 · You opted in to product tips. <a href="${optout}">Unsubscribe with one click</a>.</p></div>`;
+  const plain=`Hi ${trimmed(row.display_name,60)||'there'},\n\n${campaign.tip}\n${planLine?planLine+'\\n':''}\nOpen: ${href[stage]}\n\nThis is tip ${stage+1} of 4, because you opted in for onboarding emails. We stop if you return to the website.\nUnsubscribe: ${optout}\n\nSent by ${company.legalName}, ${company.address}`;
+  const html=`<div style="max-width:620px;margin:auto;padding:30px;background:#fff7ed;border-radius:20px;font:16px/1.7 Arial,sans-serif"><p style="color:#c2410c;letter-spacing:2px;font-weight:700">AUTO REPLIES</p><h2 style="color:#0f172a">${campaign.headline}</h2><p>Hi ${name},</p><p>${campaign.tip}</p>${planLine?'<p style="font-weight:700">'+htmlEscape(planLine)+'</p>':''}<a href="${href[stage]}" style="display:inline-block;background:#c2410c;padding:12px 20px;color:#fff;text-decoration:none;border-radius:10px">${campaign.cta}</a><p style="margin-top:30px;font-size:13px;color:#64748b">Tip ${stage+1} of 4 · You opted in to product tips. <a href="${optout}">Unsubscribe with one click</a>.</p><p style="font-size:12px;color:#64748b">${footer}</p></div>`;
   try{
     const id=await sendProvider(row.email,campaign.subject,plain,html,'autoreply-onboard/'+row.user_id+'/'+stage);
     if(id){
