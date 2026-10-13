@@ -61,5 +61,8 @@ jobs:
       - name: Invoice PDF and typography regressions
         run: bun run test:invoices
 
+      - name: Customer lifecycle emails and visual receipt regressions
+        run: bun run test:lifecycle
+
       - name: Production build
         run: bun run build
