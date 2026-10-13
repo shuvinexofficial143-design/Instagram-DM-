@@ -16,7 +16,8 @@
     "test:security": "node --import tsx --test tests/guest-store-auth.test.mjs",
     "test:support": "node --test tests/support-security.test.mjs",
     "test:automations": "node --test tests/automation-delivery.test.mjs tests/instagram-subscription.test.mjs tests/instagram-accounts.test.mjs tests/customer-sheets.test.mjs",
-    "test:billing": "node --import tsx --test tests/billing.test.ts"
+    "test:billing": "node --import tsx --test tests/billing.test.ts",
+    "test:invoices": "node --import tsx --test tests/invoice.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

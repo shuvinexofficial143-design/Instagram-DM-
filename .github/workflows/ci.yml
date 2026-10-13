@@ -58,5 +58,8 @@ jobs:
       - name: Billing and payment regressions
         run: bun run test:billing
 
+      - name: Invoice PDF and typography regressions
+        run: bun run test:invoices
+
       - name: Production build
         run: bun run build
