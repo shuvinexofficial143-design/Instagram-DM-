@@ -1,5 +1,6 @@
 import { SUPABASE_URL } from '../src/server/supabaseConfig.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { authorizedQueueDrain,drainQueuedWebhooks,durableWebhookEnabled,finishWebhook,queueWebhookEvent } from '../src/server/webhookQueue.js';
 
 const RELAY_VERSION = '2026-09-21-fast-webhook-v1';
 
@@ -92,6 +93,21 @@ export default async function handler(req: any, res: any) {
   const openaiKey = String(process.env.OPENAI_API_KEY || '').trim();
 
   if (req.method === 'GET') {
+    if (String(req.query?.drain || '') === '1') {
+      if (!durableWebhookEnabled() || !authorizedQueueDrain(req)) {
+        return res.status(403).json({ ok: false });
+      }
+      if (!appSecret) return res.status(503).json({ok:false,error:'Webhook processing is not configured.'});
+      try {
+        const result = await drainQueuedWebhooks((event:any)=>
+          forwardToLiveProcessor(event,openaiKey,Date.now(),appSecret,configuredVerifyToken));
+        res.setHeader('Cache-Control','private, no-store');
+        return res.status(200).json({ok:true,...result});
+      } catch (e:any) {
+        console.error('[DURABLE_WEBHOOK_DRAIN_FAILED]',{kind:e?.name||'error'});
+        return res.status(503).json({ok:false,error:'Webhook retry unavailable.'});
+      }
+    }
     if (String(req.query?.check || '') === '1') {
       return res.status(200).json({
         ok: true,
@@ -169,6 +185,22 @@ export default async function handler(req: any, res: any) {
       );
     }
 
+    let queued: {created:boolean;hash:string;lease:string;attempts:number;status?:string}|null=null;
+    if(durableWebhookEnabled()){
+      try{
+        queued=await queueWebhookEvent(rawBody,event);
+      }catch(e:any){
+        console.error('[DURABLE_WEBHOOK_PERSIST_FAILED]',{kind:e?.name||'error'});
+        res.setHeader('Retry-After','10');
+        return res.status(503).json({received:false,reason:'queue_unavailable'});
+      }
+      if(!queued.created){
+        if(queued.status==='processed')return res.status(200).json({received:true,processed:true,duplicate:true});
+        // An existing queued or leased event is handled by the retry worker.
+        res.setHeader('Retry-After','15');
+        return res.status(503).json({received:true,processed:false,reason:'queued_for_retry'});
+      }
+    }
     try {
       const result = await forwardToLiveProcessor(
         event,
@@ -195,6 +227,7 @@ export default async function handler(req: any, res: any) {
           : [],
       });
 
+      if(queued)await finishWebhook(queued.hash,queued.lease,true,queued.attempts);
       return res.status(200).json({
         received: true,
         processed: true,
@@ -202,6 +235,8 @@ export default async function handler(req: any, res: any) {
       });
     } catch (err: any) {
       console.error('[LIVE_DM_AI] Processor failed', err?.message || err);
+      if(queued)await finishWebhook(queued.hash,queued.lease,false,queued.attempts)
+        .catch(e=>console.error('[DURABLE_WEBHOOK_MARK_FAILED]',{kind:e?.name||'error'}));
 
       // Do not acknowledge an unprocessed event as successfully delivered.
       // Meta may retry the signed event; message claims prevent duplicate replies.
