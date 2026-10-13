@@ -154,6 +154,8 @@ export function AdminSupportDesk(){
   const load=useCallback(async()=>{try{const r=await request('admin-list');setTickets(r.tickets||[]);setError('')}catch(e:any){setError(e.message)}finally{setLoading(false)}},[]);
   const open=useCallback(async(id:string)=>{try{const r=await request('admin-thread','GET',undefined,'id='+encodeURIComponent(id));setSelected(r.ticket);setMessages(r.messages||[]);setAttachments(r.attachments||[]);setStatus(r.ticket.status);setNote(r.ticket.admin_note||'');setError('')}catch(e:any){setError(e.message)}},[]);
   useEffect(()=>{void load()},[load]);
+  const initiateRefund=async()=>{if(!selected?.order_id)return;const confirmation=window.prompt('This will initiate a REAL full Cashfree refund for order '+selected.order_id+'. Type REFUND '+selected.order_id+' to confirm.');if(confirmation!=='REFUND '+selected.order_id)return;setBusy(true);setError('');try{await request('admin-refund','POST',{ticketId:selected.id,confirmRefund:confirmation});await open(selected.id);await load()}catch(e:any){setError(e.message)}finally{setBusy(false)}};
+  const checkRefund=async()=>{if(!selected)return;setBusy(true);setError('');try{const r=await request('admin-refund-status','GET',undefined,'ticketId='+encodeURIComponent(selected.id));if(r.refund){await open(selected.id);await load()}else setError('No refund has been reserved for this ticket.')}catch(e:any){setError(e.message)}finally{setBusy(false)}};
   const save=async()=>{if(!selected)return;setBusy(true);try{await request('admin-update','POST',{ticketId:selected.id,status,note});await open(selected.id);await load()}catch(e:any){setError(e.message)}finally{setBusy(false)}};
   const send=async(ev:React.FormEvent)=>{ev.preventDefault();if(!selected||!reply.trim())return;setBusy(true);try{await request('admin-reply','POST',{ticketId:selected.id,message:reply});setReply('');await open(selected.id);await load()}catch(e:any){setError(e.message)}finally{setBusy(false)}};
   return <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(260px,1fr)_minmax(0,1.5fr)]">
@@ -172,6 +174,14 @@ export function AdminSupportDesk(){
           <textarea maxLength={500} rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Required if rejecting a request" className="mt-2 w-full rounded-xl border border-slate-300 p-3"/></label>
         <p className="my-3 text-xs leading-5 text-amber-700">Approval here is a review status only. No Cashfree payout, account deletion, or plan termination is triggered automatically.</p>
         <button type="button" disabled={busy} onClick={()=>void save()} className="min-h-11 rounded-xl border border-indigo-500 px-5 text-sm font-semibold text-indigo-700 disabled:opacity-50">Save status</button>
+        {selected.ticket_type==='refund'&&selected.order_id&&<div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h4 className="font-bold text-amber-950">Merchant refund processing</h4>
+          <p className="mt-2 text-sm leading-6 text-amber-900">Verify the payment, customer request and refund policy first. Only an approved ticket can initiate a full refund. A second refund is permanently blocked for the same order.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {selected.status==='approved'&&<button type="button" disabled={busy} onClick={()=>void initiateRefund()} className="min-h-11 rounded-xl bg-amber-700 px-4 text-sm font-bold text-white disabled:opacity-50">Initiate full refund in Cashfree</button>}
+            <button type="button" disabled={busy} onClick={()=>void checkRefund()} className="min-h-11 rounded-xl border border-amber-500 bg-white px-4 text-sm font-bold text-amber-900 disabled:opacity-50">Verify refund status</button>
+          </div>
+        </div>}
       </div>
     </>}</Box>
   </div>;

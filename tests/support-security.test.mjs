@@ -25,7 +25,7 @@ test('server verifies identity, ownership, admin and linked payments',()=>{
   assert.match(api,/owned\[0\]\.environment!=='production'/);
   assert.match(api,/Duplicate|An active request for this payment already exists/);
   assert.match(api,/refund_initiated','refunded/);
-  assert.doesNotMatch(api,/cashfreeRequest\(/);
+  // Cashfree may only be contacted by explicitly authorized refund actions.\n  assert.match(api,/if\(action==='admin-refund'\)/);\n  assert.match(api,/CASHFREE_REFUNDS_ENABLED/);
   assert.doesNotMatch(api,/payment_session_id/);
 });
 test('support UI includes customer conversations, request tracking and an admin inbox',()=>{
@@ -67,4 +67,19 @@ test('optional alerts never include message contents or payment information',()=
   assert.match(source,/RESEND_API_KEY/);
   assert.match(source,/SUPPORT_TELEGRAM_BOT_TOKEN/);
   assert.doesNotMatch(source,/JSON\.stringify\(ticket\)/);
+});
+
+test('Cashfree refund is admin-only, approved, full-amount and idempotent',()=>{
+ const src=read('src/server/support.ts');
+ const migration=read('supabase/migrations/20261013_support_refunds.sql');
+ assert.match(src,/action==='admin-refund'/);
+ assert.match(src,/verifiedAdmin\(req,user\.id\)/);
+ assert.match(src,/ticket\.status!=='approved'/);
+ assert.match(src,/CASHFREE_REFUNDS_ENABLED/);
+ assert.match(src,/confirmRefund/);
+ assert.match(src,/refund_amount:order\.amount_inr/);
+ assert.match(src,/refundId/);
+ assert.match(src,/refund_initiated/);
+ assert.match(migration,/autoreply_support_refunds_one_per_order/);
+ assert.match(migration,/revoke all on public\.autoreply_support_refunds from public,anon,authenticated/);
 });
