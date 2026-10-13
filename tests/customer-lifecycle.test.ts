@@ -38,7 +38,7 @@ test('welcome email is first-login-only and not a marketing opt-in',()=>{
  assert.match(logic,/autoreply_claim_welcome_email/);
  assert.match(sql,/welcome_sent_at is null/);
  assert.match(sql,/marketing_opt_in boolean not null default false/);
- assert.match(logic,/marketingOptIn:'?boolean/);
+ assert.match(logic,/typeof req\.body\?\.marketingOptIn!==['"]boolean['"]/);
  assert.match(logic,/action==='mail-unsubscribe'/);
  assert.match(logic,/marketing_opt_in:false/);
 });
