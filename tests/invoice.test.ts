@@ -51,4 +51,9 @@ test('typography raises old fixed sizes as well as rem and arbitrary sizes',()=>
  assert.match(css,/\.text-sm \{ font-size:17px/);
  assert.match(css,/\[class~="text-\[11px\]"\] \{font-size:13px!important;/);
  assert.match(css,/\.app-unified-theme \.text-xs \{ font-size:16px!important;/);
+ assert.match(css,/\[class~="text-base"\]\{font-size:18px!important;/);
+ assert.match(css,/@media\(min-width:640px\)\{/);
+ assert.match(css,/\[class~="sm:text-\[38px\]"\]\{font-size:40px!important;/);
+ assert.match(css,/\[class~="md:text-lg"\]\{font-size:20px!important;/);
+
 });
