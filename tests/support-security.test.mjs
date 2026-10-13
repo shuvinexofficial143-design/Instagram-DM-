@@ -46,3 +46,25 @@ test('support reuses the existing workspace-data Vercel function',()=>{
   assert.match(route,/supportHandler\(req, res\)/);
   assert.match(ui,/\/api\/workspace-data\?action=support-/);
 });
+
+test('private screenshots enforce ticket access and binary type validation',()=>{
+  const source=read('src/server/support.ts');
+  const migration=read('supabase/migrations/20261013_private_support_attachments.sql');
+  assert.match(source,/action==='attachment-upload'/);
+  assert.match(source,/getTicket\(ticketId,user\.id,admin\)/);
+  assert.match(source,/imageType==='image\/png'&&isPng/);
+  assert.match(source,/imageType==='image\/jpeg'&&isJpeg/);
+  assert.match(source,/imageType==='image\/webp'&&isWebp/);
+  assert.match(source,/action==='attachment-link'/);
+  assert.match(migration,/public=false/);
+  assert.match(migration,/autoreply_support_attachments enable row level security/);
+  assert.match(migration,/revoke all on public\.autoreply_support_attachments from public,anon,authenticated/);
+  assert.match(ui,/EvidencePanel/);
+});
+test('optional alerts never include message contents or payment information',()=>{
+  const source=read('src/server/supportNotify.ts');
+  assert.match(source,/SUPPORT_NOTIFICATION_EMAIL/);
+  assert.match(source,/RESEND_API_KEY/);
+  assert.match(source,/SUPPORT_TELEGRAM_BOT_TOKEN/);
+  assert.doesNotMatch(source,/JSON\.stringify\(ticket\)/);
+});
