@@ -6,6 +6,14 @@ type TicketType='general'|'technical'|'payment'|'refund'|'cancellation'|'account
 type TicketStatus='open'|'in_review'|'waiting_customer'|'resolved'|'closed'|'approved'|'rejected'|'refund_initiated'|'refunded';
 type SupportTicket={id:string;ticket_number:number;owner_user_id:string;ticket_type:TicketType;subject:string;reason:string;order_id:string|null;status:TicketStatus;admin_note:string|null;created_at:string;updated_at:string;last_message_at:string};
 type SupportMessage={id:string;ticket_id:string;sender_role:'customer'|'support';body:string;created_at:string};
+type Evidence={id:string;ticket_id:string;filename:string;mime_type:string;byte_size:number;created_at:string};
+async function openEvidence(id:string,admin:boolean){const p=await request('attachment-link','GET',undefined,'attachmentId='+encodeURIComponent(id)+(admin?'&asAdmin=1':''));const a=document.createElement('a');a.href=p.url;a.target='_blank';a.rel='noopener noreferrer';document.body.appendChild(a);a.click();a.remove();}
+async function uploadEvidence(ticketId:string,file:File,admin:boolean){if(file.size>2097152)throw new Error('Screenshot must be under 2 MB.');if(!['image/png','image/jpeg','image/webp'].includes(file.type))throw new Error('Select PNG, JPEG, or WebP.');const bytes=await file.arrayBuffer();const b=new Uint8Array(bytes);let str='';for(let i=0;i<b.length;i+=8192)str+=String.fromCharCode(...b.subarray(i,i+8192));return request('attachment-upload','POST',{ticketId,filename:file.name,mimeType:file.type,base64:btoa(str),asAdmin:admin});}
+function EvidencePanel({attachments,asAdmin,onUploaded,ticketId}:{attachments:Evidence[];asAdmin:boolean;onUploaded:()=>Promise<void>;ticketId:string}){
+ const [busy,setBusy]=useState(false),[error,setError]=useState('');
+ async function choose(e:React.ChangeEvent<HTMLInputElement>){const file=e.target.files?.[0];e.target.value='';if(!file)return;setBusy(true);setError('');try{await uploadEvidence(ticketId,file,asAdmin);await onUploaded()}catch(err:any){setError(err?.message||'Upload failed')}finally{setBusy(false)}}
+ return <div className="my-4 rounded-xl border border-orange-100 bg-orange-50/40 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-sm font-bold text-slate-900">Screenshots & evidence</h4><label className="cursor-pointer rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold text-orange-800">{busy?'Uploading…':'+ Add screenshot'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy||attachments.length>=5} onChange={choose} className="sr-only"/></label></div><p className="mt-1 text-xs text-slate-500">PNG, JPG or WebP. Maximum 2 MB per file, up to 5 images. Files are private to you and support staff.</p>{error&&<p role="alert" className="mt-2 text-sm text-rose-700">{error}</p>}<div className="mt-3 flex flex-wrap gap-2">{attachments.map(x=><button key={x.id} type="button" onClick={()=>void openEvidence(x.id,asAdmin).catch(e=>setError(e.message))} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">📎 {x.filename}</button>)}</div></div>;
+}
 type SupportOrder={order_id:string;plan_id:string;amount_inr:number;status:string;environment:string;created_at:string;access_expires_at:string|null};
 const labels:Record<TicketType,string>={general:'General question',technical:'Automation / technical issue',payment:'Payment problem',refund:'Refund request',cancellation:'Request cancellation / stop paid plan',account_deletion:'Account or data deletion'};
 const statusLabel:Record<TicketStatus,string>={open:'Received',in_review:'In review',waiting_customer:'Awaiting your reply',resolved:'Resolved',closed:'Closed',approved:'Approved',rejected:'Declined',refund_initiated:'Refund initiated',refunded:'Refunded'};
@@ -45,6 +53,7 @@ export function SupportDesk({initialType}:{initialType?:TicketType}){
   const [orders,setOrders]=useState<SupportOrder[]>([]);
   const [selected,setSelected]=useState<SupportTicket|null>(null);
   const [messages,setMessages]=useState<SupportMessage[]>([]);
+  const [attachments,setAttachments]=useState<Evidence[]>([]);
   const [subject,setSubject]=useState('');
   const [detail,setDetail]=useState('');
   const [reason,setReason]=useState('');
@@ -64,7 +73,7 @@ export function SupportDesk({initialType}:{initialType?:TicketType}){
     }catch(e:any){setError(e.message)}finally{setLoading(false)}
   },[]);
   useEffect(()=>{void refresh()},[refresh]);
-  const open=useCallback(async(id:string)=>{try{setError('');const p=await request('thread','GET',undefined,'id='+encodeURIComponent(id));setSelected(p.ticket);setMessages(p.messages||[]);setReply('')}catch(e:any){setError(e.message)}},[]);
+  const open=useCallback(async(id:string)=>{try{setError('');const p=await request('thread','GET',undefined,'id='+encodeURIComponent(id));setSelected(p.ticket);setMessages(p.messages||[]);setAttachments(p.attachments||[]);setReply('')}catch(e:any){setError(e.message)}},[]);
   useEffect(()=>{if(!selected)return;const timer=window.setInterval(()=>{if(!document.hidden)void open(selected.id)},20000);return()=>clearInterval(timer)},[selected?.id,open]);
   async function create(ev:React.FormEvent){
     ev.preventDefault();setError('');setSuccess('');
@@ -97,6 +106,7 @@ export function SupportDesk({initialType}:{initialType?:TicketType}){
       </div>
       {selected.admin_note&&<p className="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Support decision: {selected.admin_note}</p>}
       <Messages messages={messages}/>
+      <EvidencePanel ticketId={selected.id} asAdmin={false} attachments={attachments} onUploaded={()=>open(selected.id)}/>
       {selected.status!=='closed'?<form onSubmit={send} className="mt-4 flex flex-col gap-3 sm:flex-row"><label className="sr-only" htmlFor="support-followup">Your reply</label><textarea id="support-followup" maxLength={5000} value={reply} onChange={e=>setReply(e.target.value)} placeholder="Write a message to our team…" required rows={2} className="min-h-14 w-full flex-1 rounded-xl border border-slate-300 p-3 text-sm"/><button type="submit" disabled={sending||!reply.trim()} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 font-semibold text-white disabled:opacity-50"><Send className="h-4 w-4"/>Send reply</button></form>:<p className="mt-4 text-sm text-slate-500">This ticket is closed. Create another request if you still need help.</p>}
     </Box>:mode==='new'?<Box>
       <h3 className="text-lg font-bold text-slate-900">New support request</h3>
@@ -134,6 +144,7 @@ export function AdminSupportDesk(){
   const [tickets,setTickets]=useState<SupportTicket[]>([]);
   const [selected,setSelected]=useState<SupportTicket|null>(null);
   const [messages,setMessages]=useState<SupportMessage[]>([]);
+  const [attachments,setAttachments]=useState<Evidence[]>([]);
   const [reply,setReply]=useState('');
   const [status,setStatus]=useState<TicketStatus>('open');
   const [note,setNote]=useState('');
@@ -141,7 +152,7 @@ export function AdminSupportDesk(){
   const [busy,setBusy]=useState(false);
   const [loading,setLoading]=useState(true);
   const load=useCallback(async()=>{try{const r=await request('admin-list');setTickets(r.tickets||[]);setError('')}catch(e:any){setError(e.message)}finally{setLoading(false)}},[]);
-  const open=useCallback(async(id:string)=>{try{const r=await request('admin-thread','GET',undefined,'id='+encodeURIComponent(id));setSelected(r.ticket);setMessages(r.messages||[]);setStatus(r.ticket.status);setNote(r.ticket.admin_note||'');setError('')}catch(e:any){setError(e.message)}},[]);
+  const open=useCallback(async(id:string)=>{try{const r=await request('admin-thread','GET',undefined,'id='+encodeURIComponent(id));setSelected(r.ticket);setMessages(r.messages||[]);setAttachments(r.attachments||[]);setStatus(r.ticket.status);setNote(r.ticket.admin_note||'');setError('')}catch(e:any){setError(e.message)}},[]);
   useEffect(()=>{void load()},[load]);
   const save=async()=>{if(!selected)return;setBusy(true);try{await request('admin-update','POST',{ticketId:selected.id,status,note});await open(selected.id);await load()}catch(e:any){setError(e.message)}finally{setBusy(false)}};
   const send=async(ev:React.FormEvent)=>{ev.preventDefault();if(!selected||!reply.trim())return;setBusy(true);try{await request('admin-reply','POST',{ticketId:selected.id,message:reply});setReply('');await open(selected.id);await load()}catch(e:any){setError(e.message)}finally{setBusy(false)}};
@@ -153,6 +164,7 @@ export function AdminSupportDesk(){
     <Box>{!selected?<div className="py-10 text-center text-sm text-slate-500"><MessageSquareText className="mx-auto mb-3 h-8 w-8"/>Select a ticket to view messages and respond.</div>:<>
       <h3 className="text-lg font-bold">{selected.subject}</h3><p className="mb-4 mt-1 break-all text-xs text-slate-500">{reference(selected)} · {labels[selected.ticket_type]} · {selected.owner_user_id} · {selected.order_id||'No payment'}</p>
       <Messages messages={messages}/>
+      <EvidencePanel ticketId={selected.id} asAdmin={true} attachments={attachments} onUploaded={()=>open(selected.id)}/>
       <form onSubmit={send} className="mt-4 space-y-2"><label className="block text-sm font-semibold">Reply to customer<textarea maxLength={5000} rows={3} required value={reply} onChange={e=>setReply(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 p-3" placeholder="Type your response…"/></label><button type="submit" disabled={busy||selected.status==='closed'} className="min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white disabled:opacity-50">Send reply</button></form>
       <div className="mt-5 border-t border-slate-200 pt-4"><label className="block text-sm font-semibold">Ticket status
         <select className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3" value={status} onChange={e=>setStatus(e.target.value as TicketStatus)}>{(Object.keys(statusLabel) as TicketStatus[]).filter(s=>!['refund_initiated','refunded'].includes(s)).map(s=><option key={s} value={s}>{statusLabel[s]}</option>)}</select></label>
