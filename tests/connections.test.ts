@@ -5,6 +5,7 @@ process.env.INSTAGRAM_APP_SECRET = 'test-secret';
 process.env.GOOGLE_SHEETS_CLIENT_ID = 'test-google-app';
 process.env.GOOGLE_SHEETS_CLIENT_SECRET = 'test-google-secret';
 process.env.GOOGLE_SHEETS_STATE_SECRET = 'test-state-secret';
+process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-only-key';
 const { normalizeAppUrl, normalizeSupabaseUrl, upstreamFetch } = await import('../src/server/supabaseConfig');
 const { default: instagram } = await import('../api/auth/instagram');
 const { default: sheets } = await import('../api/google-sheets');
@@ -79,13 +80,13 @@ test('Sheets callback cancellation resumes the saved automation with an error', 
 });
 test('Sheets create stops before Google when its durable reservation cannot be saved', async () => {
  let googleCalls=0;
- globalThis.fetch=async(url:any,init:any)=>{const value=String(url);if(value.includes('/auth/'))return json({id:uid});if(value.includes('collection=eq.google_sheets_connections'))return json([{data:{connected:true,access_token:'test',expires_at:Date.now()+3600000}}]);if(value.includes('/rest/')&&init?.method==='POST')return json({},403);if(value.includes('/rest/'))return json([]);googleCalls++;return json({});};
+ globalThis.fetch=async(url:any,init:any)=>{const value=String(url);if(value.includes('/auth/'))return json({id:uid});if(value.includes('autoreply_google_connections_secure'))return json([{data:{connected:true,access_token:'test',expires_at:Date.now()+3600000}}]);if(value.includes('/rest/')&&init?.method==='POST')return json({},403);if(value.includes('/rest/'))return json([]);googleCalls++;return json({});};
  const res=response();await sheets(request('create-sheet','POST',{automationId:'auto_sheet1',fields:['Name']}),res);
  assert.equal(res.statusCode,500);assert.match(res.body.error,/reserve/);assert.equal(googleCalls,0);
 });
 test('new AI automations get separate sheets; retry and edit reuse the existing sheet',async()=>{
  const docs=new Map<string,any>();let creates=0;
- globalThis.fetch=async(url:any,init:any)=>{const value=String(url);if(value.includes('/auth/'))return json({id:uid});if(value.includes('collection=eq.google_sheets_connections'))return json([{data:{connected:true,email:'test@example.test',access_token:'test',expires_at:Date.now()+3600000}}]);
+ globalThis.fetch=async(url:any,init:any)=>{const value=String(url);if(value.includes('/auth/'))return json({id:uid});if(value.includes('autoreply_google_connections_secure'))return json([{data:{connected:true,email:'test@example.test',access_token:'test',expires_at:Date.now()+3600000}}]);
  if(value.includes('/rest/')){if(init?.method==='POST'){const body=JSON.parse(init.body);if(!value.includes('on_conflict')&&docs.has(body.id))return json({},409);docs.set(body.id,body.data);return json({});}const id=new URL(value).searchParams.get('id')?.replace('eq.','');return json(id&&docs.has(id)?[{data:docs.get(id)}]:[]);}
  if(value.endsWith('/spreadsheets'))return json({spreadsheetId:'sheet-'+(++creates)});if(value.includes('?fields='))return json({sheets:[{properties:{title:'Conversation history'}}]});return json({});};
  for(const id of ['auto_first','auto_second','auto_first']){const res=response();await sheets(request('create-sheet','POST',{automationId:id,fields:['Name']}),res);assert.equal(res.statusCode,200);assert.equal(res.body.spreadsheetId,id==='auto_first'?'sheet-1':'sheet-2');}
@@ -93,7 +94,7 @@ test('new AI automations get separate sheets; retry and edit reuse the existing 
  const req:any=request('status');req.query.automationId='auto_brand_new';const status=response();await sheets(req,status);assert.equal(status.body.spreadsheetUrl,'');assert.equal(status.body.connected,true);
 });
 test('ambiguous sheet creation is never blindly repeated',async()=>{
- let creates=0;globalThis.fetch=async(url:any)=>{const value=String(url);if(value.includes('/auth/'))return json({id:uid});if(value.includes('collection=eq.google_sheets_connections'))return json([{data:{connected:true,access_token:'test',expires_at:Date.now()+3600000}}]);if(value.includes('/rest/'))return json([{data:{state:'creating',fields:['Name']}}]);creates++;return json({});};
+ let creates=0;globalThis.fetch=async(url:any)=>{const value=String(url);if(value.includes('/auth/'))return json({id:uid});if(value.includes('autoreply_google_connections_secure'))return json([{data:{connected:true,access_token:'test',expires_at:Date.now()+3600000}}]);if(value.includes('/rest/'))return json([{data:{state:'creating',fields:['Name']}}]);creates++;return json({});};
  const res=response();await sheets(request('create-sheet','POST',{automationId:'auto_pending',fields:['Name']}),res);assert.equal(res.statusCode,409);assert.equal(creates,0);
 });
 
