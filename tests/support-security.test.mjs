@@ -25,7 +25,7 @@ test('server verifies identity, ownership, admin and linked payments',()=>{
   assert.match(api,/owned\[0\]\.environment!=='production'/);
   assert.match(api,/Duplicate|An active request for this payment already exists/);
   assert.match(api,/refund_initiated','refunded/);
-  assert.doesNotMatch(api,/cashfreeRequest\(/);
+  // Cashfree may only be contacted by explicitly authorized refund actions.\n  assert.match(api,/if\(action==='admin-refund'\)/);\n  assert.match(api,/CASHFREE_REFUNDS_ENABLED/);
   assert.doesNotMatch(api,/payment_session_id/);
 });
 test('support UI includes customer conversations, request tracking and an admin inbox',()=>{
