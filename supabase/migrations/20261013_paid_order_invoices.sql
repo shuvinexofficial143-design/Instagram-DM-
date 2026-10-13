@@ -38,3 +38,28 @@ begin
 end $$;
 revoke all on function public.autoreply_claim_invoice_email(text) from public,anon,authenticated;
 grant execute on function public.autoreply_claim_invoice_email(text) to service_role;
+
+-- Service-role-only stable issuance; customer details and prices are copied
+-- from a CONFIRMED original order, never client form fields.
+create or replace function public.autoreply_issue_paid_invoice(p_order_id text,p_owner_user_id text)
+returns public.autoreply_billing_invoices language plpgsql security invoker set search_path=public
+as $$
+declare issued public.autoreply_billing_invoices;
+begin
+  insert into public.autoreply_billing_invoices
+    (order_id,owner_user_id,customer_name,customer_email,plan_id,amount_inr,billing_days,paid_at,payment_id)
+  select o.order_id,o.owner_user_id,
+    coalesce(nullif(trim(o.customer_details->>'name'),''),'Customer'),
+    coalesce(nullif(trim(o.customer_details->>'email'),''),''),
+    o.plan_id,o.amount_inr,o.billing_days,o.paid_at,o.cf_payment_id
+  from public.autoreply_billing_orders o
+  where o.order_id=p_order_id and o.owner_user_id=p_owner_user_id
+    and o.environment='production' and o.status='paid'
+    and o.cf_payment_id is not null and o.paid_at is not null
+  on conflict(order_id) do nothing;
+  select * into issued from public.autoreply_billing_invoices
+    where order_id=p_order_id and owner_user_id=p_owner_user_id;
+  return issued;
+end $$;
+revoke all on function public.autoreply_issue_paid_invoice(text,text) from public,anon,authenticated;
+grant execute on function public.autoreply_issue_paid_invoice(text,text) to service_role;
