@@ -108,19 +108,21 @@ export const SettingsPage: React.FC = () => {
   const accountEmail = firebaseUser?.email || user.email || 'Signed-in account';
 
   return (
-    <div className="mx-auto min-h-full max-w-5xl space-y-5 bg-[#F7FAFF] p-4 sm:p-6 lg:p-8">
-      <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex items-start gap-4">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white">
-            <Settings2 className="h-5 w-5" />
-          </span>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[.14em] text-indigo-600">Workspace settings</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Settings</h1>
-            <p className="mt-1 max-w-2xl text-sm text-slate-500">Manage your account, connected Instagram profile, AI defaults and workspace data.</p>
-          </div>
+    <div className="settings-about-shell">
+      <header className="settings-about-hero">
+        <div className="settings-about-hero-inner">
+          <div className="settings-about-eyebrow"><span className="settings-about-hero-mark"><Settings2 className="h-5 w-5" /></span> YOUR WORKSPACE</div>
+          <h1>Everything you need.<br/><span>Beautifully in control.</span></h1>
+          <p>Personalize your account, connect Instagram securely, and keep your AI conversations on your terms. All your essentials, one clear place.</p>
+          <nav aria-label="Settings quick links" className="settings-about-quicklinks">
+            <a href="#settings-account"><ShieldCheck className="h-4 w-4"/> My account</a>
+            <a href="#settings-ai"><SlidersHorizontal className="h-4 w-4"/> AI preferences</a>
+            <a href="#settings-privacy"><Download className="h-4 w-4"/> Data & privacy</a>
+            <a href="/contact"><Mail className="h-4 w-4"/> Support</a>
+          </nav>
         </div>
       </header>
+      <div className="settings-about-body">
 
       <InstagramAccounts />
 
@@ -130,7 +132,7 @@ export const SettingsPage: React.FC = () => {
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarClock className="h-5 w-5" /></span>
             <div>
               <h2 className="text-lg font-bold text-slate-950">Manage subscription</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">{usage.plan.name} plan · {usage.plan.price} / month. Renew manually when you need it; no automatic charges.</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{usage.plan.name} plan · {usage.plan.price} for 30 days. Renew manually when you need it; no automatic charges.</p>
               {usage.expiresAt && <p className="mt-2 text-sm text-slate-500">Access until {new Date(usage.expiresAt).toLocaleString()}</p>}
             </div>
           </div>
@@ -139,7 +141,7 @@ export const SettingsPage: React.FC = () => {
       </section>
 
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section id="settings-account" className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5 sm:p-6">
           <div>
             <h2 className="text-lg font-bold text-slate-950">Account</h2>
@@ -243,7 +245,7 @@ export const SettingsPage: React.FC = () => {
         )}
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section id="settings-ai" className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5 sm:p-6">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="h-5 w-5 text-indigo-600" />
@@ -287,7 +289,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section id="settings-privacy" className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5 sm:p-6">
           <h2 className="text-lg font-bold text-slate-950">Data & privacy</h2>
           <p className="mt-1 text-sm text-slate-500">Download a copy of the workspace data currently available to Auto Replies.</p>
@@ -332,6 +334,11 @@ export const SettingsPage: React.FC = () => {
           </div>
         </section>
       )}
+      <div className="settings-about-outro">
+        <div><span className="settings-about-kicker">WE'RE HERE TO HELP</span><h2>A calmer way to get things done.</h2><p>Questions about connections, billing or security? Talk directly with our support team.</p></div>
+        <a href="/contact">Contact support <Mail className="h-4 w-4" /></a>
+      </div>
+      </div>
     </div>
   );
 };

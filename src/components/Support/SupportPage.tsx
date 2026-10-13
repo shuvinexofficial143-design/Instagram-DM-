@@ -39,17 +39,21 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
   const upgrade=()=>firebaseUser?setIsRenewModalOpen(true):window.location.assign('/login');
 
   const shell=(title:string,eyebrow:string,desc:string,body:React.ReactNode)=>(
-    <div className="support-page">
-      <div className="support-container">
-        <button onClick={()=>go('home')} className="support-back"><ArrowLeft/>{firebaseUser?'Back to dashboard':'Back to home'}</button>
-        <header className="support-hero">
-          <div className="support-hero-icon"><LifeBuoy/></div>
-          <div>
-            <p className="support-eyebrow">{eyebrow}</p>
-            <h1>{title}</h1>
-            <p className="support-description">{desc}</p>
-          </div>
-        </header>
+    <div className="support-page support-about-look">
+      <header className="support-hero">
+        <div className="support-container">
+          <button onClick={()=>go('home')} className="support-back"><ArrowLeft/>{firebaseUser?'Back to dashboard':'Back to home'}</button>
+          <p className="support-eyebrow"><LifeBuoy className="h-4 w-4" /> {eyebrow}</p>
+          <h1>{title}</h1>
+          <p className="support-description">{desc}</p>
+          <nav className="support-hero-links" aria-label="Support sections">
+            <a href="/help">Help Center <ArrowRight className="h-4 w-4"/></a>
+            <a href="/contact">Contact Support <ArrowRight className="h-4 w-4"/></a>
+            <a href="/refunds">Refunds & cancellation <ArrowRight className="h-4 w-4"/></a>
+          </nav>
+        </div>
+      </header>
+      <div className="support-container support-about-body">
         {body}
         <div className="mt-8"><BusinessContact /></div>
       </div>
