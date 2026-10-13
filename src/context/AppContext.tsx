@@ -390,6 +390,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
+  // A verified login triggers a single welcome email (server-side idempotent).
+  // The authenticated activity heartbeat also suppresses inactivity tips
+  // whenever the customer is actually using the website. No client email sent.
+  useEffect(() => {
+    if (!firebaseUser?.uid || !firebaseUser.email || !firebaseUser.emailVerified || firebaseUser.isAnonymous) return;
+    let cancelled = false;
+    let lastSent = 0;
+    const signalActivity = async () => {
+      if (cancelled || document.hidden || Date.now() - lastSent < 5 * 60_000) return;
+      const token = await auth.currentUser?.getIdToken().catch(() => '');
+      if (!token || cancelled) return;
+      lastSent = Date.now();
+      await fetch('/api/workspace-data?action=mail-activity', {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { Authorization: 'Bearer ' + token },
+        signal: AbortSignal.timeout(9000),
+      }).catch(() => {});
+    };
+    void signalActivity();
+    const timer = window.setInterval(() => { void signalActivity(); }, 10 * 60_000);
+    const onVisible = () => { if (!document.hidden) void signalActivity(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => { cancelled = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
+  }, [firebaseUser?.uid]);
+
   // Check URL parameter on mount (?tab=admin or /admin)
   useEffect(() => {
     try {
