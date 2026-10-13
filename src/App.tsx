@@ -89,7 +89,7 @@ const MainContent: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const { authLoading, firebaseUser, activeTab } = useApp();
+  const { authLoading, firebaseUser, activeTab, workspaceHydrating, accountSwitching, accountError, refreshInstagramAccounts } = useApp();
   const splashStartedAt = useRef(Date.now());
   const [splashPhase, setSplashPhase] = useState<'show' | 'exit' | 'done'>(() => typeof document === 'undefined' ? 'done' : 'show');
   const isAdminRoute =
@@ -136,6 +136,20 @@ const AppShell: React.FC = () => {
         </ErrorBoundary>
       );
     }
+
+    // Block the signed-in shell until the active Instagram workspace and
+    // safe account metadata have been fetched. Otherwise an old "Not Connected"
+    // dashboard visibly flashes for ~1 second even on connected accounts.
+    if (workspaceHydrating || accountSwitching) return <AppSplashScreen />;
+    if (accountError) return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-slate-50 p-6" role="alert">
+        <div className="max-w-md rounded-2xl border border-amber-200 bg-white p-7 shadow-sm">
+          <h1 className="text-xl font-bold text-slate-950">Checking your Instagram workspace</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-700">{accountError} Your connection status is not being guessed.</p>
+          <button onClick={()=>void refreshInstagramAccounts()} className="mt-5 min-h-11 rounded-xl bg-orange-700 px-5 font-semibold text-white">Try again</button>
+        </div>
+      </div>
+    );
 
     if (activeTab === 'checkout') {
       return <ErrorBoundary><Suspense fallback={<PageLoadingFallback />}><CheckoutPage /></Suspense></ErrorBoundary>;

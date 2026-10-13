@@ -101,6 +101,7 @@ export default async function handler(req: any, res: any) {
         "invoice",
         "invoice-list",
         "invoice-email",
+        "dashboard-metrics",
         "subscription",
         "pending",
         "cancel",
@@ -286,6 +287,26 @@ export default async function handler(req: any, res: any) {
         { p_order_id: orderId, p_owner_id: user.id },
       );
       return res.status(200).json({ ok: true, order: safeOrder(finalOrder) });
+    }
+    if (action === "dashboard-metrics") {
+      // The Home dashboard must not infer lifetime AI sends by matching
+      // inbox automation IDs: Meta delivery metadata can be missing and
+      // old conversations can be outside the visible date range.
+      // The backend AI usage ledger is the verified source of truth.
+      const rows=await billingDb(
+        'autoreply_usage_monthly?select=month_key,ai_replies,total_messages,updated_at&user_id=eq.'+
+          encodeURIComponent(user.id)+'&order=month_key.desc&limit=120'
+      );
+      const months=Array.isArray(rows)?rows:[];
+      const totalAi=months.reduce((count:any,row:any)=>count+Math.max(0,Number(row.ai_replies)||0),0);
+      const monthKey=new Date().toISOString().slice(0,7);
+      const thisMonth=months.find((row:any)=>row.month_key===monthKey);
+      return res.status(200).json({
+        ok:true,aiRepliesAllTime:totalAi,
+        aiRepliesThisMonth:Math.max(0,Number(thisMonth?.ai_replies)||0),
+        recordedMonths:months.length,source:'verified_usage_ledger',
+        lastUpdated:months[0]?.updated_at||null
+      });
     }
     if (action === "history") {
       const rows = await billingDb(

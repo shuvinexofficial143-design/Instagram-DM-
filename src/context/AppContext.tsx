@@ -63,6 +63,9 @@ interface AppContextType {
   firebaseUser: User | null;
   setFirebaseUser: (u: User | null) => void;
   authLoading: boolean;
+  workspaceHydrating: boolean;
+  workspaceDataLoading: boolean;
+  workspaceDataError: boolean;
   isGuestMode: boolean;
   setIsGuestMode: (val: boolean) => void;
   logout: () => Promise<void>;
@@ -143,7 +146,6 @@ const isTestOrMockContact = (item: Contact): boolean => {
     uname.includes('940977') ||
     uname.startsWith('user_940977') ||
     uname === 'webhook_test_user' ||
-    uname.startsWith('user_') ||
     uname.includes('test_user')
   ) {
     return true;
@@ -165,7 +167,6 @@ const isTestOrMockMessage = (item: InboxMessage): boolean => {
     uname.includes('940977') ||
     uname.startsWith('user_940977') ||
     uname === 'webhook_test_user' ||
-    uname.startsWith('user_') ||
     uname.includes('test_user')
   ) {
     return true;
@@ -197,7 +198,7 @@ const sanitizeAutomationRecord = (auto: any): Automation => ({
     runs: Number(auto?.stats?.runs) || 0,
     dms_sent: Number(auto?.stats?.dms_sent) || 0,
     unique_users: Number(auto?.stats?.unique_users) || 0,
-    open_rate: typeof auto?.stats?.open_rate === 'number' ? auto.stats.open_rate : 98,
+    open_rate: -1, // No verified Meta open rate: never claim 98% or 100%.
   },
   created_at: auto?.created_at || new Date().toISOString(),
   updated_at: auto?.updated_at || new Date().toISOString(),
@@ -206,6 +207,11 @@ const sanitizeAutomationRecord = (auto: any): Automation => ({
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+  // Do not display Not Connected or zero metrics while account / inbox data
+  // has not completed its first authoritative load.
+  const [workspaceHydrating,setWorkspaceHydrating]=useState(true);
+  const [workspaceDataLoading,setWorkspaceDataLoading]=useState(true);
+  const [workspaceDataError,setWorkspaceDataError]=useState(false);
   const [isGuestMode, setIsGuestModeState] = useState<boolean>(() => {
     try {
       return localStorage.getItem('autoreply_guest_mode') === 'true';
@@ -311,6 +317,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     let isMounted = true;
+    let previousAuthenticatedUid: string | null = null;
 
     // Handle any incoming redirect result (e.g. from Google Sign-In redirect on mobile/desktop)
     getRedirectResult(auth)
@@ -318,6 +325,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!isMounted) return;
         if (result && result.user) {
           console.log('[SUPABASE_REDIRECT_SUCCESS] Successfully authenticated via redirect:', result.user.email);
+          previousAuthenticatedUid=result.user.uid;
+          setWorkspaceHydrating(true);
           setFirebaseUser(result.user);
           setIsGuestMode(false);
           const userProfile: UserProfile = {
@@ -350,6 +359,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubscribe = onAuthStateChanged(auth, async (currUser) => {
       if (!isMounted) return;
+      if(currUser?.uid && currUser.uid!==previousAuthenticatedUid) setWorkspaceHydrating(true);
+      previousAuthenticatedUid=currUser?.uid||null;
       setFirebaseUser(currUser);
       if (currUser) {
         setIsGuestMode(false);
@@ -485,8 +496,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const uid = workspaceId || firebaseUser?.uid;
-    if (firebaseUser?.uid && !workspaceId) {setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);return;}
+    if (firebaseUser?.uid && !workspaceId) {setWorkspaceDataLoading(true);setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);return;}
     if (!uid) {
+      setWorkspaceDataLoading(false);
       // Guest workspaces use the same secure HttpOnly cookie as Instagram OAuth.
       // Poll the server-side workspace feed so live webhook DMs appear in Inbox
       // and Contacts even without an app login.
@@ -593,6 +605,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             read_at: message.read_at || undefined,
           }));
 
+          setWorkspaceDataLoading(false);
           setInboxMessages(
             filterOutMockMessages(guestMessages).sort(
               (a, b) =>
@@ -617,6 +630,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Immediately reset collection state for this session
+    let live=true,gotAutomations=false,gotInbox=false;
+    setWorkspaceDataLoading(true);
+    setWorkspaceDataError(false);
+    const markLoaded=(kind:'automations'|'inbox',failed=false)=>{
+      if(!live)return;
+      if(kind==='automations')gotAutomations=true;else gotInbox=true;
+      if(failed)setWorkspaceDataError(true);
+      if(gotAutomations&&gotInbox)setWorkspaceDataLoading(false);
+    };
     setAutomations([]);
     setContacts([]);
     setInboxMessages([]);setLogs([]);setPausedAiUsers([]);
@@ -636,9 +658,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const sanitized: Automation[] = (
           Array.isArray(payload.automations) ? payload.automations : []
         ).map(sanitizeAutomationRecord);
-        setAutomations(sanitized);
+        if(live)setAutomations(sanitized);
+        markLoaded('automations');
       } catch (err: any) {
         console.warn('[AUTOMATION_API_LOAD_WARN]', err?.message || err);
+        markLoaded('automations',true);
       }
     };
 
@@ -652,6 +676,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } else {
           setAutomations([]);
         }
+        markLoaded('automations');
       },
       (err) => {
         console.warn('[AUTOMATION_REALTIME_LOAD_WARN]', err?.message || err);
@@ -719,7 +744,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         setInboxMessages([]);
       }
-    });
+      setWorkspaceDataError(false);
+      markLoaded('inbox');
+    },(err)=>{console.warn('[INBOX_LOAD_ERROR]',err?.message||err);markLoaded('inbox',true);});
 
     let legacyLogs: WebhookLogEvent[] = [], liveLogs: WebhookLogEvent[] = [];
     const refreshLogs = () => setLogs([...liveLogs, ...legacyLogs].sort((a,b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)));
@@ -736,6 +763,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return () => {
+      live=false;
       unsubscribeAutomations();
       unsubscribeContacts();
       unsubscribeInsights();
@@ -787,9 +815,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (firebaseUser?.uid && !workspaceId) {setInstagramAccountState(null);return;}
     let cancelled = false;
+    if(firebaseUser?.uid)setWorkspaceHydrating(true);
     const fetchAccountData = async () => {
       if (!uid) {
         setInstagramAccountState(null);
+        setWorkspaceHydrating(false);
         return;
       }
 
@@ -804,12 +834,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const { access_token: _serverOnlyToken, ...safeAccount } = saved as any;
           setInstagramAccountState(safeAccount as InstagramAccount);
         } else {
-          setInstagramAccountState(null);
+          // The membership response may already have provided connected metadata.
+          // Missing optional "primary" must not erase that verified account.
+          setInstagramAccountState(current=>current?.username?current:null);
         }
       } catch (err) {
         if (cancelled) return;
         console.warn('[FETCH_USER_IG_ACCOUNT_ERR]', err);
-        setInstagramAccountState(null);
+        setAccountError('Instagram account status could not be checked. Retry before reconnecting.');
+      } finally {
+        if (!cancelled) setWorkspaceHydrating(false);
       }
     };
 
@@ -849,9 +883,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setInstagramAccounts(payload.accounts || []);
       const target = payload.activeWorkspaceId || firebaseUser.uid;
       if (target !== (workspaceId || firebaseUser.uid)) {setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);setPausedAiUsers([]);setInstagramAccountState(null);setEditingAutomation(null);setIsBuilderOpen(false);}
+      const selected=(payload.accounts||[]).find((a:any)=>a.workspaceId===target)?.account;
+      if(selected?.username){
+        const {access_token:_serverOnly,...safe}=selected;
+        setInstagramAccountState(safe as InstagramAccount);
+      } else {
+        setInstagramAccountState(null);
+      }
       setWorkspaceId(target); setIsConnectModalOpen(false); setInstagramConnectMode('reconnect');
       setAccountError('');
-    } catch(error:any) {setAccountError(error?.message || 'Could not load Instagram accounts.');}
+    } catch(error:any) {
+      setAccountError(error?.message || 'Could not load Instagram accounts.');
+      setWorkspaceHydrating(false);
+    }
   };
   const switchInstagramAccount = async (id:string) => {
     if (accountSwitching || id === (workspaceId || firebaseUser?.uid)) return;
@@ -870,7 +914,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const startInstagramConnection = (mode:'add'|'reconnect'='reconnect') => {setInstagramConnectMode(mode);setIsConnectModalOpen(true);};
   useEffect(()=>{
     setWorkspaceId('');setInstagramAccounts([]);
-    if (!firebaseUser?.uid) return;
+    if (!firebaseUser?.uid) {setWorkspaceHydrating(false);return;}
+    setWorkspaceHydrating(true);
     void refreshInstagramAccounts();
     const onConnected = (event:MessageEvent)=>{if(event.origin===window.location.origin && (event.data==='ig_connected'||event.data?.type==='ig_connected'))void refreshInstagramAccounts(true);};
     window.addEventListener('message',onConnected);
@@ -1016,7 +1061,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         runs: 0,
         dms_sent: 0,
         unique_users: 0,
-        open_rate: 100,
+        open_rate: -1,
       },
     };
 
@@ -1668,6 +1713,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         firebaseUser,
         setFirebaseUser,
         authLoading,
+        workspaceHydrating,workspaceDataLoading,workspaceDataError,
         isGuestMode,
         setIsGuestMode,
         logout,

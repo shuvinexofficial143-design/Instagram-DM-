@@ -15,7 +15,7 @@ const originalFetch = globalThis.fetch;
 const noop = () => {};
 const empty = {
   user:{id:'test-workspace',name:'Sample owner',email:'owner@example.test',plan:'free',created_at:'2026-10-01',trial_expires_at:'2026-11-01'},
-  firebaseUser:null,authLoading:false,isAdmin:false,isGuestMode:false,activeTab:'home',
+  firebaseUser:null,authLoading:false,workspaceHydrating:false,workspaceDataLoading:false,workspaceDataError:false,isAdmin:false,isGuestMode:false,activeTab:'home',
   instagramAccount:null,instagramAccounts:[],workspaceId:'test-workspace',accountSwitching:false,accountError:'',instagramConnectMode:'reconnect',automations:[],contacts:[],inboxMessages:[],webhookLogs:[],pausedAiUsers:[],
   isBuilderOpen:false,isConnectModalOpen:false,isRenewModalOpen:false,editingAutomation:null,
   isAiPausedForUser:()=>false,
@@ -103,8 +103,8 @@ try {
   checks++;
   window.location.pathname='/';
   html=await streamRender(React.createElement(ui.App));
-  for(const price of ['₹0','₹299','₹599','₹1,299'])assert.ok(html.includes(price));
-  assert.ok(html.includes('Example conversation'));assert.ok(html.includes('1,500 standard DM/comment/story replies'));checks++;
+  assert.ok(html.includes('Checking live plan prices and limits'), 'unverified static plan prices must be hidden during loading');
+  assert.ok(html.includes('Example conversation'));assert.ok(html.includes('Checking live plan prices and limits'));checks++;
   window.location.pathname='/login';window.location.search='?mode=signup';
   html=await streamRender(React.createElement(ui.App));
   assert.ok(html.includes('Create your account'));assert.ok(html.includes('id="auth-email"'));assert.ok(html.includes('for="auth-email"'));checks++;
@@ -192,18 +192,17 @@ try {
     assert.ok(html.includes('Add Money'));
     assert.ok(html.includes('aria-controls="reply-top-ups"'));
     assert.ok(html.includes('Compare plans in detail'));
-    assert.ok(html.includes('Standard replies'));
-    assert.ok(html.includes('AI Replies'));
+    assert.ok(html.includes('Live usage totals are being verified'),'unverified usage is hidden');
     assert.ok(!html.includes('AI replies are included within total messages'));
-    for(const price of ['₹0','₹299','₹599','₹1,299']) assert.ok(html.includes(price));
+    for(const price of ['₹299','₹599','₹1,299']) assert.ok(!html.includes(price),'unverified plan prices are hidden');
     assert.ok(html.includes('Loading payment history'));
     assert.ok(!html.includes('No payments yet'));
     assert.ok(html.includes('scope="row">Instagram accounts'));
-    assert.ok(html.includes('billing-special-plan'));
+    assert.ok(!html.includes('billing-special-plan'),'unverified plan cards should not be rendered');
     assert.ok(!html.includes('Manage subscription'));
     assert.ok(!html.includes('Refund &amp; cancellation policy'));
     assert.ok(html.includes('border-slate-200 bg-white text-slate-950'),'current subscription uses a white card');
-    if(currentPlan==='business') assert.ok(html.includes('Renew for 30 days'),'current paid plan should be renewable');
+    if(currentPlan==='business') assert.ok(!html.includes('Renew for 30 days'),'do not suggest renewal until ownership and plan verified');
     checks++;
   }
   html=renderToStaticMarkup(React.createElement(ui.SettingsPage));
@@ -217,8 +216,8 @@ try {
   ]) {
     globalThis.__uiFixture=fixture({user:{...empty.user,plan:planId,carry_forward_messages:standard,carry_forward_ai_replies:ai,carry_forward_expires_at:expires}});
     const billing=renderToStaticMarkup(React.createElement(ui.BillingUsagePage));
-    assert.equal(billing.includes('Free bonus'),visible,'only unexpired real carry credits appear on paid plans');
-    if(visible){assert.ok(billing.includes('1,200'));assert.ok(billing.includes('1,000'));assert.ok(billing.includes('25,000'));assert.ok(billing.includes('text-emerald-700'));}
+    assert.equal(billing.includes('Free bonus'),false,'unverified bonus balances must not be fabricated');
+    assert.ok(billing.includes('Live usage totals are being verified'));
     checks++;
   }
   window.location.pathname='/billing/checkout';window.location.search='?plan=starter';
