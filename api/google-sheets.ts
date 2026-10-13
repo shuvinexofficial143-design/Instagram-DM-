@@ -17,18 +17,27 @@ function validSignature(raw: string, signature: string): boolean {
   if (!raw || !/^[a-f0-9]{64}$/.test(signature)) return false;
   return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(sign(raw), 'hex'));
 }
-async function readConnection(uid: string, token: string) {
-  const response = await upstreamFetch(`${SUPABASE_URL}/rest/v1/autoreply_documents?user_id=eq.${encodeURIComponent(uid)}&collection=eq.google_sheets_connections&id=eq.primary&select=data`, { headers: headers(token) }, 'Google Sheets connection storage');
-  if (!response.ok) throw new Error('Could not load your Google Sheets connection. Please sign in again and retry.');
-  const rows: any[] = await response.json();
+// Never use the signed-in browser JWT to read OAuth secrets.
+function privateCredentialsHeaders(){
+  const key=env('SUPABASE_SERVICE_ROLE_KEY');
+  if(!key)throw Object.assign(new Error('Google Sheets credentials are temporarily unavailable.'),{status:503});
+  return {apikey:key,Authorization:'Bearer '+key};
+}
+async function readConnection(uid: string, _token: string) {
+  const response = await upstreamFetch(
+    SUPABASE_URL+'/rest/v1/autoreply_google_connections_secure?workspace_id=eq.'+encodeURIComponent(uid)+'&select=data',
+    {headers:privateCredentialsHeaders()},'Private Google Sheets credential storage');
+  if(!response.ok)throw new Error('Google Sheets credentials are temporarily unavailable.');
+  const rows:any[]=await response.json();
   return rows?.[0]?.data || {};
 }
-async function saveConnection(uid: string, token: string, data: any) {
-  const response = await upstreamFetch(`${SUPABASE_URL}/rest/v1/autoreply_documents?on_conflict=user_id,collection,id`, {
-    method: 'POST', headers: { ...headers(token), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify({ user_id: uid, collection: 'google_sheets_connections', id: 'primary', data }),
-  }, 'Google Sheets connection storage');
-  if (!response.ok) throw new Error('Could not save your Google Sheets connection. Please reconnect and retry.');
+async function saveConnection(uid: string, _token: string, data: any) {
+  const response=await upstreamFetch(
+    SUPABASE_URL+'/rest/v1/autoreply_google_connections_secure?on_conflict=workspace_id',
+    {method:'POST',headers:{...privateCredentialsHeaders(),'Content-Type':'application/json',Prefer:'resolution=merge-duplicates'},
+    body:JSON.stringify({workspace_id:uid,data,updated_at:new Date().toISOString()})},
+    'Private Google Sheets credential storage');
+  if(!response.ok)throw new Error('Google Sheets credentials could not be saved. Reconnect and retry.');
 }
 async function googleJson(url: string, init: RequestInit, service: string) {
   const response = await upstreamFetch(url, init, service, 10000);
