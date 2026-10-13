@@ -1,5 +1,7 @@
 import { authenticatedUser, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabaseConfig.js';
 import { cleanEnvironment } from './supabaseConfig.js';
+import { randomUUID } from 'node:crypto';
+import { notifySupportEvent } from './supportNotify.js';
 
 // All requests need a verified Supabase session. Only this server uses the
 // service-role REST API; support tables have RLS and no client grants.
@@ -11,6 +13,8 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const orderRef = /^[A-Za-z0-9_-]{8,120}$/;
 const selectTicket = 'id,ticket_number,owner_user_id,ticket_type,subject,reason,order_id,status,admin_note,created_at,updated_at,last_message_at';
 const selectMessage = 'id,ticket_id,sender_role,body,created_at';
+const selectAttachment = 'id,ticket_id,filename,mime_type,byte_size,created_at';
+const bucket = 'autoreply-support-private';
 const secret = () => cleanEnvironment(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY);
 class SupportError extends Error { constructor(message:string,public status=400){super(message);} }
 function text(value:unknown,max:number){return typeof value==='string'?value.trim().slice(0,max+1):'';}
@@ -53,6 +57,8 @@ async function getTicket(id:string,uid:string,isAdmin:boolean){
   if(!rows[0])throw new SupportError('Ticket not found.',404);
   return rows[0];
 }
+async function ticketAttachments(id:string){return db('autoreply_support_attachments?select='+selectAttachment+'&ticket_id=eq.'+encodeURIComponent(id)+'&order=created_at.asc&limit=30');}
+async function ownerEmail(uid:string){const p=await db('autoreply_profiles?select=email&user_id=eq.'+encodeURIComponent(uid)+'&limit=1');return String(p[0]?.email||'');}
 function methodNotAllowed(res:any,allowed:string){res.setHeader('Allow',allowed);return res.status(405).json({ok:false,error:'Method not allowed.'});}
 export default async function handler(req:any,res:any){
   res.setHeader('Cache-Control','private, no-store');
@@ -79,20 +85,76 @@ export default async function handler(req:any,res:any){
       if(action==='thread'){
         const ticket=await getTicket(String(req.query?.id||''),user.id,false);
         const messages=await db('autoreply_support_messages?select='+selectMessage+'&ticket_id=eq.'+encodeURIComponent(ticket.id)+'&order=created_at.asc&limit=300');
-        return res.status(200).json({ok:true,ticket,messages});
+        return res.status(200).json({ok:true,ticket,messages,attachments:await ticketAttachments(ticket.id)});
       }
       if(action==='admin-thread'){
         const admin=await verifiedAdmin(req,user.id);
         if(!admin)return res.status(403).json({ok:false,error:'Administrator access required.'});
         const ticket=await getTicket(String(req.query?.id||''),user.id,true);
         const messages=await db('autoreply_support_messages?select='+selectMessage+'&ticket_id=eq.'+encodeURIComponent(ticket.id)+'&order=created_at.asc&limit=300');
-        return res.status(200).json({ok:true,ticket,messages});
+        return res.status(200).json({ok:true,ticket,messages,attachments:await ticketAttachments(ticket.id)});
+      }
+      if(action==='attachment-link'){
+        const id=String(req.query?.attachmentId||'');
+        if(!uuid.test(id))throw new SupportError('Invalid attachment reference.');
+        const isSupport=String(req.query?.asAdmin||'')==='1'&&await verifiedAdmin(req,user.id);
+        const rows=await db('autoreply_support_attachments?select=id,ticket_id,object_path,mime_type&id=eq.'+encodeURIComponent(id)+'&limit=1');
+        if(!rows[0])throw new SupportError('Attachment not found.',404);
+        await getTicket(rows[0].ticket_id,user.id,isSupport);
+        const key=secret();
+        const response=await fetch(SUPABASE_URL+'/storage/v1/object/sign/'+bucket+'/'+rows[0].object_path,{
+          method:'POST',
+          headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},
+          body:JSON.stringify({expiresIn:180}),signal:AbortSignal.timeout(9000)
+        });
+        if(!response.ok)throw new SupportError('Unable to view this attachment.',503);
+        const data:any=await response.json();
+        if(!data?.signedURL)throw new SupportError('Unable to view this attachment.',503);
+        const signedURL=new URL(String(data.signedURL),SUPABASE_URL+'/storage/v1/').toString();
+        if(!signedURL.startsWith(SUPABASE_URL+'/storage/v1/object/sign/'))
+          throw new SupportError('Invalid secure attachment URL.',503);
+        return res.status(200).json({ok:true,url:signedURL});
       }
       return res.status(404).json({ok:false,error:'Unknown support action.'});
     }
     if(req.method!=='POST')return methodNotAllowed(res,'GET, POST');
-    if(JSON.stringify(req.body||{}).length>13000)throw new SupportError('Request is too large.',413);
+    const bodyBytes=JSON.stringify(req.body||{}).length;
+    if(bodyBytes>(action==='attachment-upload'?2801000:13000))throw new SupportError('Request is too large.',413);
     const body=req.body&&typeof req.body==='object'&&!Array.isArray(req.body)?req.body:{};
+    if(action==='attachment-upload'){
+      const ticketId=String(body.ticketId||'');
+      const admin=body.asAdmin===true&&await verifiedAdmin(req,user.id);
+      const ticket=await getTicket(ticketId,user.id,admin);
+      if(ticket.status==='closed')throw new SupportError('Cannot attach to closed tickets.',409);
+      const imageType=String(body.mimeType||'');
+      const allowed:Record<string,string>={'image/png':'png','image/jpeg':'jpg','image/webp':'webp'};
+      if(!allowed[imageType])throw new SupportError('Choose a PNG, JPG or WebP image.');
+      const encoded=String(body.base64||'');
+      if(!encoded||encoded.length>2800000||!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded))
+        throw new SupportError('Image must be under 2 MB.',413);
+      const bytes=Buffer.from(encoded,'base64');
+      if(!bytes.length||bytes.length>2097152)throw new SupportError('Image must be under 2 MB.',413);
+      const isPng=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+      const isJpeg=bytes.subarray(0,3).equals(Buffer.from([255,216,255]));
+      const isWebp=bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP';
+      if(!(imageType==='image/png'&&isPng||imageType==='image/jpeg'&&isJpeg||imageType==='image/webp'&&isWebp))
+        throw new SupportError('Image contents do not match the file type.');
+      const existing=await ticketAttachments(ticketId);
+      if(existing.length>=5)throw new SupportError('Maximum five screenshots per ticket.',409);
+      const name=text(body.filename,120).replace(/[\\/<>\u0000-\u001f]/g,'_')||'screenshot.'+allowed[imageType];
+      const objectPath=ticket.owner_user_id+'/'+ticket.id+'/'+randomUUID()+'.'+allowed[imageType];
+      const key=secret();
+      const upstream=await fetch(SUPABASE_URL+'/storage/v1/object/'+bucket+'/'+objectPath,{
+        method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':imageType,'x-upsert':'false'},
+        body:bytes,signal:AbortSignal.timeout(15000)
+      });
+      if(!upstream.ok){console.error('[SUPPORT_UPLOAD_FAILED]',{status:upstream.status});throw new SupportError('Screenshot upload failed. Try again.',503);}
+      const rows=await db('autoreply_support_attachments','POST',{
+        ticket_id:ticket.id,owner_user_id:ticket.owner_user_id,object_path:objectPath,
+        filename:name,mime_type:imageType,byte_size:bytes.length
+      });
+      return res.status(201).json({ok:true,attachment:rows[0]});
+    }
     if(action==='create'){
       const ticketType=String(body.ticketType||'general') as TicketType;
       if(!types.includes(ticketType))throw new SupportError('Invalid request type.');
@@ -137,6 +199,7 @@ export default async function handler(req:any,res:any){
         ticket_id:tickets[0].id,sender_user_id:user.id,sender_role:'customer',body:message
       });
       if(!rows[0]?.id)throw new SupportError('Ticket created, but message could not be saved. Please open the ticket.',503);
+      await notifySupportEvent('created',tickets[0],await ownerEmail(user.id)).catch(()=>{});
       return res.status(201).json({ok:true,ticket:tickets[0]});
     }
     if(action==='reply'||action==='admin-reply'){
@@ -152,6 +215,7 @@ export default async function handler(req:any,res:any){
       await db('autoreply_support_tickets?id=eq.'+encodeURIComponent(ticket.id),'PATCH',{
         status:nextStatus,last_message_at:new Date().toISOString(),updated_at:new Date().toISOString()
       });
+      await notifySupportEvent(admin?'support_replied':'customer_replied',ticket,admin?await ownerEmail(ticket.owner_user_id):'').catch(()=>{});
       return res.status(200).json({ok:true,message:rows[0]});
     }
     if(action==='admin-update'){
@@ -167,6 +231,7 @@ export default async function handler(req:any,res:any){
       const rows=await db('autoreply_support_tickets?id=eq.'+encodeURIComponent(ticket.id),'PATCH',{
         status,admin_note:note||null,updated_at:new Date().toISOString()
       });
+      await notifySupportEvent('status_changed',ticket,await ownerEmail(ticket.owner_user_id)).catch(()=>{});
       return res.status(200).json({ok:true,ticket:rows[0]});
     }
     return res.status(404).json({ok:false,error:'Unknown support action.'});
