@@ -192,18 +192,17 @@ try {
     assert.ok(html.includes('Add Money'));
     assert.ok(html.includes('aria-controls="reply-top-ups"'));
     assert.ok(html.includes('Compare plans in detail'));
-    assert.ok(html.includes('Standard replies'));
-    assert.ok(html.includes('AI Replies'));
+    assert.ok(html.includes('Live usage totals are being verified'),'unverified usage is hidden');
     assert.ok(!html.includes('AI replies are included within total messages'));
-    for(const price of ['₹0','₹299','₹599','₹1,299']) assert.ok(html.includes(price));
+    for(const price of ['₹299','₹599','₹1,299']) assert.ok(!html.includes(price),'unverified plan prices are hidden');
     assert.ok(html.includes('Loading payment history'));
     assert.ok(!html.includes('No payments yet'));
     assert.ok(html.includes('scope="row">Instagram accounts'));
-    assert.ok(html.includes('billing-special-plan'));
+    assert.ok(!html.includes('billing-special-plan'),'unverified plan cards should not be rendered');
     assert.ok(!html.includes('Manage subscription'));
     assert.ok(!html.includes('Refund &amp; cancellation policy'));
     assert.ok(html.includes('border-slate-200 bg-white text-slate-950'),'current subscription uses a white card');
-    if(currentPlan==='business') assert.ok(html.includes('Renew for 30 days'),'current paid plan should be renewable');
+    if(currentPlan==='business') assert.ok(!html.includes('Renew for 30 days'),'do not suggest renewal until ownership and plan verified');
     checks++;
   }
   html=renderToStaticMarkup(React.createElement(ui.SettingsPage));
@@ -217,8 +216,8 @@ try {
   ]) {
     globalThis.__uiFixture=fixture({user:{...empty.user,plan:planId,carry_forward_messages:standard,carry_forward_ai_replies:ai,carry_forward_expires_at:expires}});
     const billing=renderToStaticMarkup(React.createElement(ui.BillingUsagePage));
-    assert.equal(billing.includes('Free bonus'),visible,'only unexpired real carry credits appear on paid plans');
-    if(visible){assert.ok(billing.includes('1,200'));assert.ok(billing.includes('1,000'));assert.ok(billing.includes('25,000'));assert.ok(billing.includes('text-emerald-700'));}
+    assert.equal(billing.includes('Free bonus'),false,'unverified bonus balances must not be fabricated');
+    assert.ok(billing.includes('Live usage totals are being verified'));
     checks++;
   }
   window.location.pathname='/billing/checkout';window.location.search='?plan=starter';
