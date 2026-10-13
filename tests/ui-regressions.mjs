@@ -104,7 +104,7 @@ try {
   window.location.pathname='/';
   html=await streamRender(React.createElement(ui.App));
   assert.ok(html.includes('Checking live plan prices and limits'), 'unverified static plan prices must be hidden during loading');
-  assert.ok(html.includes('Example conversation'));assert.ok(html.includes('1,500 standard DM/comment/story replies'));checks++;
+  assert.ok(html.includes('Example conversation'));assert.ok(html.includes('Checking live plan prices and limits'));checks++;
   window.location.pathname='/login';window.location.search='?mode=signup';
   html=await streamRender(React.createElement(ui.App));
   assert.ok(html.includes('Create your account'));assert.ok(html.includes('id="auth-email"'));assert.ok(html.includes('for="auth-email"'));checks++;
