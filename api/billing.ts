@@ -1,4 +1,6 @@
 import usageHandler from "../src/server/usage.js";
+import { ensurePaidInvoice,emailInvoiceIfConfigured,invoiceEmailConfigured } from "../src/server/invoiceService.js";
+import { generateInvoicePdf,invoiceLabel } from "../src/server/invoicePdf.js";
 import { randomUUID } from "node:crypto";
 import {
   authenticatedUser,
@@ -81,8 +83,14 @@ export default async function handler(req: any, res: any) {
         `autoreply_billing_orders?order_id=eq.${encodeURIComponent(id)}&limit=1`,
       );
       // Unknown orders never grant entitlements. Failed attempts never downgrade an order.
-      if (orders?.[0] && event.type === "PAYMENT_SUCCESS_WEBHOOK")
-        await reconcileOrder(orders[0]);
+      if (orders?.[0] && event.type === "PAYMENT_SUCCESS_WEBHOOK") {
+        const confirmed=await reconcileOrder(orders[0]);
+        if(confirmed?.status==='paid'&&confirmed?.environment==='production'){
+          // Never allow invoice/email delivery to fail a confirmed payment webhook.
+          await ensurePaidInvoice(confirmed).then(()=>
+            emailInvoiceIfConfigured(confirmed)).catch(e=>console.warn('[INVOICE_POST_PAYMENT_WARN]',{name:e?.name||'error'}));
+        }
+      }
       return res.status(200).json({ ok: true });
     }
     if (
@@ -90,6 +98,9 @@ export default async function handler(req: any, res: any) {
         "create",
         "status",
         "history",
+        "invoice",
+        "invoice-list",
+        "invoice-email",
         "subscription",
         "pending",
         "cancel",
@@ -102,7 +113,7 @@ export default async function handler(req: any, res: any) {
         .json({ ok: false, error: "Unknown billing action." });
     if (
       req.method !==
-      (["create", "cancel", "methods", "choose"].includes(action) ? "POST" : "GET")
+      (["create", "cancel", "methods", "choose", "invoice-email"].includes(action) ? "POST" : "GET")
     )
       return res.status(405).json({ ok: false, error: "Method not allowed." });
     const user = await authenticatedUser(req);
@@ -121,6 +132,43 @@ export default async function handler(req: any, res: any) {
         ok: false,
         error: "Too many payment requests. Please wait a moment.",
       });
+    }
+    if(action==='invoice-list'){
+      const rows=await billingDb('autoreply_billing_orders?owner_user_id=eq.'+encodeURIComponent(user.id)
+        +'&status=eq.paid&environment=eq.production&select=*&order=paid_at.desc&limit=50');
+      // Historical paid orders are issued lazily when first listed/downloaded.
+      const invoices:any[]=[];
+      for(const o of rows||[]){
+        try{const invoice=await ensurePaidInvoice(o);
+          invoices.push({orderId:o.order_id,invoiceNumber:invoiceLabel(invoice),issuedAt:invoice.issued_at,
+             planId:invoice.plan_id,amount:invoice.amount_inr,paidAt:invoice.paid_at,emailSent:Boolean((invoice as any).email_sent_at)});
+        }catch(e:any){console.warn('[INVOICE_ISSUE_WARN]',{name:e?.name||'error'});}
+      }
+      return res.status(200).json({ok:true,invoices,emailConfigured:invoiceEmailConfigured()});
+    }
+    if(action==='invoice'||action==='invoice-email'){
+      let orderId=String(req.query?.order_id||'');
+      if(action==='invoice-email'){
+        const payload=JSON.parse((await readBillingBody(req)).toString('utf8'));
+        orderId=String(payload?.orderId||'');
+      }
+      if(!orderIdValid(orderId))throw new BillingError('Invalid invoice reference.',400);
+      const orders=await billingDb('autoreply_billing_orders?order_id=eq.'+encodeURIComponent(orderId)
+        +'&owner_user_id=eq.'+encodeURIComponent(user.id)+'&limit=1');
+      if(!orders?.[0])throw new BillingError('Invoice order not found.',404);
+      if(orders[0].status!=='paid'||orders[0].environment!=='production')
+        throw new BillingError('Invoices are available only for verified live payments.',409);
+      if(action==='invoice-email'){
+        const result=await emailInvoiceIfConfigured(orders[0],{forceFeedback:true});
+        return res.status(200).json({ok:true,...result});
+      }
+      const invoice=await ensurePaidInvoice(orders[0]);
+      const bytes=generateInvoicePdf(invoice);
+      res.setHeader('Content-Type','application/pdf');
+      res.setHeader('Cache-Control','private, no-store');
+      res.setHeader('Content-Disposition','attachment; filename="AutoReplies-'+invoiceLabel(invoice)+'.pdf"');
+      res.setHeader('Content-Length',String(bytes.length));
+      return res.status(200).end(bytes);
     }
     if (action === "choose") {
       const data = JSON.parse((await readBillingBody(req)).toString("utf8"));
@@ -263,6 +311,10 @@ export default async function handler(req: any, res: any) {
       );
       if (!rows?.[0]) throw new BillingError("Payment order not found.", 404);
       const order = await reconcileOrder(rows[0]);
+      if(order?.status==='paid'&&order?.environment==='production'){
+        await ensurePaidInvoice(order).then(()=>emailInvoiceIfConfigured(order))
+          .catch(e=>console.warn('[INVOICE_STATUS_WARN]',{name:e?.name||'error'}));
+      }
       return res.status(200).json({
         ok: true,
         order: safeOrder(order),

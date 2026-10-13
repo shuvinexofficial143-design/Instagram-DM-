@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BarChart3, Bot, Check, CreditCard, Instagram, Plus, Zap, ArrowUpRight, ShieldCheck, ReceiptText } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { BillingHistory } from './BillingHistory';
+import { InvoiceCenter } from './InvoiceCenter';
 import { PlanConfig } from '../../lib/planUsage';
 import { usePlanCatalog } from '../../hooks/usePlanCatalog';
 import { useWorkspaceUsage } from '../../hooks/useWorkspaceUsage';
@@ -114,6 +115,7 @@ export const BillingUsagePage:React.FC=()=>{
         <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-600"><ReceiptText className="h-5 w-5"/></span><div><h2 id="billing-history-heading" className="text-base font-bold text-slate-900">Billing history</h2><p className="mt-1 text-sm text-slate-500">Your payment records, confirmation status and plan activation details.</p></div></div>
         <BillingHistory />
       </section>
+      <InvoiceCenter />
     </div>
   </div>;
 };
