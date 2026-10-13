@@ -110,7 +110,8 @@ export default async function handler(req:any,res:any){
         if(!response.ok)throw new SupportError('Unable to view this attachment.',503);
         const data:any=await response.json();
         if(!data?.signedURL)throw new SupportError('Unable to view this attachment.',503);
-        const signedURL=new URL(String(data.signedURL),SUPABASE_URL+'/storage/v1/').toString();
+        const relative=String(data.signedURL||'');
+        const signedURL=SUPABASE_URL+'/storage/v1'+(relative.startsWith('/')?relative:'/'+relative);
         if(!signedURL.startsWith(SUPABASE_URL+'/storage/v1/object/sign/'))
           throw new SupportError('Invalid secure attachment URL.',503);
         return res.status(200).json({ok:true,url:signedURL});
