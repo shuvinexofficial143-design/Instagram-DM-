@@ -35,11 +35,11 @@ export const ResetPasswordPage: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F7FAFF] px-4 py-10">
-      <section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-7 shadow-xl sm:p-9">
-        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600"><KeyRound className="h-5 w-5" /></span>
+    <div className="auth-premium-page auth-recovery-page">
+      <section className="auth-recovery-card w-full max-w-md rounded-3xl border border-slate-200 bg-white p-7 sm:p-9">
+        <span className="auth-recovery-icon mx-auto flex h-12 w-12 items-center justify-center rounded-2xl"><KeyRound className="h-5 w-5" /></span>
         <h1 className="mt-5 text-center text-2xl font-bold text-slate-950">{done ? 'Password updated' : 'Set a new password'}</h1>
-        <p className="mt-2 text-center text-sm leading-6 text-slate-500">{done ? 'Your account password has been changed successfully.' : 'Choose a new password for your AutoReply account.'}</p>
+        <p className="mt-2 text-center text-sm leading-6 text-slate-500">{done ? 'Your account password has been changed successfully.' : 'Choose a new password for your Auto Replies account.'}</p>
 
         {done ? (
           <div className="mt-6">
@@ -56,7 +56,7 @@ export const ResetPasswordPage: React.FC = () => {
         ) : (
           <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
             <div className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" /><p>This recovery link is invalid or expired. Request a new password reset email from the sign-in screen.</p></div>
-            <button onClick={() => window.location.assign('/')} className="mt-4 min-h-10 w-full rounded-xl bg-slate-950 px-4 text-xs font-bold text-white">Back to sign in</button>
+            <button onClick={() => window.location.assign('/login')} className="mt-4 min-h-10 w-full rounded-xl bg-slate-950 px-4 text-xs font-bold text-white">Back to sign in</button>
           </div>
         )}
       </section>

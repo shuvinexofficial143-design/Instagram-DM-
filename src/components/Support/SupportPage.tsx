@@ -29,6 +29,9 @@ const faqs=[
 export const SupportPage:React.FC<{page:Page}>=({page})=>{
   const{setActiveTab,setIsConnectModalOpen,setIsRenewModalOpen,firebaseUser}=useApp();
   const [faqQuery,setFaqQuery]=useState('');
+  const [faqCategory,setFaqCategory]=useState('All');
+  const faqCategories=['All',...new Set(faqs.map(([category])=>category))];
+  const shownFaqs=faqs.filter(([category,q,a])=>(faqCategory==='All'||category===faqCategory)&&(category+' '+q+' '+a).toLowerCase().includes(faqQuery.trim().toLowerCase()));
 
   const go=(tab:'home'|'automations'|'faq'|'billing-help'|'billing')=>{
     if(firebaseUser){setActiveTab(tab);return;}
@@ -71,6 +74,7 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
         <SupportCard icon={LifeBuoy} label="Contact" title="Message customer support" text="Send a private ticket, track refunds and receive replies from our team." action="Contact support" onClick={()=>firebaseUser?setActiveTab('contact'):window.location.assign('/login')}/>
         <SupportCard icon={MessageCircleQuestion} label="Answers" title="Browse common questions" text="Quick answers for connection, automations, inbox, usage, plans and account controls." action="Read FAQ" onClick={()=>go('faq')}/>
         <SupportCard icon={WalletCards} label="Billing" title="Plans, payments and cancellation" text="See how upgrades, usage, billing history and self-service plan cancellation are designed to work." action="Open billing guide" onClick={()=>go('billing-help')}/>
+        <SupportCard icon={ShieldCheck} label="Privacy" title="Keep your workspace secure" text="Understand sign-in, your data, permissions and account privacy before sharing business information." action="Privacy & security" onClick={()=>window.location.assign('/privacy')}/>
       </section>
       <section className="support-path">
         <div>
@@ -107,12 +111,15 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
       <aside className="support-faq-aside">
         <HelpCircle/>
         <h2>Find the right answer</h2>
-        <p>Questions cover Instagram connection, automation behavior, billing, usage and account management.</p>
+        <p>Search by topic or keyword. Choose a category to narrow the answers without scrolling through everything.</p>
         <button onClick={()=>go('billing-help')}>Need billing help?<ArrowRight/></button>
       </aside>
       <div className="support-faq-list">
         <label className="mb-4 block text-sm font-semibold text-slate-700">Search help articles<input type="search" value={faqQuery} onChange={e=>setFaqQuery(e.target.value)} placeholder="Search payments, Instagram, automations…" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm"/></label>
-        {faqs.filter(([category,q,a])=>(category+' '+q+' '+a).toLowerCase().includes(faqQuery.toLowerCase())).map(([category,q,a])=><details key={q} className="support-faq-item">
+        <div className="support-faq-categories" role="group" aria-label="Filter questions by category">{faqCategories.map(category=><button key={category} type="button" aria-pressed={faqCategory===category} onClick={()=>setFaqCategory(category)}>{category}</button>)}</div>
+        <p className="support-faq-count" role="status">{shownFaqs.length} {shownFaqs.length===1?'question':'questions'} found</p>
+        {shownFaqs.length===0&&<div className="support-faq-empty"><HelpCircle aria-hidden="true"/><h3>No matching questions</h3><p>Try another keyword or select All. You can also send a private support request.</p><button onClick={()=>{setFaqCategory('All');setFaqQuery('');}}>Clear filters</button></div>}
+        {shownFaqs.map(([category,q,a])=><details key={q} className="support-faq-item">
           <summary><span><small>{category}</small>{q}</span><span className="support-faq-plus">+</span></summary>
           <p>{a}</p>
         </details>)}
@@ -121,7 +128,20 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
   );
 
   if(page==='contact')return shell('Customer Support','Contact & requests','Send a private message, request a refund, or track a cancellation request.',<>
-    {firebaseUser?<SupportDesk />:<div className="rounded-2xl border border-slate-200 bg-white p-6"><p className="text-sm text-slate-700">Sign in to send a private message and track replies. You can also use the business email below.</p><a href="/login" className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-indigo-600 px-5 font-semibold text-white">Sign in to contact support</a></div>}
+    {firebaseUser?<SupportDesk />:<section className="support-contact-welcome" aria-label="How to contact support">
+      <div className="support-contact-copy">
+        <span className="support-eyebrow">PRIVATE CUSTOMER SUPPORT</span>
+        <h2>Tell us what you need help with.</h2>
+        <p>Sign in to open a private support ticket, attach screenshots and track your team's replies in one place. Prefer email? Our verified contact details are below.</p>
+        <a href="/login" className="support-contact-login">Sign in to contact support <ArrowRight aria-hidden="true"/></a>
+        <p className="support-contact-note"><ShieldCheck aria-hidden="true"/> Never share OTPs, passwords or private API tokens in a ticket.</p>
+      </div>
+      <div className="support-contact-types">
+        <div><Instagram aria-hidden="true"/><span><strong>Instagram & automations</strong><small>Connections, missed replies and workflow errors</small></span></div>
+        <div><CreditCard aria-hidden="true"/><span><strong>Plans & payments</strong><small>Receipts, account limits and refund requests</small></span></div>
+        <div><ShieldCheck aria-hidden="true"/><span><strong>Account & privacy</strong><small>Access, information and account questions</small></span></div>
+      </div>
+    </section>}
   </>);
 
   if(page==='refunds')return shell('Refund & Cancellation Policy','Paid plan policies','Clear information about one-time purchases, payment issues and refund requests.',<Legal sections={[
@@ -193,7 +213,10 @@ const GuideStep=({number,title,children}:{number:string;title:string;children:Re
 );
 
 const Legal=({sections}:{sections:[string,string][]})=>(
-  <div className="support-legal">
-    {sections.map(([h,p])=><section key={h}><span><ShieldCheck/></span><div><h2>{h}</h2><p>{p}</p></div></section>)}
+  <div className="support-legal-container">
+    <nav className="support-legal-toc" aria-label="On this policy page"><strong>On this page</strong><div>{sections.map(([h],i)=><a key={h} href={'#policy-section-'+i}>{h}</a>)}</div></nav>
+    <div className="support-legal">
+      {sections.map(([h,p],i)=><section key={h} id={'policy-section-'+i}><span><ShieldCheck aria-hidden="true"/></span><div><h2>{h}</h2><p>{p}</p></div></section>)}
+    </div>
   </div>
 );

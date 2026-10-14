@@ -152,6 +152,7 @@ export const SettingsPage: React.FC = () => {
           <nav aria-label="Settings quick links" className="settings-about-quicklinks">
             <a href="#settings-account"><ShieldCheck className="h-4 w-4"/> My account</a>
             <a href="#settings-ai"><SlidersHorizontal className="h-4 w-4"/> AI preferences</a>
+            <a href="#settings-notifications"><Mail className="h-4 w-4"/> Email preferences</a>
             <a href="#settings-privacy"><Download className="h-4 w-4"/> Data & privacy</a>
             <a href="/contact"><Mail className="h-4 w-4"/> Support</a>
           </nav>
@@ -167,7 +168,7 @@ export const SettingsPage: React.FC = () => {
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarClock className="h-5 w-5" /></span>
             <div>
               <h2 className="text-lg font-bold text-slate-950">Manage subscription</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">{usage.plan.name} plan · {usage.plan.price} for 30 days. Renew manually when you need it; no automatic charges.</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{usage.plan.id==='free'?'Free plan · no purchase required.':`${usage.plan.name} plan · ${usage.plan.price} for 30 days. Renew manually when you need it; no automatic charges.`}</p>
               {usage.expiresAt && <p className="mt-2 text-sm text-slate-500">Access until {new Date(usage.expiresAt).toLocaleString()}</p>}
             </div>
           </div>

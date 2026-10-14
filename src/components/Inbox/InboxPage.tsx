@@ -234,10 +234,10 @@ export const InboxPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-full bg-[#F7FAFF] p-3 sm:p-5 lg:p-6">
+    <div className="inbox-premium min-h-full p-3 sm:p-5 lg:p-6">
       <div className="mx-auto max-w-[1600px]">
         <header className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <div><p className="text-xs font-bold uppercase tracking-[.16em] text-indigo-600">Conversation workspace</p><h1 className="mt-1 text-2xl font-bold text-slate-950">Inbox</h1><p className="mt-1 text-sm text-slate-500">Prioritize, assign, snooze, resolve and document Instagram conversations.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-[.16em] text-orange-700">CONVERSATION WORKSPACE</p><h1 className="mt-1 text-2xl font-bold text-slate-950">Inbox</h1><p className="mt-1 text-sm text-slate-500">Prioritize, assign, snooze, resolve and document Instagram conversations.</p></div>
           <div className="flex flex-wrap gap-2">
             {(['all','unread','open','pending','resolved'] as const).map((id) => (
               <button key={id} onClick={() => setFilter(id)} className={'rounded-xl border px-3 py-2 text-xs font-bold ' + (filter === id ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600')}>{id[0].toUpperCase() + id.slice(1)} <span className="opacity-70">({statusCounts[id]})</span></button>
@@ -248,7 +248,7 @@ export const InboxPage: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex h-[78vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="inbox-premium-shell flex h-[78vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <aside className={(mobileChatOpen ? 'hidden md:flex' : 'flex') + ' w-full flex-col border-r border-slate-200 md:w-[310px] xl:w-[340px]'}>
             <div className="border-b border-slate-200 p-3">
               <label className="relative block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search conversations" className="min-h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs outline-none focus:border-indigo-400" /></label>

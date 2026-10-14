@@ -200,7 +200,8 @@ export const AutomationsPage: React.FC = () => {
   };
 
   return (
-    <div className="automations-readable min-h-screen space-y-7 bg-[#F7FAFF] p-5 sm:p-8">
+    <div className="automations-readable automations-premium min-h-screen space-y-7 p-4 sm:p-8">
+      <header className="automation-page-heading"><div><p className="automation-page-eyebrow">INSTAGRAM AUTOMATION</p><h1>Automations</h1><p>Build helpful workflows, test your replies, and see real recorded activity.</p></div></header>
       {/* 1. Unified Active Automations & Metrics Banner */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
         {/* Active Automations Header (Top of Banner) */}
@@ -638,7 +639,7 @@ export const AutomationsPage: React.FC = () => {
             <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-medium bg-slate-50/60 -mx-6 -mb-6 p-4 px-6 rounded-b-3xl">
               <div className="flex items-center gap-2 text-slate-600">
                 <Zap className="w-4 h-4 text-emerald-500 fill-emerald-500" />
-                <span>All templates include automated Instagram DM triggers and live analytics.</span>
+                <span>Templates are starting points. Check each trigger, customize the reply and test before publishing.</span>
               </div>
               <button
                 onClick={() => {
@@ -646,7 +647,7 @@ export const AutomationsPage: React.FC = () => {
                 }}
                 className="text-[#6D28D9] hover:underline font-bold text-xs"
               >
-                + Start from Scratch (Blank Canvas)
+                + Start from Scratch (Guided Setup)
               </button>
             </div>
           </div>

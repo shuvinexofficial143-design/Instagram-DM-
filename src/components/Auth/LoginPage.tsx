@@ -161,22 +161,33 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#F7FAFF] flex flex-col justify-center items-center px-4 py-10 sm:py-12 ">
-      <a href="/" className="flex items-center justify-center gap-3 mb-7" aria-label="Auto Replies home">
-        <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-600 via-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-          <Zap className="w-5 h-5 fill-white stroke-[2.2]" />
-        </div>
-        <span className="text-[26px] font-bold text-[#172554] tracking-tight">Auto Replies</span>
-      </a>
-      <a href="/" className="mb-5 text-sm text-indigo-700 hover:underline">← Back to home</a>
-
-      <div className="w-full max-w-[520px] bg-[#FCFDFF] rounded-2xl shadow-sm border border-blue-100/90 p-7 sm:p-10 md:p-11">
-        <div className="grid grid-cols-2 gap-1 p-1.5 bg-[#EEF4FF] rounded-2xl mb-7">
+    <div className="auth-premium-page">
+      <div className="auth-premium-layout">
+        <aside className="auth-premium-story" aria-label="About Auto Replies">
+          <a href="/" className="auth-story-brand"><span className="auth-story-mark"><Zap aria-hidden="true" /></span>Auto Replies</a>
+          <div className="auth-story-content">
+            <span className="auth-story-eyebrow">YOUR INSTAGRAM WORKSPACE</span>
+            <h2>More conversations.<br /><em>Less busywork.</em></h2>
+            <p>Connect your Instagram account, create helpful automations and keep customer conversations organized.</p>
+            <ul aria-label="What you can do with Auto Replies">
+              <li><CheckCircle2 aria-hidden="true" /> Reply to DMs and comments</li>
+              <li><CheckCircle2 aria-hidden="true" /> Review conversations in your Inbox</li>
+              <li><CheckCircle2 aria-hidden="true" /> Stay in control of every automation</li>
+            </ul>
+          </div>
+          <p className="auth-story-footnote">Secure sign-in · Connect via Meta · You control your replies</p>
+        </aside>
+        <main className="auth-premium-main">
+          <a href="/" className="auth-mobile-brand" aria-label="Auto Replies home"><span className="auth-story-mark"><Zap aria-hidden="true" /></span>Auto Replies</a>
+          <a href="/" className="auth-premium-back">← Back to home</a>
+          <div className="auth-premium-card">
+        <div className="auth-premium-tabs grid grid-cols-2 gap-1 p-1.5 rounded-2xl mb-7" role="group" aria-label="Sign in or create account">
           <button
             type="button"
             onClick={() => switchMode('signin')}
+            aria-pressed={authMode === 'signin'}
             className={`py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-              authMode === 'signin' ? 'bg-[#FCFDFF] text-[#172554] shadow-sm border border-blue-100/70' : 'text-slate-600 hover:text-[#172554]'
+              authMode === 'signin' ? 'bg-white text-[#312e81] shadow-sm border border-indigo-100' : 'text-slate-600 hover:text-[#312e81]'
             }`}
           >
             Sign In
@@ -184,14 +195,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           <button
             type="button"
             onClick={() => switchMode('signup')}
+            aria-pressed={authMode === 'signup'}
             className={`py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-              authMode === 'signup' ? 'bg-[#FCFDFF] text-[#172554] shadow-sm border border-blue-100/70' : 'text-slate-600 hover:text-[#172554]'
+              authMode === 'signup' ? 'bg-white text-[#312e81] shadow-sm border border-indigo-100' : 'text-slate-600 hover:text-[#312e81]'
             }`}
           >
             Create account
           </button>
         </div>
 
+        <p className="auth-premium-kicker">{authMode === 'signup' ? 'GET STARTED' : 'GOOD TO SEE YOU AGAIN'}</p>
         <h1 className="text-[28px] sm:text-[30px] font-bold text-[#172554] text-center tracking-tight">
           {authMode === 'signup' ? 'Create your account' : 'Welcome back'}
         </h1>
@@ -333,6 +346,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
             Privacy Policy
           </button>
         </p>
+          </div>
+        </main>
       </div>
 
       <TermsModal
