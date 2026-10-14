@@ -112,8 +112,15 @@ export const AdminPage: React.FC = () => {
     const usageByUser = new Map<string, any>();
     for (const row of result.usageMonthly || []) {
       const prev = usageByUser.get(row.user_id) || { total_messages: 0, ai_replies: 0 };
-      prev.total_messages += Math.max(0,Number(row.total_messages || 0)-Number(row.ai_replies||0)); prev.ai_replies += Number(row.ai_replies || 0); usageByUser.set(row.user_id, prev);
+      // Usage total_messages already includes AI replies. Subtracting AI
+      // caused the Admin "DMs sent" card to systematically undercount.
+      prev.total_messages += Math.max(0,Number(row.total_messages || 0));
+      prev.ai_replies += Math.max(0,Number(row.ai_replies || 0));
+      usageByUser.set(row.user_id, prev);
     }
+    const contactsByUser = new Map<string,number>();
+    for(const row of result.contactCounts || [])
+      contactsByUser.set(String(row.owner_user_id),Math.max(0,Number(row.contact_count)||0));
     const realUsers: AdminUserOverviewItem[] = (result.profiles || []).map((profile: any) => {
       const accountRow: any = accountsByUser.get(profile.user_id);
       const account = accountRow?.account || {};
@@ -123,7 +130,7 @@ export const AdminPage: React.FC = () => {
         first_login_at: profile.created_at, last_login_at: profile.last_login_at || profile.created_at, last_active_at: profile.last_active_at || profile.updated_at,
         role: profile.role === 'admin' ? 'admin' : 'user',
         instagram: { username: account.username || null, connected_at: accountRow?.created_at || null, status: accountRow ? 'active' : 'not_connected', followers_count: Number(account.followers_count || 0), profile_pic_url: account.profile_picture_url || account.profile_pic_url || null },
-        stats: { total_dms_sent: Number(usage.total_messages || 0), total_automations: automationsByUser.get(profile.user_id) || 0, total_contacts: 0, last_activity_time: profile.last_active_at || profile.updated_at || profile.created_at },
+        stats: { total_dms_sent: Number(usage.total_messages || 0), total_automations: automationsByUser.get(profile.user_id) || 0, total_contacts: contactsByUser.get(profile.user_id) || 0, last_activity_time: profile.last_active_at || profile.updated_at || profile.created_at },
       };
     });
     const totalMessages = (result.usageMonthly || []).reduce((sum: number, row: any) => sum + Number(row.total_messages || 0), 0);

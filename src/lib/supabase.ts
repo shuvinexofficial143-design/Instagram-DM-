@@ -288,6 +288,23 @@ export function subscribeToUserCollection<T extends { id?: string }>(
   };
 
   void refresh();
+  // Supabase Realtime is not guaranteed for every document collection.
+  // Periodically reconcile true server records so counts keep updating even
+  // when database replication misses events, a tab sleeps, or a socket drops.
+  const shouldReconcile = ['inbox_messages','automations','contacts','webhook_events','webhook_logs'].includes(subcollectionName);
+  const poll = shouldReconcile ? window.setInterval(() => {
+    if(!document.hidden)void refresh();
+  }, 30000) : null;
+  let lastVisibilityRefresh = 0;
+  const onVisibility = () => {
+    if(!shouldReconcile||document.hidden||Date.now()-lastVisibilityRefresh<5000)return;
+    lastVisibilityRefresh=Date.now();
+    void refresh();
+  };
+  if(shouldReconcile){
+    document.addEventListener('visibilitychange',onVisibility);
+    window.addEventListener('focus',onVisibility);
+  }
   const channel = supabase
     .channel(`autoreply:${userId}:${subcollectionName}:${Math.random().toString(36).slice(2)}`)
     .on(
@@ -307,6 +324,11 @@ export function subscribeToUserCollection<T extends { id?: string }>(
 
   return () => {
     active = false;
+    if(poll!==null)window.clearInterval(poll);
+    if(shouldReconcile){
+      document.removeEventListener('visibilitychange',onVisibility);
+      window.removeEventListener('focus',onVisibility);
+    }
     void supabase.removeChannel(channel);
   };
 }

@@ -193,15 +193,15 @@ const sanitizeAutomationRecord = (auto: any): Automation => ({
     specific_post_url: auto?.trigger_config?.specific_post_url || '',
   },
   actions: Array.isArray(auto?.actions) ? auto.actions : [],
-  status: auto?.status || 'active',
+  status: auto?.status === 'active' ? 'active' : 'paused',
   stats: {
     runs: Number(auto?.stats?.runs) || 0,
     dms_sent: Number(auto?.stats?.dms_sent) || 0,
     unique_users: Number(auto?.stats?.unique_users) || 0,
     open_rate: -1, // No verified Meta open rate: never claim 98% or 100%.
   },
-  created_at: auto?.created_at || new Date().toISOString(),
-  updated_at: auto?.updated_at || new Date().toISOString(),
+  created_at: auto?.created_at || '',
+  updated_at: auto?.updated_at || '',
 });
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -707,7 +707,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             stories: Number(c.interactions?.stories) || 0,
           },
           tags: Array.isArray(c.tags) ? c.tags : [],
-          status: c.status || 'converted',
+          status: c.status || 'lead',
         }));
         setContacts(filterOutMockContacts(sanitized));
         if (sanitized.length && !signedInProfileRefreshRequested) {
