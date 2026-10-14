@@ -192,7 +192,9 @@ try {
     assert.ok(html.includes('Add Money'));
     assert.ok(html.includes('aria-controls="reply-top-ups"'));
     assert.ok(html.includes('Compare plans in detail'));
-    assert.ok(html.includes('Live usage totals are being verified'),'unverified usage is hidden');
+    assert.ok(html.includes('aria-label="Loading your plan usage"'),'unverified usage is hidden behind neutral loading placeholders');
+    assert.ok(!html.includes('Live usage totals are being verified'),'no temporary amber warning flash');
+    assert.ok(!html.includes('Checking plan…'),'no flashing verification copy');
     assert.ok(!html.includes('AI replies are included within total messages'));
     for(const price of ['₹299','₹599','₹1,299']) assert.ok(!html.includes(price),'unverified plan prices are hidden');
     assert.ok(html.includes('Loading payment history'));
@@ -217,7 +219,8 @@ try {
     globalThis.__uiFixture=fixture({user:{...empty.user,plan:planId,carry_forward_messages:standard,carry_forward_ai_replies:ai,carry_forward_expires_at:expires}});
     const billing=renderToStaticMarkup(React.createElement(ui.BillingUsagePage));
     assert.equal(billing.includes('Free bonus'),false,'unverified bonus balances must not be fabricated');
-    assert.ok(billing.includes('Live usage totals are being verified'));
+    assert.ok(billing.includes('aria-label="Loading your plan usage"'),'unverified credits show neutral skeletons');
+    assert.ok(!billing.includes('Free bonus'),'no unverified bonus balances');
     checks++;
   }
   window.location.pathname='/billing/checkout';window.location.search='?plan=starter';
