@@ -15,7 +15,7 @@ export const Sidebar = () => {
   const name = firebaseUser?.displayName || user.name || 'Your account';
   const pct = usagePercent(usage.messageUsed,usage.messageLimit);
   return <aside className={'workspace-sidebar '+(collapsed?'is-collapsed':'')} aria-label="Workspace navigation">
-    <div className="sidebar-brand"><span className="brand-logo-circle" aria-hidden="true"><img src="/auto-replys-logo.png" alt="" style={{width:"100%",height:"100%",objectFit:"contain",borderRadius:"50%"}} onError={(e)=>{e.currentTarget.style.display="none";}} /></span><span>Auto Replys</span></div>
+    <div className="sidebar-brand"><span className="brand-logo-circle" aria-hidden="true"><img src="/auto-replys-brand.svg" alt="" style={{width:"100%",height:"100%",objectFit:"contain",borderRadius:"50%"}} onError={(e)=>{e.currentTarget.style.display="none";}} /></span><span>Auto Replys</span></div>
     <button onClick={toggle} className="sidebar-collapse" aria-label={collapsed?'Expand navigation':'Collapse navigation'}>{collapsed?<ChevronRight/>:<ChevronLeft/>}</button>
     <button className={'sidebar-account '+(instagramAccount?'has-instagram':'')} onClick={()=>instagramAccount?setActiveTab('settings'):setIsConnectModalOpen(true)} aria-label={instagramAccount?'Manage Instagram account':'Connect Instagram'} title={instagramAccount?.username || 'Connect Instagram'}>
       {instagramAccount
