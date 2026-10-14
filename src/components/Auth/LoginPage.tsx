@@ -163,13 +163,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
   return (
     <div className="auth-premium-page">
       <div className="auth-premium-layout">
-        <aside className="auth-premium-story" aria-label="About Auto Replies">
-          <a href="/" className="auth-story-brand"><span className="auth-story-mark"><Zap aria-hidden="true" /></span>Auto Replies</a>
+        <aside className="auth-premium-story" aria-label="About Auto Replys">
+          <a href="/" className="auth-story-brand"><span className="auth-story-mark"><img src="/auto-replys-brand.svg" alt="" style={{width:"100%",height:"100%",objectFit:"contain",borderRadius:"50%"}} /></span>Auto Replys</a>
           <div className="auth-story-content">
             <span className="auth-story-eyebrow">YOUR INSTAGRAM WORKSPACE</span>
             <h2>More conversations.<br /><em>Less busywork.</em></h2>
             <p>Connect your Instagram account, create helpful automations and keep customer conversations organized.</p>
-            <ul aria-label="What you can do with Auto Replies">
+            <ul aria-label="What you can do with Auto Replys">
               <li><CheckCircle2 aria-hidden="true" /> Reply to DMs and comments</li>
               <li><CheckCircle2 aria-hidden="true" /> Review conversations in your Inbox</li>
               <li><CheckCircle2 aria-hidden="true" /> Stay in control of every automation</li>
@@ -178,7 +178,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           <p className="auth-story-footnote">Secure sign-in · Connect via Meta · You control your replies</p>
         </aside>
         <main className="auth-premium-main">
-          <a href="/" className="auth-mobile-brand" aria-label="Auto Replies home"><span className="auth-story-mark"><Zap aria-hidden="true" /></span>Auto Replies</a>
+          <a href="/" className="auth-mobile-brand" aria-label="Auto Replys home"><span className="auth-story-mark"><img src="/auto-replys-brand.svg" alt="" style={{width:"100%",height:"100%",objectFit:"contain",borderRadius:"50%"}} /></span>Auto Replys</a>
           <a href="/" className="auth-premium-back">← Back to home</a>
           <div className="auth-premium-card">
         <div className="auth-premium-tabs grid grid-cols-2 gap-1 p-1.5 rounded-2xl mb-7" role="group" aria-label="Sign in or create account">
