@@ -18,17 +18,16 @@ export const HomePage: React.FC = () => {
   // disappear whenever Today is selected or their inbox automation_id is absent.
   const [period, setPeriod] = useState<Period>('all');
   const [verifiedAi,setVerifiedAi]=useState<{all:number;month:number}|null>(null);
-  const [aiError,setAiError]=useState(false);
   useEffect(()=>{
     let live=true;
-    setVerifiedAi(null);setAiError(false);
+    setVerifiedAi(null);
     const load=async()=>{
       if(!user?.id)return;
       try{
         const data=await billingRequest('dashboard-metrics');
-        if(live){setVerifiedAi({all:Number(data.aiRepliesAllTime)||0,month:Number(data.aiRepliesThisMonth)||0});setAiError(false);}
+        if(live)setVerifiedAi({all:Number(data.aiRepliesAllTime)||0,month:Number(data.aiRepliesThisMonth)||0});
       }catch{
-        if(live){setAiError(true);setVerifiedAi(null);}
+        if(live)setVerifiedAi(null);
       }
     };
     void load();
@@ -112,9 +111,6 @@ export const HomePage: React.FC = () => {
         </header>
 
         {workspaceDataError && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Some workspace records could not be loaded. Metrics are withheld rather than displaying an incorrect zero. Refresh to retry.</p>}
-        {period==='all' && verifiedAi && <p className="text-sm font-medium text-slate-600">AI Replies uses verified billing counters: <strong>{verifiedAi.all.toLocaleString('en-IN')} all time</strong> · {verifiedAi.month.toLocaleString('en-IN')} this month. Other cards use your recorded Inbox and Automations.</p>}
-        {period!=='all' && <p className="text-xs text-slate-500">Short-period AI replies are counted only when an Inbox message has a recorded AI automation ID; this can undercount older messages. All Time uses the verified usage ledger.</p>}
-        {period==='all' && aiError && <p role="alert" className="text-sm text-amber-700">Verified AI totals could not be loaded. No unverified zero is shown.</p>}
         {isConnected && !accountExpired && automations.length>0 && <div className="dashboard-next-action"><div><strong>{unread>0?`${unread} unread messages`:'Your workspace is ready'}</strong><p>{unread>0?'Check conversations that may need your attention.':'Review your inbox or create another automation.'}</p></div><button onClick={()=>setActiveTab('inbox')}>Open inbox <ArrowRight/></button></div>}
 
         <section className="relative overflow-hidden rounded-[20px] border border-orange-100 bg-gradient-to-br from-white via-[#fffaf3] to-[#f5f3ff] p-4 shadow-[0_8px_28px_rgba(76,88,160,.08)] sm:p-5">
