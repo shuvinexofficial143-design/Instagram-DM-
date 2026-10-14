@@ -15,7 +15,7 @@ export const AppSplashScreen: React.FC<AppSplashScreenProps> = ({ exiting = fals
       className={`app-splash-screen${exiting ? ' is-exiting' : ''}`}
       role="status"
       aria-live="polite"
-      aria-label="Auto Replies is loading"
+      aria-label="Auto Replys is loading"
     >
       <div className="app-splash-flow" aria-hidden="true">
         <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
@@ -33,13 +33,13 @@ export const AppSplashScreen: React.FC<AppSplashScreenProps> = ({ exiting = fals
           <span className="app-splash-chat app-splash-chat-one"><MessageCircle /></span>
           <span className="app-splash-chat app-splash-chat-two"><Sparkles /></span>
           <span className="app-splash-logo">
-            <Zap />
+            <img src="/auto-replys-brand.svg" alt="" style={{width:"100%",height:"100%",objectFit:"contain",borderRadius:"50%"}} />
           </span>
         </div>
 
         <div className="app-splash-copy">
           <div className="app-splash-brand-row">
-            <span className="app-splash-brand">Auto Replies</span>
+            <span className="app-splash-brand">Auto Replys</span>
             <span className="app-splash-live-dot" />
           </div>
           <p>Smart Instagram conversations, ready in a moment.</p>
