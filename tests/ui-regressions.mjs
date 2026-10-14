@@ -192,7 +192,9 @@ try {
     assert.ok(html.includes('Add Money'));
     assert.ok(html.includes('aria-controls="reply-top-ups"'));
     assert.ok(html.includes('Compare plans in detail'));
-    assert.ok(html.includes('Live usage totals are being verified'),'unverified usage is hidden');
+    assert.ok(html.includes('aria-label="Loading your plan usage"'),'unverified usage is hidden behind neutral loading placeholders');
+    assert.ok(!html.includes('Live usage totals are being verified'),'no temporary amber warning flash');
+    assert.ok(!html.includes('Checking plan…'),'no flashing verification copy');
     assert.ok(!html.includes('AI replies are included within total messages'));
     for(const price of ['₹299','₹599','₹1,299']) assert.ok(!html.includes(price),'unverified plan prices are hidden');
     assert.ok(html.includes('Loading payment history'));
