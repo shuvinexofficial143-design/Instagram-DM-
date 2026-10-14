@@ -15,7 +15,7 @@ export const Sidebar = () => {
   const name = firebaseUser?.displayName || user.name || 'Your account';
   const pct = usagePercent(usage.messageUsed,usage.messageLimit);
   return <aside className={'workspace-sidebar '+(collapsed?'is-collapsed':'')} aria-label="Workspace navigation">
-    <div className="sidebar-brand"><Zap aria-hidden="true"/><span>Auto Replies</span></div>
+    <div className="sidebar-brand"><span className="brand-logo-circle" aria-hidden="true"><img src="/auto-replys-logo.png" alt="" style={{width:"100%",height:"100%",objectFit:"contain",borderRadius:"50%"}} onError={(e)=>{e.currentTarget.style.display="none";}} /></span><span>Auto Replys</span></div>
     <button onClick={toggle} className="sidebar-collapse" aria-label={collapsed?'Expand navigation':'Collapse navigation'}>{collapsed?<ChevronRight/>:<ChevronLeft/>}</button>
     <button className={'sidebar-account '+(instagramAccount?'has-instagram':'')} onClick={()=>instagramAccount?setActiveTab('settings'):setIsConnectModalOpen(true)} aria-label={instagramAccount?'Manage Instagram account':'Connect Instagram'} title={instagramAccount?.username || 'Connect Instagram'}>
       {instagramAccount
@@ -39,7 +39,7 @@ export const Sidebar = () => {
         {!collapsed&&<p className="sidebar-section-label">Account</p>}
         <button onClick={()=>setActiveTab('settings')} aria-label="Account settings" title={collapsed?'Account settings':undefined} aria-current={['settings','integrations','activity'].includes(activeTab)?'page':undefined}><Settings/><span>Settings</span></button>
         <button onClick={()=>setActiveTab('help')} aria-label="Contact and support" title={collapsed?'Contact & support':undefined} aria-current={['help','faq','billing-help','about','privacy','terms'].includes(activeTab)?'page':undefined}><HelpCircle/><span>Contact & support</span></button>
-        <button aria-label="Sign out" title={collapsed?'Sign out':undefined} onClick={()=>{if(window.confirm('Sign out of Auto Replies?'))void logout();}}><LogOut/><span>Sign out</span></button>
+        <button aria-label="Sign out" title={collapsed?'Sign out':undefined} onClick={()=>{if(window.confirm('Sign out of Auto Replys?'))void logout();}}><LogOut/><span>Sign out</span></button>
       </div>
       {!collapsed&&<div className="sidebar-upgrade">
         <div className="sidebar-upgrade-title"><Zap/><strong>{usage.plan.name==='Free'?'Upgrade your workspace':usage.plan.name+' plan'}</strong></div>
