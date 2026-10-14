@@ -10,7 +10,8 @@ test('Home uses verified ledger for lifetime AI replies, not inbox-only automati
  assert.match(api,/aiRepliesAllTime:totalAi/);
  assert.match(home,/useState<Period>\('all'\)/);
  assert.match(home,/verifiedAi\?\.all/);
- assert.match(home,/AI Replies uses verified billing counters/);
+ assert.doesNotMatch(home,/AI Replies uses verified billing counters/);
+ assert.doesNotMatch(home,/Short-period AI replies are counted only when/);
  assert.match(home,/Short-period AI replies are counted only/);
 });
 test('connected Instagram dashboard is held until workspace hydration finishes',()=>{
@@ -43,7 +44,8 @@ test('fabricated 98% / 100% automation open rates are removed',()=>{
  assert.doesNotMatch(ctx,/open_rate: 100/);
  assert.doesNotMatch(auto,/open_rate: 100/);
  assert.match(analytics,/Not tracked/);
- assert.match(analytics,/Verified AI usage/);
+ assert.doesNotMatch(analytics,/Verified AI usage/);
+ assert.doesNotMatch(analytics,/border-orange-100 bg-orange-50\/70/);
  assert.match(analytics,/AI replies \(Inbox\)/);
 });
 test('hardcoded trial days are replaced with the actual stored expiry',()=>{
@@ -79,4 +81,18 @@ test('Missing automation status or timestamps are not invented',()=>{
  const ctx=read('src/context/AppContext.tsx');
  assert.match(ctx,/status: auto\?\.status === 'active' \? 'active' : 'paused'/);
  assert.match(ctx,/created_at: auto\?\.created_at \|\| ''/);
+});
+
+test('Billing loading is neutral and does not flash a warning or fake plan',()=>{
+ const page=read('src/components/Billing/BillingUsagePage.tsx');
+ const hook=read('src/hooks/useWorkspaceUsage.ts');
+ assert.doesNotMatch(page,/Live usage totals are being verified/);
+ assert.doesNotMatch(page,/Checking plan…/);
+ assert.doesNotMatch(page,/Checking live billing data/);
+ assert.match(page,/animate-pulse/);
+ assert.match(page,/Usage data is temporarily unavailable/);
+ assert.match(page,/usage\.retry/);
+ assert.match(hook,/billingUsageCache/);
+ assert.match(hook,/ownerId===userId/);
+ assert.match(hook,/FRESH_CACHE_MS/);
 });
