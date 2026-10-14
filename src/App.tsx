@@ -122,7 +122,7 @@ const AppShell: React.FC = () => {
 
     if (!firebaseUser && (supportPage || pathname === '/about')) {
       return <ErrorBoundary><div className="min-h-[100dvh] bg-slate-50">
-        <header className="public-page-header"><a href="/" className="brand">Auto Replies</a><a href="/login" className="button-secondary">Log in</a></header>
+        <header className="public-page-header"><a href="/" className="brand">Auto Replys</a><a href="/login" className="button-secondary">Log in</a></header>
         <Suspense fallback={<PageLoadingFallback />}>
           {pathname === '/about' ? <AboutUsPage /> : <SupportPage page={supportPage} />}
         </Suspense>
