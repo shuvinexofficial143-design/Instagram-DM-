@@ -97,11 +97,11 @@ export const HomePage: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_85%_5%,rgba(221,214,254,.45),transparent_28%),linear-gradient(180deg,#fbfdff_0%,#f7f8ff_100%)] px-4 py-5 sm:px-6 lg:px-8">
+    <div className="dashboard-premium min-h-screen px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1400px] space-y-5">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-[22px] font-bold tracking-tight text-slate-950 sm:text-[26px]">Dashboard</h1>
+            <p className="dashboard-premium-eyebrow">YOUR WORKSPACE</p><h1 className="text-[22px] font-bold tracking-tight text-slate-950 sm:text-[26px]">Dashboard</h1>
             <p className="mt-1 text-sm font-medium text-slate-500">Here’s what’s happening with your Instagram automation in the selected period.</p>
           </div>
           <div className="inline-flex self-start rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -117,7 +117,7 @@ export const HomePage: React.FC = () => {
         {period==='all' && aiError && <p role="alert" className="text-sm text-amber-700">Verified AI totals could not be loaded. No unverified zero is shown.</p>}
         {isConnected && !accountExpired && automations.length>0 && <div className="dashboard-next-action"><div><strong>{unread>0?`${unread} unread messages`:'Your workspace is ready'}</strong><p>{unread>0?'Check conversations that may need your attention.':'Review your inbox or create another automation.'}</p></div><button onClick={()=>setActiveTab('inbox')}>Open inbox <ArrowRight/></button></div>}
 
-        <section className="relative overflow-hidden rounded-[18px] border border-indigo-200/70 bg-gradient-to-br from-blue-50/95 via-indigo-50/90 to-violet-100/75 p-4 shadow-[0_8px_28px_rgba(76,88,160,.08)] sm:p-5">
+        <section className="relative overflow-hidden rounded-[20px] border border-orange-100 bg-gradient-to-br from-white via-[#fffaf3] to-[#f5f3ff] p-4 shadow-[0_8px_28px_rgba(76,88,160,.08)] sm:p-5">
           <><div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(129,140,248,0.16),transparent_30%),radial-gradient(circle_at_10%_85%,rgba(56,189,248,0.12),transparent_34%)]" aria-hidden="true" /><div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-violet-300/20 blur-3xl" aria-hidden="true" /><div className="pointer-events-none absolute -left-12 bottom-0 h-44 w-44 rounded-full bg-cyan-200/20 blur-3xl" aria-hidden="true" /></>
           <div className="relative z-10">
           {isConnected ? (
@@ -220,7 +220,7 @@ export const HomePage: React.FC = () => {
           </section>
         </div>
 
-        <footer className="pb-2 pt-1 text-center text-xs font-medium text-slate-400">© 2026 Auto Replies</footer>
+        <footer className="pb-2 pt-1 text-center text-xs font-medium text-slate-400">© {new Date().getFullYear()} Auto Replies</footer>
       </div>
     </div>
   );
