@@ -447,7 +447,7 @@ Deno.serve(async (req: Request) => {
       return reply(403, { ok: false, error: "Administrator access required" });
     }
 
-    const [profilesRes, accountsRes, automationsRes, usageRes, plansRes, auditRes, dmHistoryRes, claimsRes, documentsRes, runtimeRes, paymentsRes] = await Promise.all([
+    const [profilesRes, accountsRes, automationsRes, usageRes, plansRes, auditRes, dmHistoryRes, claimsRes, documentsRes, runtimeRes, paymentsRes, contactsRes] = await Promise.all([
       admin.from("autoreply_profiles").select("user_id,email,display_name,avatar_url,role,last_login_at,last_active_at,created_at,updated_at").order("created_at", { ascending: false }),
       admin.from("autoreply_instagram_tokens").select("user_id,account,created_at,updated_at"),
       admin.from("autoreply_active_automations").select("user_id,automation_id,data,updated_at"),
@@ -459,8 +459,11 @@ Deno.serve(async (req: Request) => {
       admin.from("autoreply_documents").select("user_id,collection,id,created_at,updated_at").order("updated_at", { ascending: false }).limit(500),
       admin.from("autoreply_runtime_context").select("ig_user_id,user_id,automation_id,automation,updated_at").order("updated_at", { ascending: false }).limit(100),
       admin.from("autoreply_billing_orders").select("order_id,owner_user_id,plan_id,amount_inr,currency,environment,status,activation_status,created_at,paid_at,access_expires_at").order("created_at",{ascending:false}).limit(100),
+      // Counts are owner-scoped and include all workspaces. A truncated
+      // 500-document overview must NEVER be presented as an exact count.
+      admin.rpc("autoreply_admin_contact_counts"),
     ]);
-    const firstError = profilesRes.error || accountsRes.error || automationsRes.error || usageRes.error || plansRes.error || auditRes.error || dmHistoryRes.error || claimsRes.error || documentsRes.error || runtimeRes.error || paymentsRes.error;
+    const firstError = profilesRes.error || accountsRes.error || automationsRes.error || usageRes.error || plansRes.error || auditRes.error || dmHistoryRes.error || claimsRes.error || documentsRes.error || runtimeRes.error || paymentsRes.error || contactsRes.error;
     if (firstError) throw firstError;
 
     const accounts = (accountsRes.data || []).map((row: any) => ({
@@ -475,6 +478,7 @@ Deno.serve(async (req: Request) => {
       instagramAccounts: accounts,
       activeAutomations: automationsRes.data || [],
       usageMonthly: usageRes.data || [],
+      contactCounts: contactsRes.data || [],
       billingOrders: paymentsRes.data || [],
       plans: plansRes.data || [],
       auditLogs: auditRes.data || [],
