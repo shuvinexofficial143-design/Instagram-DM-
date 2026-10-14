@@ -219,7 +219,8 @@ try {
     globalThis.__uiFixture=fixture({user:{...empty.user,plan:planId,carry_forward_messages:standard,carry_forward_ai_replies:ai,carry_forward_expires_at:expires}});
     const billing=renderToStaticMarkup(React.createElement(ui.BillingUsagePage));
     assert.equal(billing.includes('Free bonus'),false,'unverified bonus balances must not be fabricated');
-    assert.ok(billing.includes('Live usage totals are being verified'));
+    assert.ok(billing.includes('aria-label="Loading your plan usage"'),'unverified credits show neutral skeletons');
+    assert.ok(!billing.includes('Free bonus'),'no unverified bonus balances');
     checks++;
   }
   window.location.pathname='/billing/checkout';window.location.search='?plan=starter';
