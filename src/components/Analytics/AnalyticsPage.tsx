@@ -1,5 +1,4 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import { billingRequest } from '../../lib/billing';
 import {
   Activity,
   AlertCircle,
@@ -109,20 +108,6 @@ const TrendBadge: React.FC<{ value: number; inverse?: boolean }> = ({ value, inv
 export const AnalyticsPage: React.FC = () => {
   const { inboxMessages, contacts, automations, webhookLogs, setActiveTab } = useApp();
   const [period, setPeriod] = useState<Period>(30);
-  const [verifiedAi,setVerifiedAi]=useState<{all:number;month:number}|null>(null);
-  const [verifiedAiFailed,setVerifiedAiFailed]=useState(false);
-  useEffect(()=>{
-    let live=true;
-    const load=async()=>{
-      try{
-        const result=await billingRequest('dashboard-metrics');
-        if(live){setVerifiedAi({all:Number(result.aiRepliesAllTime)||0,month:Number(result.aiRepliesThisMonth)||0});setVerifiedAiFailed(false);}
-      }catch{if(live){setVerifiedAi(null);setVerifiedAiFailed(true);}}
-    };
-    void load();
-    const timer=window.setInterval(()=>{if(!document.hidden)void load();},60000);
-    return()=>{live=false;window.clearInterval(timer);};
-  },[]);
   const [customFrom, setCustomFrom] = useState(() => toDateInput(new Date(Date.now() - 29 * DAY)));
   const [customTo, setCustomTo] = useState(() => toDateInput(new Date()));
 
@@ -504,12 +489,6 @@ export const AnalyticsPage: React.FC = () => {
           )}
         </header>
 
-        <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-4 text-sm text-slate-700" role="status">
-          <strong>Verified AI usage:</strong> {verifiedAi
-            ? <>{verifiedAi.all.toLocaleString('en-IN')} AI replies across all recorded months · {verifiedAi.month.toLocaleString('en-IN')} this month.</>
-            : verifiedAiFailed?'Usage ledger is unavailable; no unverified zero is displayed.':'Checking your verified AI usage…'}
-          <p className="mt-1 text-xs text-slate-500">Date-filtered charts use locally recorded Instagram inbox events. Older replies without AI metadata may be excluded from those charts, but not from the verified counters.</p>
-        </div>
         <section className="flex items-start gap-3 rounded-2xl border border-violet-100 bg-gradient-to-r from-violet-50 to-white p-4 sm:p-5">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-700 text-white shadow-sm">
             <Sparkles className="h-5 w-5" />
