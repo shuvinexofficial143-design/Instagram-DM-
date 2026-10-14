@@ -8,7 +8,7 @@ import { usePlanCatalog } from '../../hooks/usePlanCatalog';
 import { useWorkspaceUsage } from '../../hooks/useWorkspaceUsage';
 
 const comparisonRows = [
-  { label: 'Monthly price', value: (p: PlanConfig) => p.price },
+  { label: 'One-time plan price / 30 days', value: (p: PlanConfig) => p.price },
   { label: 'Standard DM/comment/story replies / month', value: (p: PlanConfig) => p.messages.toLocaleString() },
   { label: 'AI replies / month', value: (p: PlanConfig) => p.ai.toLocaleString() },
   { label: 'Active automations', value: (p: PlanConfig) => p.automations === null ? 'Unlimited' : String(p.automations) },
@@ -52,12 +52,14 @@ export const BillingUsagePage:React.FC=()=>{
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-6 sm:py-5">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-violet-700">{usageVerified?plan.name+' plan':'Checking plan…'}</span>
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><ShieldCheck className="h-3.5 w-3.5"/>{usageVerified?'Subscription verified':'Verifying subscription'}</span>
+              {usageVerified
+                ? <><span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-violet-700">{plan.name} plan</span><span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><ShieldCheck className="h-3.5 w-3.5"/>Subscription verified</span></>
+                : <span className="h-7 w-36 animate-pulse rounded-full bg-slate-100" aria-hidden="true"/>}
             </div>
             <div className="mt-2 flex flex-wrap items-baseline gap-2">
-              <span className="text-[34px] font-black tracking-tight text-slate-950 sm:text-[40px]">{usageVerified?plan.price:'—'}</span>
-              <span className="text-xs font-semibold text-slate-500">{usageVerified?(plan.id==='free'?'Free plan':'one-time / 30 days'):'Checking live billing data'}</span>
+              {usageVerified
+                ? <><span className="text-[34px] font-black tracking-tight text-slate-950 sm:text-[40px]">{plan.price}</span><span className="text-xs font-semibold text-slate-500">{plan.id==='free'?'Free plan':'one-time / 30 days'}</span></>
+                : <span className="mt-1 h-11 w-40 animate-pulse rounded-xl bg-slate-100" aria-hidden="true"/>}
               {usageVerified&&usage.expiresAt&&<span className="text-xs text-slate-500">· Active until {new Date(usage.expiresAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span>}
             </div>
           </div>
@@ -81,13 +83,24 @@ export const BillingUsagePage:React.FC=()=>{
           <Usage icon={Bot} label="AI Replies" used={usage.aiUsed} limit={usage.aiLimit} bonus={usage.freeBonusAi} note="Independent AI allowance"/>
           <Usage icon={Zap} label="Automations" used={usage.automationUsed} limit={autoLimit} note={usage.automationLimit===null?"Unlimited on this plan":"Workspace automations"}/>
           <Usage icon={Instagram} label="Instagram Accounts" used={Math.max(instagramAccounts.filter(({account})=>account?.status==='connected').length,instagramAccount?1:0)} limit={plan.accounts} note="Connected Instagram accounts"/>
-        </div> : <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">Live usage totals are being verified. Incorrect zero values and fallback limits are hidden until the billing server responds. Your invoice history below is still available.</div>}
+        </div> : <div role="status" aria-label={usage.error?'Usage data is unavailable':'Loading your plan usage'} className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({length:4},(_,index)=><div key={index} className="min-h-[196px] rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm" aria-hidden="true">
+            <div className="h-9 w-9 animate-pulse rounded-xl bg-slate-100"/>
+            <div className="mt-5 h-4 w-28 animate-pulse rounded-md bg-slate-100"/>
+            <div className="mt-4 h-8 w-36 animate-pulse rounded-lg bg-slate-100"/>
+            <div className="mt-4 h-2 w-full animate-pulse rounded-full bg-slate-100"/>
+          </div>)}
+          {usage.error&&<div className="col-span-full flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
+            <span>Usage data is temporarily unavailable.</span>
+            <button type="button" onClick={usage.retry} className="min-h-10 rounded-lg border border-slate-200 px-4 font-semibold text-slate-800 hover:bg-slate-50">Retry</button>
+          </div>}
+        </div>}
       </section>
 
       <section>
         <div className="mb-3 flex items-end justify-between gap-3"><div><h2 className="text-base font-bold text-slate-950">Plans & pricing</h2><p className="mt-0.5 text-xs text-slate-500">Choose the capacity that fits your workspace.</p></div><CreditCard className="h-5 w-5 text-slate-300"/></div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {!catalog.synced&&<p role="status" className="col-span-full text-sm text-amber-800">{catalog.error||'Checking current live plan prices…'} Purchases are available only after prices are verified.</p>}
+          {!catalog.synced&&<p role="status" className="col-span-full text-sm text-slate-500">{catalog.error?'Live plan prices are temporarily unavailable. Please refresh later.':'Loading current prices…'}</p>}
           {plans.map(p=>{const active=p.id===plan.id;return <article key={p.name} className={`relative flex flex-col rounded-[24px] border bg-white p-6 shadow-[0_16px_40px_rgba(32,24,83,.06)] transition-transform hover:-translate-y-1 ${p.special?'billing-special-plan border-amber-300 bg-gradient-to-b from-amber-50 via-white to-white':p.popular?'border-violet-400 ring-2 ring-violet-100':'border-slate-200/80'}`}>
             <div className="flex items-start justify-between gap-2"><div><h3 className="text-lg font-black text-slate-950">{p.name}{active&&<span className="ml-2 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">Current plan</span>}</h3><div className="mt-2"><span className="text-[32px] font-black tracking-tight text-[#211748]">{p.price}</span><span className="text-xs font-semibold text-slate-400">{p.id==='free'?' / free':' / 30 days'}</span></div></div>{p.special&&<span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">Top tier</span>}{p.popular&&<span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-bold uppercase tracking-wide text-indigo-700">Popular</span>}</div>
             <div className="my-4 h-px bg-slate-100"/>
@@ -98,9 +111,9 @@ export const BillingUsagePage:React.FC=()=>{
       </section>
 
       <section aria-labelledby="plan-comparison-heading">
-        <h2 id="plan-comparison-heading" className="text-base font-bold text-slate-950">Compare plans in detail</h2><p className="mt-1 text-sm text-slate-500">Monthly prices and limits, side by side. AI replies are separate from standard replies.</p>
+        <h2 id="plan-comparison-heading" className="text-base font-bold text-slate-950">Compare plans in detail</h2><p className="mt-1 text-sm text-slate-500">One-time 30-day prices and calendar-month reply limits, side by side.</p>
         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm" tabIndex={0} role="region" aria-label="Plan comparison, scroll horizontally on small screens">
-          <table className="billing-comparison w-full text-left text-sm"><caption className="sr-only">Monthly subscription prices and included limits</caption><thead><tr><th scope="col">Feature</th>{plans.map(p=><th key={p.id} scope="col" className={p.special?'is-special':p.id===plan.id?'is-current':''}>{p.name}{p.id===plan.id&&<small>Current plan</small>}{p.special&&<small>Top tier</small>}</th>)}</tr></thead>
+          <table className="billing-comparison w-full text-left text-sm"><caption className="sr-only">One-time plan prices and monthly reply allowances</caption><thead><tr><th scope="col">Feature</th>{plans.map(p=><th key={p.id} scope="col" className={p.special?'is-special':p.id===plan.id?'is-current':''}>{p.name}{p.id===plan.id&&<small>Current plan</small>}{p.special&&<small>Top tier</small>}</th>)}</tr></thead>
             <tbody>{comparisonRows.map(row=><tr key={row.label}><th scope="row">{row.label}</th>{plans.map(p=><td key={p.id} className={p.special?'is-special':p.id===plan.id?'is-current':''}>{row.value(p)}</td>)}</tr>)}</tbody>
           </table>
         </div>
