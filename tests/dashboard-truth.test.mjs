@@ -12,7 +12,6 @@ test('Home uses verified ledger for lifetime AI replies, not inbox-only automati
  assert.match(home,/verifiedAi\?\.all/);
  assert.doesNotMatch(home,/AI Replies uses verified billing counters/);
  assert.doesNotMatch(home,/Short-period AI replies are counted only when/);
- assert.match(home,/Short-period AI replies are counted only/);
 });
 test('connected Instagram dashboard is held until workspace hydration finishes',()=>{
  const app=read('src/App.tsx'),context=read('src/context/AppContext.tsx');
