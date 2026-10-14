@@ -18,6 +18,12 @@ type ServerUsage = {
   freeBonusAi?: number;
 };
 
+// Briefly keep last verified response across route changes to avoid flashing
+// 'Checking plan' or fallback limits every time Billing is opened. Scope by
+// authenticated owner; never reuse one customer's usage for another.
+const billingUsageCache=new Map<string,{value:ServerUsage;at:number}>();
+const FRESH_CACHE_MS=2*60*1000;
+
 export const useWorkspaceUsage = () => {
   const { user, automations, inboxMessages } = useApp();
   const catalog=usePlanCatalog();
@@ -33,18 +39,25 @@ export const useWorkspaceUsage = () => {
     ]
   );
 
-  const [serverUsage, setServerUsage] = useState<ServerUsage | null>(null);
+  const [record,setRecord] = useState<{ownerId:string;data:ServerUsage}|null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [retryTick,setRetryTick] = useState(0);
+  const userId=user?.id;
+  const cached=userId?billingUsageCache.get(userId):null;
+  const serverUsage=record?.ownerId===userId
+    ? record.data
+    : cached&&Date.now()-cached.at<FRESH_CACHE_MS?cached.value:null;
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       const current = auth.currentUser;
-      if (!current) {
-        setServerUsage(null);
+      if (!current || !userId) {
+        if(!cancelled){setRecord(null);setLoading(false);}
         return;
       }
-      setLoading(true);
+      if(!cancelled){setLoading(true);setError(false);}
       try {
         const token = await current.getIdToken();
         const response = await fetch('/api/usage', {
@@ -55,9 +68,18 @@ export const useWorkspaceUsage = () => {
         });
         const payload: ServerUsage = await response.json().catch(() => ({}));
         if (!response.ok || !payload?.ok) throw new Error('usage_unavailable');
-        if (!cancelled) setServerUsage(payload);
+        if (!cancelled){
+          billingUsageCache.set(userId,{value:payload,at:Date.now()});
+          setRecord({ownerId:userId,data:payload});
+          setError(false);
+        }
       } catch {
-        if (!cancelled) setServerUsage(null);
+        if (!cancelled) {
+          // An expired cached response is never promoted into verified data.
+          // Leave any already displayed verified response intact on a transient
+          // network failure, instead of flashing false zeros or a new plan.
+          setError(true);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -69,7 +91,7 @@ export const useWorkspaceUsage = () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [user?.id, user?.plan]);
+  }, [userId, user?.plan, retryTick]);
 
   const plan = getPlanConfig(serverUsage?.plan || fallback.plan.id,catalog.plans);
   const freeBonusMessages = plan.id === 'free' ? 0 : Math.max(0, Number(serverUsage?.freeBonusMessages ?? (fallback.messageLimit - fallback.plan.messages)));
@@ -86,7 +108,8 @@ export const useWorkspaceUsage = () => {
     automationUsed: fallback.automationUsed,
     automationLimit: plan.automations,
     expiresAt: serverUsage?.expiresAt,
-    loading,
+    loading,error,
+    retry:()=>setRetryTick(t=>t+1),
     source: serverUsage ? ('server' as const) : ('fallback' as const),
   };
 };
