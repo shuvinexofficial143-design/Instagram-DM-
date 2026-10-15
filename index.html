@@ -10,19 +10,21 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <style>
-      html,body{margin:0;background:#f7f9fd;font-family:Arial,sans-serif}
-      #boot-screen{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;min-height:100dvh;padding:24px;box-sizing:border-box;background:radial-gradient(ellipse at 25% 25%,rgba(124,58,237,.14),transparent 65%),radial-gradient(ellipse at 80% 75%,rgba(16,185,129,.12),transparent 65%),linear-gradient(180deg,#fbfcff,#f7f9fd);color:#0f172a;text-align:center}
-      .boot-content{width:min(580px,100%);display:flex;flex-direction:column;align-items:center}.boot-mark{width:126px;height:126px;display:grid;place-items:center;margin-bottom:24px}.boot-logo{display:grid;place-items:center;width:68px;height:68px;border-radius:50%;background:linear-gradient(145deg,#6d28d9,#7c3aed 48%,#5b21b6);color:white;box-shadow:0 20px 45px #5b21b633}.boot-logo svg{width:31px;height:31px}
-      #boot-screen strong{font-size:28px;line-height:1.1;font-weight:760;letter-spacing:-.9px}#boot-screen p{color:#64748b;font-size:14px;line-height:1.55;margin:9px 0 0;font-weight:500}
-      .boot-track{width:min(250px,72vw);height:4px;background:#e9edf4;border-radius:20px;margin-top:27px;overflow:hidden}.boot-track span{display:block;width:44%;height:100%;background:linear-gradient(90deg,#7c3aed,#8b5cf6 48%,#34d399);border-radius:20px;animation:boot-progress 1.8s linear infinite;will-change:transform}.boot-status{min-height:22px;margin-top:13px;color:#94a3b8;font-size:12px;font-weight:600;line-height:1.4;display:flex;align-items:center;gap:8px}.boot-status span{letter-spacing:2px}
-      @keyframes boot-progress{from{transform:translate3d(-110%,0,0)}to{transform:translate3d(340%,0,0)}}
-      @media(max-width:480px){.boot-mark{width:112px;height:112px;margin-bottom:21px}.boot-logo{width:62px;height:62px;border-radius:50%}.boot-logo svg{width:28px;height:28px}#boot-screen strong{font-size:25px}#boot-screen p{max-width:310px;font-size:13px}}
-      @media(prefers-reduced-motion:reduce){.boot-track span{animation:none}}
+      html,body{margin:0;background:#07040d;font-family:Inter,Arial,sans-serif}
+      #boot-screen{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;min-height:100dvh;padding:24px;box-sizing:border-box;background:radial-gradient(ellipse at 50% 53%,#291341 0%,#0d0619 45%,#050309 80%);color:#f6edff;text-align:center;overflow:hidden}
+      .boot-content{width:min(580px,100%);display:flex;flex-direction:column;align-items:center;animation:boot-arrive .7s ease both}
+      .boot-art{width:min(500px,88vw);height:auto;max-height:45dvh;object-fit:contain;filter:drop-shadow(0 0 22px #9d67e766);animation:boot-float 4s ease-in-out infinite}
+      #boot-screen strong{font-size:clamp(29px,6vw,43px);letter-spacing:.03em;font-weight:700;background:linear-gradient(110deg,#fff,#d5acff,#fff);color:transparent;background-clip:text;animation:boot-shimmer 3s ease-in-out infinite;background-size:200%}
+      #boot-screen p{color:#c9b7dd;font-size:14px;line-height:1.5;margin:12px 0 0}
+      .boot-track{width:min(230px,65vw);height:3px;background:#49335d;border-radius:12px;margin-top:29px;overflow:hidden}.boot-track span{display:block;width:38%;height:100%;background:linear-gradient(90deg,#9b5de5,#eacbff);border-radius:12px;animation:boot-progress 1.7s ease-in-out infinite}
+      .boot-status{margin-top:14px;color:#ac95c5;font-size:12px;letter-spacing:.04em}
+      @keyframes boot-arrive{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}@keyframes boot-float{50%{transform:translateY(-9px)}}@keyframes boot-shimmer{50%{background-position:100% 50%}}@keyframes boot-progress{from{transform:translateX(-110%)}to{transform:translateX(300%)}}
+      @media(prefers-reduced-motion:reduce){.boot-content,.boot-art,#boot-screen strong,.boot-track span{animation:none}}
     </style>
       <link rel="icon" type="image/svg+xml" href="/auto-replys-brand.svg" />
   </head>
   <body>
-    <div id="boot-screen" role="status" aria-label="Auto Replys is loading"><div class="boot-content"><div class="boot-mark"><div class="boot-logo" aria-hidden="true"><img src="/auto-replys-brand.svg" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:50%" /></div></div><strong>Auto Replys</strong><p>Smart Instagram conversations, ready in a moment.</p><div class="boot-track" aria-hidden="true"><span></span></div><div class="boot-status"><span aria-hidden="true">···</span>Preparing your workspace</div></div></div>
+    <div id="boot-screen" role="status" aria-label="Auto Replys is loading"><div class="boot-content"><img class="boot-art" src="/loading-butterflies.svg" alt="" aria-hidden="true"/><strong>Auto Replys</strong><p>Making conversations feel effortless</p><div class="boot-track" aria-hidden="true"><span></span></div><div class="boot-status">Preparing your workspace…</div></div></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
