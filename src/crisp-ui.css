@@ -1587,3 +1587,20 @@ img,video,canvas { max-width:100%; }
  .automations-premium{padding:16px 12px;}
  .automations-premium>div.bg-white{padding:18px;}
 }
+
+
+/* Butterfly night-sky splash: isolated from the old app-splash styles. */
+.butterfly-splash{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:24px;box-sizing:border-box;overflow:hidden;background:radial-gradient(ellipse at 50% 53%,#291341 0%,#0d0619 45%,#050309 80%);color:#f6edff;text-align:center;transition:opacity .35s ease}
+.butterfly-splash.is-exiting{opacity:0;pointer-events:none}
+.butterfly-splash-content{width:min(580px,100%);display:flex;align-items:center;flex-direction:column;animation:butterfly-arrive .7s ease both}
+.butterfly-splash-art{width:min(500px,88vw);height:auto;max-height:45dvh;object-fit:contain;filter:drop-shadow(0 0 22px #9d67e766);animation:butterfly-float 4s ease-in-out infinite}
+.butterfly-splash-title{font-size:clamp(29px,6vw,43px);line-height:1.25;font-weight:700;letter-spacing:.03em;background:linear-gradient(110deg,#fff,#d5acff,#fff);background-size:200%;background-clip:text;-webkit-background-clip:text;color:transparent;animation:butterfly-shimmer 3s ease-in-out infinite}
+.butterfly-splash-content p{margin:12px 0 0;color:#c9b7dd;font-size:14px;line-height:1.5}
+.butterfly-splash-track{width:min(230px,65vw);height:3px;margin-top:29px;background:#49335d;border-radius:12px;overflow:hidden}
+.butterfly-splash-track span{display:block;width:38%;height:100%;border-radius:12px;background:linear-gradient(90deg,#9b5de5,#eacbff);animation:butterfly-progress 1.7s ease-in-out infinite}
+.butterfly-splash-content small{margin-top:14px;color:#ac95c5;font-size:12px;letter-spacing:.04em}
+@keyframes butterfly-arrive{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes butterfly-float{50%{transform:translateY(-9px)}}
+@keyframes butterfly-shimmer{50%{background-position:100% 50%}}
+@keyframes butterfly-progress{from{transform:translateX(-110%)}to{transform:translateX(300%)}}
+@media(prefers-reduced-motion:reduce){.butterfly-splash-content,.butterfly-splash-art,.butterfly-splash-title,.butterfly-splash-track span{animation:none}}
