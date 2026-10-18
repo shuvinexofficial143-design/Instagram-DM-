@@ -446,6 +446,7 @@ function inferCustomerInsight(text:string,previous?:CustomerInsight):CustomerIns
 }
 
 
+function sheetColumn(index:number):string {let name='';for(let n=Math.max(1,Math.floor(index));n>0;n=Math.floor((n-1)/26))name=String.fromCharCode(65+(n-1)%26)+name;return name;}
 async function sheetJson(url:string,init:any={}) {
  const r=await fetch(url,{...init,signal:AbortSignal.timeout(8000)}),body=await r.json().catch(()=>null);
  if(!r.ok)throw new Error(body?.error?.message || (typeof body?.error==='string'?body.error:'') || `Google Sheets request failed (HTTP ${r.status})`);return body;
@@ -491,6 +492,7 @@ async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:s
   const historyName=cfg.history_sheet||'Conversation history';
   const tabs=await sheetJson(base+'?fields=sheets.properties.title',{headers});
   if(!(tabs?.sheets||[]).some((tab:any)=>tab.properties?.title===historyName))await sheetJson(base+':batchUpdate',{method:'POST',headers,body:JSON.stringify({requests:[{addSheet:{properties:{title:historyName}}}]})});
+  const leadRange='Leads!A:'+sheetColumn(fields.length+9);
   const leadHeaders=[...fields,'Instagram Username','Created At','Updated At','Instagram ID','Customer status','Priority','Reason','Summary','Next step'];
   const put=async(range:string,values:any[])=>sheetJson(base+'/values/'+encodeURIComponent(range)+'?valueInputOption=RAW',{method:'PUT',headers,body:JSON.stringify({values})});
   await put('Leads!A1',[leadHeaders]);await put("'"+historyName+"'!A1",[['Event ID','Timestamp','Instagram ID','Instagram Username','Customer message','Reply']]);
@@ -506,10 +508,10 @@ async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:s
    const merged={...(previous?.data?.fields||{}),...entry.fields},insight=insightRow?.data||inferCustomerInsight(entry.incoming_text);
    const createdAt=previous?.data?.created_at||entry.created_at;
    const values=[...fields.map((field:string)=>String(merged[field]||'')),entry.username,createdAt,entry.created_at,entry.contact_id,insight.stage,insight.priority,insight.reason,insight.summary||'',insight.next_step||''];
-   const grid=await sheetJson(base+'/values/'+encodeURIComponent('Leads!A:ZZ'),{headers});
+   const grid=await sheetJson(base+'/values/'+encodeURIComponent(leadRange),{headers});
    const rows=grid?.values||[];const found=rows.findIndex((row:any[],i:number)=>i>0 && (row[fields.length+3]===entry.contact_id || (!row[fields.length+3] && String(row[fields.length]||'').replace(/^@/,'').toLowerCase()===String(entry.username).toLowerCase())));
    if(found>0)await put('Leads!A'+(found+1),[values]);
-   else await sheetJson(base+'/values/'+encodeURIComponent('Leads!A:ZZ')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',headers,body:JSON.stringify({values:[values]})});
+   else await sheetJson(base+'/values/'+encodeURIComponent(leadRange)+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',headers,body:JSON.stringify({values:[values]})});
    const historyRows=await sheetJson(base+'/values/'+encodeURIComponent("'"+historyName+"'!A:A"),{headers});
    const historyValues=[job.id,entry.created_at,entry.contact_id,entry.username,entry.incoming_text,entry.reply_text];
    if(!(historyRows?.values||[]).some((row:any)=>row[0]===job.id))await sheetJson(base+'/values/'+encodeURIComponent("'"+historyName+"'!A:F")+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',headers,body:JSON.stringify({values:[historyValues]})});

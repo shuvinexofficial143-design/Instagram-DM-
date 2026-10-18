@@ -39,6 +39,9 @@ async function saveConnection(uid: string, _token: string, data: any) {
     'Private Google Sheets credential storage');
   if(!response.ok)throw new Error('Google Sheets credentials could not be saved. Reconnect and retry.');
 }
+export function sheetColumn(index:number):string {
+  let name='';for(let n=Math.max(1,Math.floor(index));n>0;n=Math.floor((n-1)/26))name=String.fromCharCode(65+(n-1)%26)+name;return name;
+}
 export function sheetRange(name:string, cells:string) {
   return "'" + name.replace(/'/g,"''") + "'!" + cells;
 }
@@ -209,7 +212,7 @@ export default async function handler(req: any, res: any) {
     const googleHeaders = { Authorization: 'Bearer ' + access, 'Content-Type': 'application/json' };
     const fields = cleanFields(bound.fields), now = new Date().toISOString();
     const values = [...fields.map(key => String(req.body?.data?.[key] ?? '')), String(req.body?.instagramUsername || ''), now, now];
-    const result = await googleJson('https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(bound.spreadsheet_id) + '/values/' + encodeURIComponent(sheetRange(bound.sheet_name || 'Leads','A:ZZ')) + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', { method: 'POST', headers: googleHeaders, body: JSON.stringify({ values: [values] }) }, 'Google Sheet sync');
+    const result = await googleJson('https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(bound.spreadsheet_id) + '/values/' + encodeURIComponent(sheetRange(bound.sheet_name || 'Leads','A:'+sheetColumn(fields.length+9))) + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', { method: 'POST', headers: googleHeaders, body: JSON.stringify({ values: [values] }) }, 'Google Sheet sync');
     return res.status(200).json({ ok: true, updatedRange: result?.updates?.updatedRange || '' });
   } catch (error: any) {
     const message = error?.message || 'Google Sheets connection failed. Please retry.';

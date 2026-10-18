@@ -4,7 +4,7 @@ process.env.INSTAGRAM_APP_SECRET='test-secret';
 process.env.GOOGLE_SHEETS_CLIENT_ID='test-google-app';
 process.env.GOOGLE_SHEETS_CLIENT_SECRET='test-google-secret';
 process.env.SUPABASE_SERVICE_ROLE_KEY='private-test-key';
-const {default:handler,sheetRange}=await import('../api/google-sheets.js');
+const {default:handler,sheetRange,sheetColumn}=await import('../api/google-sheets.js');
 const uid='12345678-1234-4234-8234-123456789012';
 const originalFetch=globalThis.fetch;
 afterEach(()=>globalThis.fetch=originalFetch);
@@ -44,3 +44,5 @@ test('ambiguous create failure keeps reservation and does not dispatch a second 
  const r=res();await handler(req('create-sheet',{fields:['Name']}),r);assert.equal(r.statusCode,503);assert.equal(creates,1);assert.equal(deletes,0);
 });
 test('A1 ranges quote names with spaces and escape apostrophes',()=>{assert.equal(sheetRange("Customer's leads",'A1'),"'Customer''s leads'!A1");});
+
+test('lead ranges end at the actual last column instead of requesting hundreds of absent columns',()=>{assert.equal(sheetColumn(11),'K');assert.equal(sheetColumn(26),'Z');assert.equal(sheetColumn(39),'AM');});

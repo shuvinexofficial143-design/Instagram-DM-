@@ -37,3 +37,5 @@ test('Google OAuth credentials are only in backend private storage',async()=>{
 });
 
 test('switching Google Sheets off stops extraction and sync even when an old binding exists',async()=>{const f=setup();f.docs.set('automations:auto_one',{trigger_config:{sheets_enabled:false}});await f.sync('My name is Asha');assert.equal(f.calls.length,0);assert.equal([...f.docs].filter(([key])=>key.startsWith('sheet_sync_jobs:')).length,0);});
+
+test('sync reads a bounded lead range matching the configured columns',async()=>{const f=setup();await f.sync('My name is Asha');const ranges=f.calls.filter(c=>c.url.includes('/values/')).map(c=>decodeURIComponent(c.url));assert.ok(ranges.some(url=>url.includes('Leads!A:K')));assert.ok(!ranges.some(url=>url.includes('A:ZZ')));});
