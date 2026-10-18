@@ -1473,8 +1473,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setInboxMessages((prev) => [newOutMsg, ...prev]);
     saveUserDocument(uid, 'inbox_messages', newOutMsg);
 
-    // Auto pause AI for this contact since human intervened
-    setAiPausedForUser(cleanUser, true);
+    // Pause AI only after Meta confirms the manual message was sent.
+    // A failed dispatch must not silently disable automatic replies.
 
     // Dispatch live Instagram Graph API call to send message to recipient
     try {
@@ -1495,6 +1495,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.error || `Instagram send failed (HTTP ${response.status})`);
       }
+      const payload = await response.json().catch(() => null);
+      if (payload?.ok === false || payload?.error || payload?.sent === false) {
+        throw new Error(payload?.error || 'Instagram did not confirm delivery');
+      }
+      setAiPausedForUser(cleanUser, true);
       const sent = { ...newOutMsg, delivery_status: 'sent' as const };
       setInboxMessages((prev) => prev.map((m) => (m.id === sent.id ? sent : m)));
       saveUserDocument(uid, 'inbox_messages', sent);
