@@ -1,4 +1,4 @@
-import { fetch as httpFetch } from 'undici';
+import { typedFetch as httpFetch } from '../src/server/typedFetch.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
 import { ensureAutomationSheet } from './google-sheets.js';
 import { SUPABASE_URL, authenticatedWorkspace, UpstreamError } from '../src/server/supabaseConfig.js';
