@@ -14,6 +14,7 @@ import { HomePage } from './components/Home/HomePage';
 import { LoginPage } from './components/Auth/LoginPage';
 import { PublicLandingPage } from './components/Public/PublicLandingPage';
 
+const CustomerDataPage = lazy(() => import('./components/CustomerData/CustomerDataPage').then(m=>({default:m.CustomerDataPage})));
 const AnalyticsPage = lazy(() => import('./components/Analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
 const ActivityLogsPage = lazy(() => import('./components/Activity/ActivityLogsPage').then((m) => ({ default: m.ActivityLogsPage })));
 const IntegrationsPage = lazy(() => import('./components/Integrations/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })));
@@ -55,6 +56,7 @@ const MainContent: React.FC = () => {
       <ErrorBoundary>
         <Suspense fallback={<PageLoadingFallback />}>
           {(!activeTab || activeTab === 'home') && <HomePage />}
+          {activeTab === 'customer-data' && <CustomerDataPage />}
           {activeTab === 'analytics' && <AnalyticsPage />}
           {activeTab === 'automations' && <AutomationsPage />}
           {activeTab === 'activity' && <ActivityLogsPage />}

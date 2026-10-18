@@ -15,6 +15,7 @@
     "test:queue": "node --import tsx --test tests/webhook-queue.test.ts",
     "test:security": "node --import tsx --test tests/guest-store-auth.test.mjs",
     "test:support": "node --test tests/support-security.test.mjs",
+    "test:customer-data": "node --import tsx --test tests/customer-data.test.ts tests/customer-data-capture.test.mjs",
     "test:automations": "node --test tests/automation-delivery.test.mjs tests/instagram-subscription.test.mjs tests/instagram-accounts.test.mjs tests/customer-sheets.test.mjs tests/inbox-delivery.test.mjs",
     "test:billing": "node --import tsx --test tests/billing.test.ts",
     "test:invoices": "node --import tsx --test tests/invoice.test.ts",

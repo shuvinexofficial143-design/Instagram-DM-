@@ -72,6 +72,7 @@ function fixture(automations = [ai], options = {}) {
         if(isAi) aiUsedCount++; else standardUsed++;
         return {data:{allowed:true,reason:'reserved'},error:null};
       }
+      if(name === 'autoreply_capture_customer' && options.captureFails)return {data:null,error:{message:'Customer data store unavailable'}};
       if(name === 'autoreply_finish_delivery_quota') return {data:true,error:null};
       if (name === 'autoreply_prepare_automation_event') {
         options.onPrepare?.();
@@ -95,6 +96,7 @@ function fixture(automations = [ai], options = {}) {
     fetch: async (url, init = {}) => {
       const body = JSON.parse(init.body || '{}');
       if (String(url).includes('api.openai.com')) {
+        if(body.response_format?.type==='json_object')return Response.json({choices:[{message:{content:'{}'}}]});
         aiInputs.push(body.messages);
         options.onAIStart?.(body);
         if (options.aiFails) return Response.json({ error: { message: 'AI outage' } }, { status: 503 });
@@ -490,4 +492,15 @@ test('failed catalog delivery cannot create a sent catalog in the inbox',async()
  const rule=staticRule('dm');rule.actions=[{type:'send_dm',catalog_id:'watches'}];
  const f=fixture([rule],{catalogs:photoCatalog,products:photoProducts,sendFails:true});await f.post(dm());
  assert.ok(!f.writes.some(w=>w.collection==='inbox_messages'&&w.data.direction==='out'));
+});
+
+test('customer data capture failure does not block a confirmed Instagram reply',async()=>{
+ const f=fixture([ai],{captureFails:true});const response=await f.post(dm('capture-outage','My name is Asha'));
+ assert.equal(response.body.sent,1);assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);
+ assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_capture_customer').length,2);
+ assert.ok(f.writes.some(w=>w.collection==='webhook_events'&&w.data.reason==='customer_data_save_failed'));
+});
+test('customer data is captured even when reply quota has been exhausted',async()=>{
+ const f=fixture([ai],{aiUsed:1500});const response=await f.post(dm('capture-no-quota','Phone 9876543210'));
+ assert.equal(response.body.sent,0);assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_capture_customer'));
 });

@@ -1,3 +1,4 @@
+// Legacy recovery coverage retained for future re-enabling; public routes are tested as Coming Soon.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 process.env.INSTAGRAM_APP_ID = 'test-app';
@@ -8,7 +9,7 @@ process.env.GOOGLE_SHEETS_STATE_SECRET = 'test-state-secret';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-only-key';
 const { normalizeAppUrl, normalizeSupabaseUrl, upstreamFetch } = await import('../src/server/supabaseConfig');
 const { default: instagram } = await import('../api/auth/instagram');
-const { default: sheets } = await import('../api/google-sheets');
+const { legacyGoogleSheetsHandler: sheets } = await import('../api/google-sheets');
 const uid = '12345678-1234-4234-8234-123456789012';
 const originalFetch = globalThis.fetch;
 function response() {

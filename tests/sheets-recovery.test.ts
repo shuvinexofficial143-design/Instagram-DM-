@@ -1,10 +1,11 @@
+// Legacy recovery coverage retained for future re-enabling; public routes are tested as Coming Soon.
 import assert from 'node:assert/strict';
 import test,{afterEach} from 'node:test';
 process.env.INSTAGRAM_APP_SECRET='test-secret';
 process.env.GOOGLE_SHEETS_CLIENT_ID='test-google-app';
 process.env.GOOGLE_SHEETS_CLIENT_SECRET='test-google-secret';
 process.env.SUPABASE_SERVICE_ROLE_KEY='private-test-key';
-const {default:handler,sheetRange,sheetColumn}=await import('../api/google-sheets.js');
+const {legacyGoogleSheetsHandler:handler,sheetRange,sheetColumn}=await import('../api/google-sheets.js');
 const uid='12345678-1234-4234-8234-123456789012';
 const originalFetch=globalThis.fetch;
 afterEach(()=>globalThis.fetch=originalFetch);

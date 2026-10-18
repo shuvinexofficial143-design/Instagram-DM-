@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, Package, CreditCard, HelpCircle, Inbox, LayoutDashboard, Settings, Users, Zap, UserRound, Plug, History, MessageCircleQuestion } from 'lucide-react';
+import { Database, BarChart3, Package, CreditCard, HelpCircle, Inbox, LayoutDashboard, Settings, Users, Zap, UserRound, Plug, History, MessageCircleQuestion } from 'lucide-react';
 import { ActiveTab, useApp } from '../context/AppContext';
 
 export const workspaceNavigation = [
@@ -8,6 +8,7 @@ export const workspaceNavigation = [
   { id: 'catalog', label: 'Catalogs', icon: Package, tabs: ['catalog', 'knowledge', 'lead-forms'] },
   { id: 'inbox', label: 'Inbox', icon: Inbox, tabs: ['inbox'] },
   { id: 'contacts', label: 'Leads', icon: Users, tabs: ['contacts', 'crm'] },
+  { id: 'customer-data', label: 'Customer Data', icon: Database, tabs: ['customer-data'] },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, tabs: ['analytics'] },
   { id: 'settings', label: 'Settings', icon: Settings, tabs: ['settings', 'integrations', 'activity'] },
   { id: 'billing', label: 'Billing & usage', icon: CreditCard, tabs: ['billing'] },

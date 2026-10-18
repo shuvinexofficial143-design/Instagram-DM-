@@ -1,3 +1,5 @@
+import { GoogleSheetsSetup } from '../Automations/GoogleSheetsSetup';
+import { CustomerDataCard } from '../CustomerData/CustomerDataCard';
 import { InstagramAccounts } from '../Common/InstagramAccounts';
 import React, { useEffect, useState } from 'react';
 import {
@@ -161,6 +163,7 @@ export const SettingsPage: React.FC = () => {
       <div className="settings-about-body">
 
       <InstagramAccounts />
+      <section aria-label="Data and integrations" className="grid gap-4 md:grid-cols-2"><CustomerDataCard/><GoogleSheetsSetup/></section>
 
       <section id="manage-subscription" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

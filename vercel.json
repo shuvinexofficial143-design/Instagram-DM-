@@ -44,6 +44,7 @@
       "source": "/admin",
       "destination": "/index.html"
     },
+    {"source":"/customer-data","destination":"/index.html"},
     {
       "source": "/analytics",
       "destination": "/index.html"

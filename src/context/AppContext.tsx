@@ -24,10 +24,11 @@ import {
   isSupabaseInitialized,
 } from '../lib/supabase';
 
-export type ActiveTab = 'home' | 'analytics' | 'automations' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'crm' | 'inbox' | 'integrations' | 'billing' | 'checkout' | 'contact' | 'refunds' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
+export type ActiveTab = 'home' | 'customer-data' | 'analytics' | 'automations' | 'activity' | 'knowledge' | 'catalog' | 'lead-forms' | 'contacts' | 'crm' | 'inbox' | 'integrations' | 'billing' | 'checkout' | 'contact' | 'refunds' | 'settings' | 'about' | 'help' | 'faq' | 'billing-help' | 'privacy' | 'terms' | 'admin';
 
 const TAB_PATHS: Record<ActiveTab, string> = {
   home: '/',
+  'customer-data': '/customer-data',
   analytics: '/analytics',
   automations: '/automations',
   activity: '/activity',

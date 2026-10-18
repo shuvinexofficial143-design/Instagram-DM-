@@ -28,8 +28,8 @@ export const Sidebar = () => {
     </button>
     {!collapsed && (instagramAccounts || []).length > 1 && <div className="px-3 pb-3"><label className="mb-1 block text-[11px] font-semibold text-slate-500" htmlFor="sidebar-account-switch">Switch Instagram account</label><select id="sidebar-account-switch" value={workspaceId} disabled={accountSwitching} onChange={event=>void switchInstagramAccount(event.target.value)} className="min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs">{instagramAccounts.map(item=><option key={item.workspaceId} value={item.workspaceId}>@{item.account.username}</option>)}</select></div>}
     <nav className="sidebar-menu">
-      {workspaceNavigation.filter(item=>item.id!=='settings'&&item.id!=='help').map((item,index)=>{const Icon=item.icon;const active=(item.tabs as string[]).includes(activeTab);return <React.Fragment key={item.id}>
-        {index===6&&<div className="sidebar-divider"/>}
+      {workspaceNavigation.filter(item=>item.id!=='settings'&&item.id!=='help').map((item)=>{const Icon=item.icon;const active=(item.tabs as string[]).includes(activeTab);return <React.Fragment key={item.id}>
+        {item.id==='billing'&&<div className="sidebar-divider"/>}
         <button aria-label={item.label} title={collapsed?item.label:undefined} aria-current={active?'page':undefined} onClick={()=>setActiveTab(item.id)}><Icon aria-hidden="true"/><span>{item.label}</span>{item.id==='inbox'&&unread>0&&<b>{unread>99?'99+':unread}</b>}</button>
       </React.Fragment>;})}
       {isAdmin&&<button onClick={()=>setActiveTab('admin')} aria-label="Admin panel" aria-current={activeTab==='admin'?'page':undefined}><ShieldCheck/><span>Admin panel</span></button>}

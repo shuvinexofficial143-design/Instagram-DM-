@@ -47,6 +47,8 @@ try {
       export {Header} from './src/components/Header';
       export {HomePage} from './src/components/Home/HomePage';
       export {AnalyticsPage} from './src/components/Analytics/AnalyticsPage';
+      export {DataCaptureSetup} from './src/components/Automations/DataCaptureSetup';
+      export {CustomerDataPage} from './src/components/CustomerData/CustomerDataPage';
       export {AiAssistantSetup} from './src/components/Automations/AiAssistantSetup';
       export {AutomationBuilder} from './src/components/Automations/AutomationBuilder';
       export {AutomationsPage} from './src/components/Automations/AutomationsPage';
@@ -111,7 +113,7 @@ try {
   window.location.search='';
   for (const [tab,heading] of [
     ['home','Dashboard'],['inbox','Inbox'],['automations','Active Automations'],['contacts','Contact list'],['crm','Sales pipeline'],
-    ['knowledge','Catalogs'],['catalog','Catalogs'],['lead-forms','Catalogs'],['analytics','Analytics'],
+    ['knowledge','Catalogs'],['catalog','Catalogs'],['lead-forms','Catalogs'],['analytics','Analytics'],['customer-data','Customer Data'],
     ['settings','Settings'],['integrations','Integrations'],['activity','Activity'],['billing','Billing &amp; Usage'],
   ]) {
     globalThis.__uiFixture=fixture({firebaseUser:{uid:'test-user',displayName:'Sample owner'},activeTab:tab});
@@ -139,9 +141,14 @@ try {
   assert.ok(html.includes('What should start this automation?'));assert.ok(!html.includes('Name your automation'));assert.ok(html.includes('aria-label="Close automation builder"'));checks++;
   const setupProps={prompt:'Reply only using approved business facts.',onPromptChange:noop,testInput:'',onTestInputChange:noop,testMessage:'',testReply:'',testError:'',testing:false,onTest:noop,sheetsEnabled:true,onSheetsEnabledChange:noop,sheetsError:'',onRetrySheets:noop,sheetsConnected:false,sheetsEmail:'',sheetsLoading:false,onConnectSheets:noop,promptTools:null,sheetControls:null,replySettings:null};
   html=renderToStaticMarkup(React.createElement(ui.AiAssistantSetup,setupProps));
-  assert.ok(html.includes('System prompt'));assert.ok(html.includes('id="ai-system-prompt"'));assert.ok(html.includes('for="ai-system-prompt"'));assert.ok(html.includes('Connect Google Sheets'));assert.ok(html.includes('data:image/png;base64,'));assert.ok(html.includes('Test messages stay inside this preview'));checks++;
+  assert.ok(html.includes('System prompt'));assert.ok(html.includes('id="ai-system-prompt"'));assert.ok(html.includes('for="ai-system-prompt"'));assert.ok(html.includes('Coming Soon'));assert.ok(!html.includes('Connect Google Sheets')); assert.ok(html.includes('Test messages stay inside this preview'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.AiAssistantSetup,{...setupProps,testMessage:'Question',testError:'Could not test',sheetsConnected:true,sheetsEmail:'test@example.test'}));
-  assert.ok(html.includes('role="alert"'));assert.ok(html.includes('Could not test'));assert.ok(!html.includes('Test reply received'));assert.match(html,/account connected/);assert.ok(html.includes('Change'));checks++;
+  assert.ok(html.includes('role="alert"'));assert.ok(html.includes('Could not test'));assert.ok(!html.includes('Test reply received'));assert.ok(html.includes('Coming Soon'));assert.ok(!html.includes('test@example.test'));checks++;
+  html=renderToStaticMarkup(React.createElement(ui.DataCaptureSetup,{enabled:true,onEnabledChange:noop,fields:['Name','Phone','Consent'],onFieldsChange:noop}));
+  assert.ok(html.includes('aria-checked="true"'));assert.ok(html.includes('Consent'));assert.ok(html.includes('new table version'));checks++;
+  html=renderToStaticMarkup(React.createElement(ui.DataCaptureSetup,{enabled:false,onEnabledChange:noop,fields:['Name','Phone'],onFieldsChange:noop}));
+  assert.ok(html.includes('aria-checked="false"'));assert.ok(!html.includes('New customer data field'));assert.ok(html.includes('Existing customer records stay available'));checks++;
+  html=renderToStaticMarkup(React.createElement(ui.CustomerDataPage));assert.ok(html.includes('Sign in to view Customer Data'));checks++;
   const clock = Date.parse('2026-10-06T12:00:00Z');
   assert.equal(ui.relativeAutomationTime('2026-10-06T09:00:00Z',clock),'3 hours ago');
   assert.equal(ui.relativeAutomationTime('2026-10-06T09:00:00Z',clock+3600000),'4 hours ago');
@@ -182,7 +189,7 @@ try {
   html=renderToStaticMarkup(React.createElement(ui.CustomerInsightPanel,{contact:{id:'canonical',ig_username:'customer',customer_insight:{stage:'support',priority:'high',source:'manual',reason:'Delivery complaint',summary:'Customer needs help',next_step:'Resolve delivery'}}}));
   for(const text of ['Needs support','High priority','Delivery complaint','Manual','Customer status','Customer priority','Resume automatic assessment'])assert.ok(html.includes(text));checks++;
   html=renderToStaticMarkup(React.createElement(ui.CustomerBadges,{insight:{stage:'ready',priority:'high',source:'automatic',reason:'Asked for payment'}}));assert.ok(html.includes('Ready to buy'));assert.ok(html.includes('bg-orange-100'));checks++;
-  assert.deepEqual(ui.workspaceNavigation.filter(item=>!['settings','help','billing'].includes(item.id)).map(item=>item.id),['home','automations','catalog','inbox','contacts','analytics']);checks++;
+  assert.deepEqual(ui.workspaceNavigation.filter(item=>!['settings','help','billing'].includes(item.id)).map(item=>item.id),['home','automations','catalog','inbox','contacts','customer-data','analytics']);checks++;
   const allTabs=ui.workspaceNavigation.flatMap(item=>item.tabs);
   for(const tab of ['contacts','crm','knowledge','catalog','lead-forms','settings','integrations','activity'])assert.ok(allTabs.includes(tab));
   assert.ok(ui.workspaceNavigation.length<15);checks++;

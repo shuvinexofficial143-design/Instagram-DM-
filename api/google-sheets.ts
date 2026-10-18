@@ -126,7 +126,7 @@ export async function ensureAutomationSheet(uid:string,token:string,automationId
  cfg={...cfg,fields,state:'ready',history_sheet:'Conversation history',updated_at:new Date().toISOString()};await saveSheetDocument(uid,token,automationId,cfg);return cfg;
 }
 
-export default async function handler(req: any, res: any) {
+export async function legacyGoogleSheetsHandler(req: any, res: any) {
   const action = String(req.query?.action || '');
   let returnTo = req.query?.returnTo === 'integrations' ? 'integrations' : 'ai-sheets';
   const destination = () => returnTo === 'integrations' ? '/integrations?' : '/?resume=ai-sheets&';
@@ -219,4 +219,10 @@ export default async function handler(req: any, res: any) {
     if (action === 'callback') return fail(message);
     return res.status(error?.status || (error instanceof UpstreamError ? 503 : 500)).json({ ok: false, code: error?.code || (error instanceof UpstreamError ? error.code : 'SHEETS_REQUEST_FAILED'), error: message });
   }
+}
+
+// Credentials and existing sheets are retained while the integration is paused.
+export default async function handler(req:any,res:any){
+ res.setHeader('Cache-Control','private, no-store');
+ return res.status(req.query?.action==='status'?200:410).json({ok:req.query?.action==='status',connected:false,comingSoon:true,code:'COMING_SOON',error:'Google Sheets — Coming Soon. Use Customer Data to save customer details.'});
 }

@@ -1,23 +1,60 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { GoogleSheetsSetup } from '../src/components/Automations/GoogleSheetsSetup';
-function findSwitch(element:any):any {
- if(!element||typeof element!=='object')return;
- if(element.props?.role==='switch')return element;
- for(const child of [element.props?.children].flat(Infinity)){const result=findSwitch(child);if(result)return result;}
-}
-test('optional Sheets switch toggles by its button, and hides connection controls when off',()=>{
- let enabled=false;
- const props={get enabled(){return enabled;},onEnabledChange:(value:boolean)=>enabled=value,connected:false,email:'',loading:false,error:'',onConnect(){},onRetry(){}};
- let view=GoogleSheetsSetup(props);assert.equal(findSwitch(view).props['aria-checked'],false);
- assert.ok(!renderToStaticMarkup(view).includes('Connect Google Sheets</button>'));
- findSwitch(view).props.onClick();view=GoogleSheetsSetup(props);assert.equal(findSwitch(view).props['aria-checked'],true);
- assert.match(renderToStaticMarkup(view),/Connect Google Sheets/);
- findSwitch(view).props.onClick();assert.equal(enabled,false);
+import test from "node:test";
+import assert from "node:assert/strict";
+import { renderToStaticMarkup } from "react-dom/server";
+import { GoogleSheetsSetup } from "../src/components/Automations/GoogleSheetsSetup";
+import sheets from "../api/google-sheets";
+test("Google Sheets shows only Coming Soon even with a stored connection", () => {
+  const html = renderToStaticMarkup(
+    GoogleSheetsSetup({
+      enabled: true,
+      connected: true,
+      email: "private@example.test",
+      error: "old error",
+      children: "old controls",
+    }),
+  );
+  assert.match(html, /Coming Soon/);
+  for (const hidden of [
+    "private@example.test",
+    "old error",
+    "old controls",
+    'role="switch"',
+    "<button",
+  ])
+    assert.ok(!html.includes(hidden));
 });
-test('turning tracking off preserves connection and shows no stale error or column controls',()=>{
- const props={enabled:false,onEnabledChange(){},connected:true,email:'example@example.test',loading:false,error:'Old Google failure',onConnect(){},onRetry(){},children:'column controls'};
- const html=renderToStaticMarkup(GoogleSheetsSetup(props));assert.ok(!html.includes('Old Google failure'));assert.ok(!html.includes('column controls'));
- assert.match(renderToStaticMarkup(GoogleSheetsSetup({...props,enabled:true})),/column controls/);
+test("every public Google Sheets action is paused without any upstream request", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw Error("Upstream access must be paused");
+  };
+  try {
+    for (const action of [
+      "connect",
+      "callback",
+      "status",
+      "create-sheet",
+      "append-lead",
+      "runtime-token",
+    ]) {
+      const res = {
+        statusCode: 0,
+        body: null as any,
+        setHeader() {},
+        status(code: number) {
+          this.statusCode = code;
+          return this;
+        },
+        json(body: any) {
+          this.body = body;
+        },
+      };
+      await sheets({ query: { action }, headers: {}, method: "POST" }, res);
+      assert.equal(res.statusCode, action === "status" ? 200 : 410);
+      assert.equal(res.body.comingSoon, true);
+      assert.equal(res.body.connected, false);
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
 });

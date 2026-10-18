@@ -43,6 +43,9 @@ jobs:
       - name: Automation and customer Sheet regressions
         run: bun run test:automations
 
+      - name: Customer Data capture, isolation contract and safe exports
+        run: bun run test:customer-data
+
       - name: DM runtime regressions
         run: bun run test:dm
 

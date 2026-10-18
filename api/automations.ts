@@ -1,6 +1,5 @@
 import { typedFetch as httpFetch } from '../src/server/typedFetch.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
-import { ensureAutomationSheet } from './google-sheets.js';
 import { SUPABASE_URL, authenticatedWorkspace, UpstreamError } from '../src/server/supabaseConfig.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
@@ -84,7 +83,7 @@ export default async function handler(req: any, res: any) {
       if (!automation || typeof automation !== 'object') {
         return res.status(400).json({ ok: false, error: 'Automation data is required.' });
       }
-      // Reject malformed work before any Google Sheets API side effects.
+      // Reject malformed automation data before saving.
       // The Edge store still enforces the authoritative plan limits.
       const automationId = String(automation.id || '');
       const automationName = String(automation.name || '').trim();
