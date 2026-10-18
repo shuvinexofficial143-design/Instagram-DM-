@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { SUPABASE_URL } from '../src/server/supabaseConfig.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { authorizedQueueDrain,drainQueuedWebhooks,durableWebhookEnabled,finishWebhook,queueWebhookEvent } from '../src/server/webhookQueue.js';
@@ -49,7 +50,7 @@ async function forwardToLiveProcessor(
   const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
-    const response = await fetch(
+    const response = await httpFetch(
       `${SUPABASE_URL}/functions/v1/instagram-live-webhook?forceFunctionRegion=ap-south-1`,
       {
         method: 'POST',
