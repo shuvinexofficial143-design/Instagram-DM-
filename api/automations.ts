@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
 import { ensureAutomationSheet } from './google-sheets.js';
 import { SUPABASE_URL, authenticatedWorkspace, UpstreamError } from '../src/server/supabaseConfig.js';
@@ -29,7 +30,7 @@ async function callStore(body: Record<string, unknown>, authorization: string, t
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(
+    const response = await httpFetch(
       `${SUPABASE_URL}/functions/v1/instagram-account-store`,
       {
         method: 'POST',
