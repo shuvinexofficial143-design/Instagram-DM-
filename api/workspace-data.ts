@@ -1,4 +1,4 @@
-import { fetch as httpFetch } from 'undici';
+import { typedFetch as httpFetch } from '../src/server/typedFetch.js';
 import supportHandler from '../src/server/support.js';
 import lifecycleHandler from '../src/server/customerLifecycle.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
