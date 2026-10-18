@@ -1,4 +1,4 @@
-import { fetch as httpFetch } from 'undici';
+import { typedFetch as httpFetch } from './typedFetch.js';
 import {timingSafeEqual} from 'node:crypto';
 import {authenticatedUser,cleanEnvironment} from './supabaseConfig.js';
 import {billingDb,businessDetails} from './cashfree.js';
