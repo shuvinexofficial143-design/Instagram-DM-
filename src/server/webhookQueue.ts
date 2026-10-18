@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { createHash,randomUUID,timingSafeEqual } from 'node:crypto';
 import { cleanEnvironment,SUPABASE_URL } from './supabaseConfig.js';
 
@@ -11,7 +12,7 @@ function config(){
 async function rest(path:string,method:'GET'|'POST'|'PATCH'='GET',body?:unknown,additional:Record<string,string>={}){
   const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),10000);
   try{
-    const response=await fetch(SUPABASE_URL+'/rest/v1/'+path,{
+    const response=await httpFetch(SUPABASE_URL+'/rest/v1/'+path,{
       method,headers:{...config(),...additional},signal:ctrl.signal,
       ...(body===undefined?{}:{body:JSON.stringify(body)})
     });
