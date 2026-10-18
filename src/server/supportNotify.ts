@@ -1,4 +1,4 @@
-import { fetch as httpFetch } from 'undici';
+import { typedFetch as httpFetch } from './typedFetch.js';
 /** Optional outbound alerts; never block the database transaction on a provider outage. */
 type EventKind='created'|'customer_replied'|'support_replied'|'status_changed';
 function safe(value:unknown,max=160){return String(value||'').replace(/[\r\n<>]/g,' ').trim().slice(0,max);}
