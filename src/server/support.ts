@@ -1,4 +1,4 @@
-import { fetch as httpFetch } from 'undici';
+import { typedFetch as httpFetch } from './typedFetch.js';
 import { authenticatedUser, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabaseConfig.js';
 import { cleanEnvironment } from './supabaseConfig.js';
 import { randomUUID } from 'node:crypto';
