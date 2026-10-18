@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { enforceRateLimit, resolveAiIdentity } from '../_auth.js';
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const OPENAI_MODEL = 'gpt-4o-mini';
@@ -263,7 +264,7 @@ async function analyzeWithOpenAI(prompt: string, fallback: Analysis): Promise<An
   const timeout = setTimeout(() => controller.abort(), 18000);
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await httpFetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${OPENAI_API_KEY}`,
