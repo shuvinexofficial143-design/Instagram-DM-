@@ -1,4 +1,4 @@
-import { fetch as httpFetch } from 'undici';
+import { typedFetch as httpFetch } from './typedFetch.js';
 /** One configuration for server auth, storage and webhook delivery. */
 export function cleanEnvironment(value: unknown): string {
   const text = String(value || '').trim();
