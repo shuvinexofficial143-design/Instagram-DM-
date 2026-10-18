@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import supportHandler from '../src/server/support.js';
 import lifecycleHandler from '../src/server/customerLifecycle.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
@@ -31,7 +32,7 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000)
   const timeout = setTimeout(() => controller.abort(), ms);
 
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await httpFetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
