@@ -1,4 +1,4 @@
-import { fetch as httpFetch } from 'undici';
+import { typedFetch as httpFetch } from '../src/server/typedFetch.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
 import { SUPABASE_URL, authenticatedUser } from '../src/server/supabaseConfig.js';
 
