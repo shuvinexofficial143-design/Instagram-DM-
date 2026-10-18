@@ -333,12 +333,12 @@ export default async function handler(req: any, res: any) {
 
     try {
       const meParams = new URLSearchParams({
-        fields: 'id,username,name,profile_picture_url,followers_count',
+        fields: 'id,user_id,username,name,profile_picture_url,followers_count',
         access_token: accessToken,
       });
 
       const meRes = await fetchWithTimeout(
-        `https://graph.instagram.com/v21.0/me?${meParams.toString()}`,
+        `https://graph.instagram.com/v25.0/me?${meParams.toString()}`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         },
@@ -352,7 +352,7 @@ export default async function handler(req: any, res: any) {
       }
 
       const me: any = await meRes.json();
-      igUserId = me?.id ? String(me.id) : igUserId;
+      igUserId = String(me?.user_id || me?.id || igUserId);
       username = String(me?.username || '').trim();
       profilePicUrl = String(me?.profile_picture_url || '').trim();
       followersCount = Number(me?.followers_count || 0);

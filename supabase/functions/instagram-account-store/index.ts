@@ -47,12 +47,12 @@ function safeAccount(account: any) {
 
 async function readInstagramProfile(accessToken: string) {
   const params = new URLSearchParams({
-    fields: "id,username,name,profile_picture_url,followers_count,follows_count,media_count,account_type",
+    fields: "id,user_id,username,name,profile_picture_url,followers_count,follows_count,media_count,account_type",
     access_token: accessToken,
   });
 
   const response = await fetch(
-    `https://graph.instagram.com/v21.0/me?${params.toString()}`,
+    `https://graph.instagram.com/v25.0/me?${params.toString()}`,
     { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(8000) }
   );
 
@@ -418,7 +418,7 @@ Deno.serve(async (req: Request) => {
       return {workspaceId:row.workspace_id,account:{...safeAccount(token?.account || row.profile),status:token ? "connected" : "disconnected"}};
     })});
   }
-  if (["load","delete","list_media","list_workspace_data","list_automations","save_automation","delete_automation","refresh_contact_profiles","create_catalog_upload"].includes(action) && (action === "create_catalog_upload" || !String(workspaceId || "").startsWith("guest_"))) {
+  if (["send_dm","load","delete","list_media","list_workspace_data","list_automations","save_automation","delete_automation","refresh_contact_profiles","create_catalog_upload"].includes(action) && (action === "create_catalog_upload" || !String(workspaceId || "").startsWith("guest_"))) {
     const jwt = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
     const admin = getAdminClient();
     const {data:identity,error:authError} = await admin.auth.getUser(jwt);
@@ -840,6 +840,46 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (action === "send_dm") {
+      const username = String(payload?.recipientUsername || "").replace(/^@/, "").trim().toLowerCase();
+      const text = String(payload?.messageText || "").trim();
+      if (!username || !text || text.length > 1000) return reply(400, {ok:false, sent:false, error:"A recipient and message of 1–1000 characters are required"});
+      const {data:stored,error:accountError} = await admin.from("autoreply_instagram_tokens").select("account").eq("user_id",workspaceId).maybeSingle();
+      if (accountError) throw accountError;
+      const account = stored?.account;
+      if (!account?.access_token) return reply(409,{ok:false,sent:false,error:"Connect Instagram before sending a reply"});
+      // Resolve only this workspace's real messaging-scoped contact ID.
+      // A username or a synthetic ig_usr_* value is never a Meta recipient ID.
+      const {data:rows,error:contactsError} = await admin.from("autoreply_documents").select("id,data")
+        .eq("user_id",workspaceId).eq("collection","contacts");
+      if (contactsError) throw contactsError;
+      const matches = (rows || []).filter((row:any) => [row.data?.ig_username,row.data?.ig_user_id,...(row.data?.ig_user_ids || [])]
+        .some((value:any) => String(value || "").replace(/^@/, "").toLowerCase() === username));
+      const recipients = [...new Set(matches.map((row:any)=>String(row.data?.ig_user_id || row.id || "")).filter((id:string)=>/^\d+$/.test(id)))];
+      if (recipients.length !== 1) return reply(409,{ok:false,sent:false,error:"No unique Instagram conversation found for this contact. Ask them to send a new DM first."});
+      const recipientId = String(recipients[0]);
+      let response: Response;
+      try {
+        // Never retry an ambiguous message write: Meta may already have accepted it.
+        response = await fetch("https://graph.instagram.com/v25.0/me/messages", {
+          method:"POST", headers:{"Content-Type":"application/json",Authorization:`Bearer ${account.access_token}`},
+          body:JSON.stringify({recipient:{id:recipientId},message:{text}}),signal:AbortSignal.timeout(12000),
+        });
+      } catch {
+        return reply(502,{ok:false,sent:false,error:"Instagram delivery could not be confirmed. Check Instagram before retrying."});
+      }
+      const result:any = await response.json().catch(()=>null);
+      if (!response.ok || result?.error || !result?.message_id) {
+        return reply(502,{ok:false,sent:false,error:String(result?.error?.message || "Instagram did not confirm the message"),meta_code:result?.error?.code || null});
+      }
+      const message = {id:String(result.message_id),from_ig_id:recipientId,from_username:username,
+        message_text:text,direction:"out",is_automated:false,is_read:true,delivery_status:"sent",timestamp:new Date().toISOString()};
+      const {error:saveError} = await admin.from("autoreply_documents").upsert({user_id:workspaceId,collection:"inbox_messages",id:message.id,data:message},{onConflict:"user_id,collection,id"});
+      if (saveError) console.warn("[MANUAL_DM_INBOX_SAVE_FAILED]",{workspaceId,messageId:message.id});
+      // Delivery remains confirmed even if the Inbox write needs reconciliation.
+      return reply(200,{ok:true,sent:true,message_id:message.id,message,inbox_saved:!saveError});
+    }
+
     if (action === "save") {
       const registrationSecret = String(Deno.env.get("INSTAGRAM_APP_SECRET") || "").trim();
       if (!registrationSecret || req.headers.get("x-autoreply-oauth-secret") !== registrationSecret)
@@ -853,7 +893,9 @@ Deno.serve(async (req: Request) => {
       const now = new Date();
       const account = {
         id: "primary",
-        ig_user_id: String(me.id),
+        // Meta profile id is app-scoped; user_id is the professional ID in webhooks.
+        ig_user_id: String(me.user_id || me.id),
+        ig_scoped_id: String(me.id),
         username: String(me.username).trim(),
         profile_pic_url:
           String(me?.profile_picture_url || "").trim() ||
@@ -876,7 +918,7 @@ Deno.serve(async (req: Request) => {
         if (!secret || req.headers.get("x-autoreply-oauth-secret") !== secret || !isWorkspaceId(ownerId))
           return reply(401,{ok:false,error:"Invalid account registration authorization"});
         const {data:existing,error:lookupError} = await admin.from("autoreply_instagram_memberships")
-          .select("workspace_id,owner_user_id").eq("ig_user_id",account.ig_user_id).maybeSingle();
+          .select("workspace_id,owner_user_id").in("ig_user_id",[account.ig_user_id, account.ig_scoped_id]).maybeSingle();
         if (lookupError) throw lookupError;
         if (existing && existing.owner_user_id !== ownerId) return reply(409,{ok:false,error:"This Instagram account is already connected to another login."});
         if (!existing) {
@@ -904,7 +946,7 @@ Deno.serve(async (req: Request) => {
         .from("autoreply_instagram_tokens").select("account")
         .eq("user_id", workspaceId).maybeSingle();
       if (previousTokenError) throw previousTokenError;
-      if (String(previousToken?.account?.ig_user_id || "") === account.ig_user_id &&
+      if ([account.ig_user_id, account.ig_scoped_id].includes(String(previousToken?.account?.ig_user_id || "")) &&
           Array.isArray(previousToken?.account?.own_sender_ids)) {
         (account as any).own_sender_ids = previousToken.account.own_sender_ids
           .map(String).filter((id: string) => /^\d+$/.test(id));
@@ -973,6 +1015,8 @@ Deno.serve(async (req: Request) => {
           const me = await readInstagramProfile(accessToken);
           account = {
             ...account,
+            ig_user_id: String(me.user_id || me.id),
+            ig_scoped_id: String(me.id),
             username: String(me?.username || account.username).trim(),
             profile_pic_url: String(me?.profile_picture_url || account.profile_pic_url || "").trim(),
             followers_count: Number(me?.followers_count ?? account.followers_count ?? 0),
@@ -983,6 +1027,7 @@ Deno.serve(async (req: Request) => {
 
           await Promise.all([
             admin.from("autoreply_instagram_tokens").update({ account }).eq("user_id", workspaceId),
+            admin.from("autoreply_instagram_memberships").update({ig_user_id:account.ig_user_id,profile:safeAccount(account)}).eq("workspace_id",workspaceId),
             admin.from("autoreply_documents").upsert(
               { user_id: workspaceId, collection: "instagram_account", id: "primary", data: safeAccount(account) },
               { onConflict: "user_id,collection,id" }

@@ -1,4 +1,4 @@
-import { fetch as httpFetch } from 'undici';
+import { typedFetch as httpFetch } from '../src/server/typedFetch.js';
 import { SUPABASE_URL } from '../src/server/supabaseConfig.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { authorizedQueueDrain,drainQueuedWebhooks,durableWebhookEnabled,finishWebhook,queueWebhookEvent } from '../src/server/webhookQueue.js';

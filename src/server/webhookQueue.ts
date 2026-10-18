@@ -1,4 +1,4 @@
-import { fetch as httpFetch } from 'undici';
+import { typedFetch as httpFetch } from './typedFetch.js';
 import { createHash,randomUUID,timingSafeEqual } from 'node:crypto';
 import { cleanEnvironment,SUPABASE_URL } from './supabaseConfig.js';
 

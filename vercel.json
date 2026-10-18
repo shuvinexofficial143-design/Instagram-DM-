@@ -5,6 +5,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/instagram/send-dm",
+      "destination": "/api/instagram/account?action=send-dm"
+    },
+    {
       "source": "/api/usage",
       "destination": "/api/billing?action=usage"
     },

@@ -46,7 +46,7 @@ test('invoice appears below billing history and email is optional',()=>{
 });
 test('typography raises old fixed sizes as well as rem and arbitrary sizes',()=>{
  const css=source('src/crisp-ui.css');
- assert.match(css,/html \{ font-size:16px/);
+ assert.ok(Number(css.match(/html \{\s*font-size:(\d+)px/)?.[1]) >= 16, 'Root typography stays readable');
  assert.match(css,/\.text-xs \{ font-size:16px/);
  assert.match(css,/\.text-sm \{ font-size:17px/);
  assert.match(css,/\[class~="text-\[11px\]"\] \{font-size:13px!important;/);

@@ -43,6 +43,7 @@ export interface FlowInstructionNode {
 }
 
 export interface TriggerConfig {
+  sheets_enabled?: boolean;
   sheet_fields?: string[];
   all_or_keywords: 'all' | 'keywords' | 'ai_conversation';
   keywords: string[];

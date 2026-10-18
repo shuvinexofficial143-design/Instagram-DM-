@@ -882,7 +882,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let payload: any;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const token = await auth.currentUser?.getIdToken(attempt > 0);
+          const token = await auth.currentUser?.getIdToken();
           response = await fetch('/api/instagram/account', {
             credentials: 'same-origin',
             cache: 'no-store',
@@ -1471,7 +1471,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setInboxMessages((prev) => [newOutMsg, ...prev]);
-    saveUserDocument(uid, 'inbox_messages', newOutMsg);
 
     // Pause AI only after Meta confirms the manual message was sent.
     // A failed dispatch must not silently disable automatic replies.
@@ -1484,6 +1483,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'X-Autoreply-Workspace': uid,
         },
         body: JSON.stringify({
           recipientUsername: cleanUser,
@@ -1496,15 +1496,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw new Error(payload?.error || `Instagram send failed (HTTP ${response.status})`);
       }
       const payload = await response.json().catch(() => null);
-      if (payload?.ok === false || payload?.error || payload?.sent === false) {
+      if (payload?.ok !== true || payload?.sent !== true || !payload?.message_id || !payload?.message) {
         throw new Error(payload?.error || 'Instagram did not confirm delivery');
       }
       setAiPausedForUser(cleanUser, true);
-      const sent = { ...newOutMsg, delivery_status: 'sent' as const };
-      setInboxMessages((prev) => prev.map((m) => (m.id === sent.id ? sent : m)));
-      saveUserDocument(uid, 'inbox_messages', sent);
+      const sent: InboxMessage = payload.message;
+      setInboxMessages((prev) => [sent, ...prev.filter((m) => m.id !== newOutMsg.id && m.id !== sent.id)]);
     } catch (err) {
       console.warn('[SEND_MANUAL_DM_DISPATCH_WARN]', err);
+      window.alert(err instanceof Error ? err.message : 'Instagram message could not be sent.');
       const failed = { ...newOutMsg, delivery_status: 'failed' as const };
       setInboxMessages((prev) => prev.map((m) => (m.id === failed.id ? failed : m)));
       saveUserDocument(uid, 'inbox_messages', failed);

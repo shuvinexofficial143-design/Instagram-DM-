@@ -2746,72 +2746,11 @@ async function startServer() {
   });
 
   // 7.5. Send Manual DM API Endpoint (for Inbox manual replies)
-  app.post('/api/instagram/send-dm', async (req: Request, res: Response) => {
+  app.post('/api/instagram/send-dm', async (req, res, next) => {
     try {
-      const { recipientUsername, messageText, userId } = req.body;
-      if (!recipientUsername || !messageText) {
-        return res.status(400).json({ error: 'Missing recipientUsername or messageText' });
-      }
-
-      const cleanUsername = String(recipientUsername).replace(/^@/, '').toLowerCase().trim();
-
-      let accessToken = '';
-      if (userId) {
-        const storedAccount = await loadServerInstagramAccount(userId);
-        accessToken = sanitizeAccessToken(storedAccount?.access_token || '');
-      }
-
-      let apiResult: any = null;
-      let apiSuccess = false;
-
-      if (accessToken && !accessToken.includes('encrypted_token') && !accessToken.includes('sandbox_token')) {
-        let recipientIgId = cleanUsername;
-        if (db) {
-          try {
-            const contactRef = doc(db, 'contacts', `contact_${cleanUsername}`);
-            const cSnap = await getDoc(contactRef);
-            if (cSnap.exists()) {
-              recipientIgId = cSnap.data().ig_user_id || cleanUsername;
-            }
-          } catch (e) {
-            console.warn('[RECIPIENT_ID_LOOKUP_WARN]', e);
-          }
-        }
-
-        const dmRes = await sendInstagramDirectMessageWithFallback({
-          accessToken,
-          senderId: recipientIgId,
-          messageText,
-        });
-        apiResult = dmRes.result;
-        apiSuccess = dmRes.success;
-      }
-
-      const nowIso = new Date().toISOString();
-      if (db) {
-        const outMsgId = `msg_manual_${Date.now()}`;
-        const outMsgDoc: InboxMessage = {
-          id: outMsgId,
-          from_ig_id: cleanUsername,
-          from_username: cleanUsername,
-          message_text: messageText,
-          direction: 'out',
-          is_automated: false,
-          timestamp: nowIso,
-        };
-        const reqUserId = req.body?.userId;
-        if (reqUserId) {
-          await setDoc(doc(db, 'users', reqUserId, 'inbox_messages', outMsgId), outMsgDoc);
-        } else {
-          await setDoc(doc(db, 'inbox_messages', outMsgId), outMsgDoc);
-        }
-      }
-
-      return res.json({ success: true, apiSuccess, apiResult });
-    } catch (err: any) {
-      console.error('[SEND_DM_API_ERROR]', err);
-      return res.status(500).json({ error: String(err?.message || err) });
-    }
+      const {default:handler} = await import('./src/server/manualDm.js');
+      await handler(req,res);
+    } catch (error) { next(error); }
   });
 
   for (const action of ['connect', 'callback', 'status', 'create-sheet', 'append-lead']) {

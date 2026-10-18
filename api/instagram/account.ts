@@ -1,5 +1,6 @@
 import { typedFetch as httpFetch } from '../../src/server/typedFetch.js';
 import { guestStoreHeaders } from '../../src/server/guestStoreAuth.js';
+import manualDmHandler from '../../src/server/manualDm.js';
 import { authenticatedUser } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
 
@@ -69,6 +70,7 @@ async function callStore(action: 'load' | 'delete', workspaceId: string) {
 // No Google/app login is required. The secure HttpOnly guest workspace cookie
 // acts as the browser's private workspace capability.
 export default async function handler(req: any, res: any) {
+  if (req.query?.action === 'send-dm') return manualDmHandler(req,res);
   try {
     const owner = await authenticatedUser(req);
     if (req.headers?.authorization && !owner) return res.status(401).json({ success:false,error:'Sign in again to manage Instagram accounts.' });

@@ -11,7 +11,13 @@ test('compiled API functions load in native Node ESM without a TS resolver', asy
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'autoreply-api-'));
   try {
     await fs.writeFile(path.join(root, 'package.json'), '{"type":"module"}');
-    const files = ['src/server/supabaseConfig.ts', 'src/server/cashfree.ts', 'api/webhook.ts', 'api/google-sheets.ts', 'api/auth/instagram.ts', 'api/_auth.ts', 'src/server/usage.ts', 'api/billing.ts', 'api/openai/chat.ts', 'api/openai/analyze-prompt.ts'];
+    await fs.symlink(path.resolve('node_modules'), path.join(root,'node_modules'), 'dir');
+    const files = [];
+    for (const folder of ['api','src/server']) {
+      for (const entry of await fs.readdir(folder,{recursive:true})) {
+        if (entry.endsWith('.ts')) files.push(path.join(folder,entry));
+      }
+    }
     for (const file of files) {
       const output = path.join(root, file.replace(/\.ts$/, '.js'));
       await fs.mkdir(path.dirname(output), { recursive: true });
