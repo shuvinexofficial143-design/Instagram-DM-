@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { guestStoreHeaders } from '../../src/server/guestStoreAuth.js';
 import { authenticatedWorkspace } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
@@ -31,7 +32,7 @@ async function getAuthenticatedUserId(req:any) { return (await authenticatedWork
 
 async function fetchWithTimeout(url:string,init:RequestInit={},ms=15000) {
   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),ms);
-  try{return await fetch(url,{...init,signal:controller.signal});}finally{clearTimeout(timer);}
+  try{return await httpFetch(url,{...init,signal:controller.signal});}finally{clearTimeout(timer);}
 }
 
 export default async function handler(req: any, res: any) {
