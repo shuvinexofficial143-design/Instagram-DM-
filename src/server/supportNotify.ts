@@ -1,8 +1,9 @@
+import { fetch as httpFetch } from 'undici';
 /** Optional outbound alerts; never block the database transaction on a provider outage. */
 type EventKind='created'|'customer_replied'|'support_replied'|'status_changed';
 function safe(value:unknown,max=160){return String(value||'').replace(/[\r\n<>]/g,' ').trim().slice(0,max);}
 async function post(url:string,body:unknown,headers:Record<string,string>,timeoutMs=4500){
-  const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
+  const res=await httpFetch(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
   if(!res.ok)throw new Error('Provider returned '+res.status);
 }
 async function sendEmail(recipient:string,subject:string,plain:string){
