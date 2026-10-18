@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { authenticatedUser, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabaseConfig.js';
 import { cleanEnvironment } from './supabaseConfig.js';
 import { randomUUID } from 'node:crypto';
@@ -25,7 +26,7 @@ async function db(path:string,method:'GET'|'POST'|'PATCH'='GET',body?:unknown){
   if(!key)throw new SupportError('Support service is temporarily unavailable.',503);
   const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),12000);
   try{
-    const res=await fetch(SUPABASE_URL+'/rest/v1/'+path,{
+    const res=await httpFetch(SUPABASE_URL+'/rest/v1/'+path,{
       method,signal:ctrl.signal,
       headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',
         ...(method!=='GET'?{Prefer:'return=representation'}:{})},
@@ -39,7 +40,7 @@ async function db(path:string,method:'GET'|'POST'|'PATCH'='GET',body?:unknown){
 }
 async function verifiedAdmin(req:any,uid:string):Promise<boolean>{
   const token=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'').trim();
-  const r=await fetch(SUPABASE_URL+'/auth/v1/user',{
+  const r=await httpFetch(SUPABASE_URL+'/auth/v1/user',{
     headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:'Bearer '+token},
     signal:AbortSignal.timeout(8000)
   });
@@ -135,7 +136,7 @@ export default async function handler(req:any,res:any){
         if(!rows[0])throw new SupportError('Attachment not found.',404);
         await getTicket(rows[0].ticket_id,user.id,isSupport);
         const key=secret();
-        const response=await fetch(SUPABASE_URL+'/storage/v1/object/sign/'+bucket+'/'+rows[0].object_path,{
+        const response=await httpFetch(SUPABASE_URL+'/storage/v1/object/sign/'+bucket+'/'+rows[0].object_path,{
           method:'POST',
           headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},
           body:JSON.stringify({expiresIn:180}),signal:AbortSignal.timeout(9000)
@@ -178,7 +179,7 @@ export default async function handler(req:any,res:any){
       const name=text(body.filename,120).replace(/[\\/<>\u0000-\u001f]/g,'_')||'screenshot.'+allowed[imageType];
       const objectPath=ticket.owner_user_id+'/'+ticket.id+'/'+randomUUID()+'.'+allowed[imageType];
       const key=secret();
-      const upstream=await fetch(SUPABASE_URL+'/storage/v1/object/'+bucket+'/'+objectPath,{
+      const upstream=await httpFetch(SUPABASE_URL+'/storage/v1/object/'+bucket+'/'+objectPath,{
         method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':imageType,'x-upsert':'false'},
         body:bytes,signal:AbortSignal.timeout(15000)
       });
