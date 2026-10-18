@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { normalizeAppUrl, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../../src/server/supabaseConfig.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
@@ -132,7 +133,7 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000)
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ms);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await httpFetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
