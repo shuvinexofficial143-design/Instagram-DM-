@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { guestStoreHeaders } from '../../src/server/guestStoreAuth.js';
 import { authenticatedUser } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
@@ -35,7 +36,7 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000)
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ms);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await httpFetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
