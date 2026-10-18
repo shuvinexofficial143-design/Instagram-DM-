@@ -6,6 +6,7 @@ function setup(){
  const key=(c,id)=>c+':'+id;
  docs.set(key('secure','workspace'),{connected:true,access_token:'test-google',expires_at:Date.now()+3600000});
  docs.set(key('contacts','canonical'),{ig_user_id:'new-scoped-id',ig_user_ids:['old-scoped-id','new-scoped-id'],ig_username:'asha'});
+ for(const id of ['auto_one','auto_two'])docs.set(key('automations',id),{trigger_config:{sheets_enabled:true}});
  for(const id of ['auto_one','auto_two'])docs.set(key('google_sheets_automations',id),{spreadsheet_id:id,fields:['Name','Phone'],state:'ready',sheet_name:'Leads',history_sheet:'Conversation history'});
  const admin={from(table){let filter={},mutation=null;const q={select(){return q},eq(k,v){filter[k]=v;return q},order(){return q},limit(){return q},upsert(value){mutation={kind:'upsert',value};return q},update(value){mutation={kind:'update',value};return q},delete(){mutation={kind:'delete'};return q},maybeSingle(){return result(true)},then(resolve,reject){return result(false).then(resolve,reject)}};
  async function result(single){if(table==='autoreply_sheet_sync_leases')return {data:null,error:null};if(mutation){const v=mutation.value;if(mutation.kind==='upsert')docs.set(key(v.collection,v.id),structuredClone(v.data));if(mutation.kind==='update')docs.set(key(filter.collection,filter.id),structuredClone(v.data));return {data:null,error:null};}const rows=[...docs].filter(([id])=>table==='autoreply_google_connections_secure'?id===key('secure',filter.workspace_id):id.startsWith(filter.collection+':')&&(!filter.id||id===key(filter.collection,filter.id))).map(([id,data])=>({id:id.slice(Math.max(0,id.indexOf(':')+1)),data:structuredClone(data)}));return {data:single?rows[0]||null:rows,error:null};}return q;},async rpc(){return {data:true,error:null}}};
@@ -34,3 +35,5 @@ test('Google OAuth credentials are only in backend private storage',async()=>{
  assert.match(source,/autoreply_google_connections_secure/);
  assert.match(sql,/revoke all on public\.autoreply_google_connections_secure from public,anon,authenticated/);
 });
+
+test('switching Google Sheets off stops extraction and sync even when an old binding exists',async()=>{const f=setup();f.docs.set('automations:auto_one',{trigger_config:{sheets_enabled:false}});await f.sync('My name is Asha');assert.equal(f.calls.length,0);assert.equal([...f.docs].filter(([key])=>key.startsWith('sheet_sync_jobs:')).length,0);});

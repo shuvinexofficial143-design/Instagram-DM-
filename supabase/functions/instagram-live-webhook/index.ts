@@ -448,11 +448,14 @@ function inferCustomerInsight(text:string,previous?:CustomerInsight):CustomerIns
 
 async function sheetJson(url:string,init:any={}) {
  const r=await fetch(url,{...init,signal:AbortSignal.timeout(8000)}),body=await r.json().catch(()=>null);
- if(!r.ok)throw new Error(body?.error?.message || `Google Sheets request failed (HTTP ${r.status})`);return body;
+ if(!r.ok)throw new Error(body?.error?.message || (typeof body?.error==='string'?body.error:'') || `Google Sheets request failed (HTTP ${r.status})`);return body;
 }
 async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:string, incomingText:string, history:any[], openaiKey:string, automationId:string, messageId:string, replyText:string) {
  const jobId=automationId+':'+(messageId||crypto.randomUUID());let leaseOwner='';
  try {
+  const {data:rule,error:ruleError}=await admin.from('autoreply_documents').select('data').eq('user_id',workspaceId).eq('collection','automations').eq('id',automationId).maybeSingle();
+  if(ruleError)throw new Error('Could not verify Google Sheets setting');
+  if(rule?.data?.trigger_config?.sheets_enabled!==true)return;
   const [{data:binding,error:bindingError},{data:connection,error:connectionError},{data:contacts,error:contactError}]=await Promise.all([
    admin.from('autoreply_documents').select('data').eq('user_id',workspaceId).eq('collection','google_sheets_automations').eq('id',automationId).maybeSingle(),
    admin.from('autoreply_google_connections_secure').select('data').eq('workspace_id',workspaceId).maybeSingle(),
@@ -482,7 +485,7 @@ async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:s
    await new Promise(resolve=>setTimeout(resolve,[400,1200,3000,5000][attempt]));
   }
   if(!claimed){await logEvent(admin,workspaceId,'queued:'+jobId,{status:'ignored',reason:'sheet_update_queued',sender_id:senderId,trigger_type:'dm'});return;}
-  const token=connectionCfg.access_token && Number(connectionCfg.expires_at)>Date.now()+60000 ? connectionCfg.access_token : (await sheetJson('https://autoreplys.vercel.app/api/google-sheets?action=runtime-token',{method:'POST',headers:{'Content-Type':'application/json','X-Autoreply-OAuth-Secret':String(Deno.env.get('INSTAGRAM_APP_SECRET')||'')},body:JSON.stringify({refreshToken:connectionCfg.refresh_token})})).accessToken;
+  const token=connectionCfg.access_token && Number(connectionCfg.expires_at)>Date.now()+60000 ? connectionCfg.access_token : (await sheetJson('https://autoreplys.vercel.app/api/google-sheets?action=runtime-token',{method:'POST',headers:{'Content-Type':'application/json','X-Autoreply-OAuth-Secret':String(Deno.env.get('INSTAGRAM_APP_SECRET')||'')},body:JSON.stringify({workspaceId})})).accessToken;
   if(!token)throw new Error('Reconnect Google Sheets to resume updates');
   const headers={Authorization:'Bearer '+token,'Content-Type':'application/json'},base='https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(cfg.spreadsheet_id);
   const historyName=cfg.history_sheet||'Conversation history';

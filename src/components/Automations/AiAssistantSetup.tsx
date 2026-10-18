@@ -15,12 +15,13 @@ import {
   Video,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { googleLogo, sheetsLogo } from '../Common/googleBrandAssets';
+import { GoogleSheetsSetup } from './GoogleSheetsSetup';
 
 export type AiAssistantSetupProps = {
   prompt: string; onPromptChange: (value: string) => void;
   testInput: string; onTestInputChange: (value: string) => void;
   testMessage: string; testReply: string; testError: string; testing: boolean; onTest: () => void;
+  sheetsEnabled: boolean; onSheetsEnabledChange: (enabled:boolean) => void; sheetsError: string; onRetrySheets: () => void;
   sheetsConnected: boolean; sheetsEmail: string; sheetsLoading: boolean; onConnectSheets: () => void;
   promptTools: React.ReactNode; sheetControls: React.ReactNode; replySettings: React.ReactNode;
 };
@@ -75,30 +76,9 @@ export const AiAssistantSetup = (p: AiAssistantSetupProps) => {
           </details>
         </section>
 
-        <section className="ai-setup-card" aria-labelledby="sheets-heading">
-          <div className="ai-sheet-title">
-            <img src={sheetsLogo} width={40} height={40} alt="Google Sheets"/>
-            <div>
-              <h3 id="sheets-heading">Google Sheets <span className="ai-optional">Optional</span></h3>
-              <p>Organize lead and order details in a spreadsheet.</p>
-            </div>
-          </div>
-          {p.sheetsConnected
-            ? <div className="ai-sheet-connected" role="status">
-                <CheckCircle2 size={18}/>
-                <span>Connected{p.sheetsEmail?' · '+p.sheetsEmail:''}</span>
-                <button type="button" disabled={p.sheetsLoading} onClick={p.onConnectSheets}>Change account</button>
-              </div>
-            : <>
-                <button type="button" className="google-brand-button" onClick={p.onConnectSheets} disabled={p.sheetsLoading}>
-                  <img src={googleLogo} width={20} height={20} alt=""/>
-                  {p.sheetsLoading?'Checking connection…':'Connect Google Sheets'}
-                </button>
-                <p className="ai-setup-note">Connect your account, then choose the columns and create a sheet.</p>
-              </>
-          }
-          {p.sheetsConnected&&p.sheetControls}
-        </section>
+        <GoogleSheetsSetup enabled={p.sheetsEnabled} onEnabledChange={p.onSheetsEnabledChange}
+          connected={p.sheetsConnected} email={p.sheetsEmail} loading={p.sheetsLoading} error={p.sheetsError}
+          onConnect={p.onConnectSheets} onRetry={p.onRetrySheets}>{p.sheetControls}</GoogleSheetsSetup>
 
         {p.replySettings}
       </div>
