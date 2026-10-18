@@ -133,8 +133,8 @@ export function DataCaptureSetup({
               </p>
             )}
             <p className="mt-3 text-xs leading-5 text-slate-500">
-              Changing these fields creates a new table version. Previous
-              records remain unchanged.
+              New fields join this table automatically. Existing customer
+              details and earlier columns stay saved.
             </p>
           </>
         )}

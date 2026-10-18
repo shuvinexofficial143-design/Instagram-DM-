@@ -49,6 +49,8 @@ try {
       export {AnalyticsPage} from './src/components/Analytics/AnalyticsPage';
       export {DataCaptureSetup} from './src/components/Automations/DataCaptureSetup';
       export {CustomerDataPage} from './src/components/CustomerData/CustomerDataPage';
+      export {AutomationDataCard} from './src/components/CustomerData/AutomationDataCard';
+      export {CustomerRecordDetails} from './src/components/CustomerData/CustomerRecordDetails';
       export {AiAssistantSetup} from './src/components/Automations/AiAssistantSetup';
       export {AutomationBuilder} from './src/components/Automations/AutomationBuilder';
       export {AutomationsPage} from './src/components/Automations/AutomationsPage';
@@ -145,10 +147,13 @@ try {
   html=renderToStaticMarkup(React.createElement(ui.AiAssistantSetup,{...setupProps,testMessage:'Question',testError:'Could not test',sheetsConnected:true,sheetsEmail:'test@example.test'}));
   assert.ok(html.includes('role="alert"'));assert.ok(html.includes('Could not test'));assert.ok(!html.includes('Test reply received'));assert.ok(html.includes('Coming Soon'));assert.ok(!html.includes('test@example.test'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.DataCaptureSetup,{enabled:true,onEnabledChange:noop,fields:['Name','Phone','Consent'],onFieldsChange:noop}));
-  assert.ok(html.includes('aria-checked="true"'));assert.ok(html.includes('Consent'));assert.ok(html.includes('new table version'));checks++;
+  assert.ok(html.includes('aria-checked="true"'));assert.ok(html.includes('Consent'));assert.ok(html.includes('Existing customer details'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.DataCaptureSetup,{enabled:false,onEnabledChange:noop,fields:['Name','Phone'],onFieldsChange:noop}));
   assert.ok(html.includes('aria-checked="false"'));assert.ok(!html.includes('New customer data field'));assert.ok(html.includes('Existing customer records stay available'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.CustomerDataPage));assert.ok(html.includes('Sign in to view Customer Data'));checks++;
+  const customerCollection={id:'c',workspace_id:'w',automation_id:'a',automation_name:'Shop assistant',version:1,fields:['Name','Phone'],active:true,automation_status:'active',automation_updated_at:'2026-10-18',instagram_username:'our_shop',customer_count:4,created_at:'2026-10-18',updated_at:'2026-10-18'};
+  for(const [status,deleted,label,tone] of [['active',null,'Active','active'],['paused',null,'Inactive','inactive'],['active','2026-10-18','Deleted','deleted']]){const c={...customerCollection,automation_status:status,automation_deleted_at:deleted};html=renderToStaticMarkup(React.createElement(ui.AutomationDataCard,{group:{id:'a',current:c,versions:[c]},selected:false,onOpen:noop}));assert.ok(html.includes('cd-card-'+tone));assert.ok(html.includes(label));assert.ok(html.includes('@our_shop'));assert.ok(html.includes('View customers'));checks++;}
+  html=renderToStaticMarkup(React.createElement(ui.CustomerRecordDetails,{record:{id:'r',customer_key:'customer',username:'asha',data:{Name:'Asha'},instagram_id:'ig-customer',source_instagram_username:'our_shop',source_instagram_id:'business-id',created_at:'2026-10-18T12:00:00Z',updated_at:'2026-10-18T12:20:00Z',purchase_reported_at:'2026-10-18T12:15:00Z',purchase_product:'Watch'},fields:['Name','Phone'],onClose:noop}));for(const text of ['Customer information','Instagram source','Customer timeline','ig-customer','business-id','First message','Purchase reported','Watch','does not verify payment'])assert.ok(html.includes(text),text);checks++;
   const clock = Date.parse('2026-10-06T12:00:00Z');
   assert.equal(ui.relativeAutomationTime('2026-10-06T09:00:00Z',clock),'3 hours ago');
   assert.equal(ui.relativeAutomationTime('2026-10-06T09:00:00Z',clock+3600000),'4 hours ago');

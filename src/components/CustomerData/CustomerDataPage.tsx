@@ -1,16 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Database,
   Search,
   Download,
-  ArrowUpRight,
   RefreshCw,
-  Table2,
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
-  Archive,
+  ArrowUpRight,
+  Table2,
+  Instagram,
+  Check,
   Users,
+  Plus,
+  ArrowLeft,
+  Clock3,
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { supabase } from "../../lib/supabase";
@@ -19,13 +23,19 @@ import {
   CustomerRecord,
   customerCsv,
   customerSearchPattern,
+  groupAutomationData,
+  automationDataStatus,
+  customerDisplayName,
+  wasAutomationUpdated,
+  CUSTOMER_RECORD_COLUMNS,
 } from "../../lib/customerData";
+import { AutomationDataCard } from "./AutomationDataCard";
+import {
+  CustomerRecordDetails,
+  formatCustomerTime,
+} from "./CustomerRecordDetails";
+import "./customer-data.css";
 const PAGE_SIZE = 25;
-const formatDate = (text: string) =>
-  new Date(text).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
 export const CustomerDataPage = () => {
   const { workspaceId, setActiveTab, firebaseUser } = useApp();
   const [collections, setCollections] = useState<CustomerCollection[]>([]),
@@ -36,16 +46,30 @@ export const CustomerDataPage = () => {
     [search, setSearch] = useState(""),
     [query, setQuery] = useState(""),
     [page, setPage] = useState(0);
-  const [loading, setLoading] = useState(true),
+  const [loading, setLoading] = useState(false),
+    [listLoading, setListLoading] = useState(true),
     [error, setError] = useState(""),
     [exporting, setExporting] = useState(false),
-    [revision, setRevision] = useState(0),
-    [listReady, setListReady] = useState(false);
-  const [detail, setDetail] = useState<CustomerRecord | null>(null);
+    [revision, setRevision] = useState(0);
+  const [detail, setDetail] = useState<CustomerRecord | null>(null),
+    [filter, setFilter] = useState("all");
+  const groups = useMemo(
+    () => groupAutomationData(scope === workspaceId ? collections : []),
+    [collections, scope, workspaceId],
+  );
   const selected =
     scope === workspaceId
       ? collections.find((c) => c.id === selectedId)
       : undefined;
+  const selectedGroup = groups.find((g) => g.id === selected?.automation_id);
+  const visibleGroups = groups.filter(
+    (g) =>
+      filter === "all" ||
+      (filter === "updated"
+        ? automationDataStatus(g.current).tone !== "deleted" &&
+          wasAutomationUpdated(g.current)
+        : automationDataStatus(g.current).tone === filter),
+  );
   useEffect(() => {
     const timer = setTimeout(() => {
       setQuery(search);
@@ -56,51 +80,51 @@ export const CustomerDataPage = () => {
   useEffect(() => {
     setScope("");
     setCollections([]);
+    setSelectedId("");
     setRows([]);
     setSearch("");
     setQuery("");
     setPage(0);
     setDetail(null);
-    setListReady(false);
+    setFilter("all");
   }, [workspaceId]);
   useEffect(() => {
     let alive = true;
     if (!firebaseUser?.uid) {
-      setLoading(false);
+      setListLoading(false);
       return;
     }
     const load = async () => {
       try {
-        const { data, error } = await supabase
-          .from("autoreply_data_collections")
-          .select("*")
-          .eq("workspace_id", workspaceId)
-          .order("updated_at", { ascending: false })
-          .limit(1000);
+        const { data, error } = await supabase.rpc(
+          "autoreply_customer_collections",
+          { p_workspace: workspaceId },
+        );
         if (error) throw error;
         if (!alive) return;
-        setCollections(data || []);
+        if (!Array.isArray(data)) throw new Error("Invalid customer tables");
+        setCollections(data);
         setScope(workspaceId);
-        setSelectedId((old) =>
-          (data || []).some((c) => c.id === old) ? old : data?.[0]?.id || "",
-        );
-        setListReady(true);
         setError("");
-        if (!data?.length) setLoading(false);
       } catch {
-        if (alive) {
-          setError("Customer tables could not be loaded. Please retry.");
-          setLoading(false);
-        }
+        if (alive) setError("Could not load automation tables. Please retry.");
+      } finally {
+        if (alive) setListLoading(false);
       }
     };
+    setListLoading(true);
     void load();
     const timer = setInterval(() => {
       if (!document.hidden) void load();
-    }, 30000);
+    }, 15000);
+    const onFocus = () => {
+      if (!document.hidden) void load();
+    };
+    window.addEventListener("focus", onFocus);
     return () => {
       alive = false;
       clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
     };
   }, [workspaceId, firebaseUser?.uid, revision]);
   useEffect(() => {
@@ -108,20 +132,18 @@ export const CustomerDataPage = () => {
     setRows([]);
     setTotal(0);
     setDetail(null);
-    if (!selected || !listReady) return;
-    const load = async () => {
-      setLoading(true);
+    if (!selected) return;
+    const load = async (initial = false) => {
+      if (initial) setLoading(true);
       try {
-        let request = supabase
+        let req = supabase
           .from("autoreply_customer_records")
-          .select("id,customer_key,username,data,created_at,updated_at", {
-            count: "exact",
-          })
+          .select(CUSTOMER_RECORD_COLUMNS, { count: "exact" })
           .eq("workspace_id", workspaceId)
           .eq("collection_id", selected.id);
         if (query.trim())
-          request = request.ilike("search_text", customerSearchPattern(query));
-        const { data, count, error } = await request
+          req = req.ilike("search_text", customerSearchPattern(query));
+        const { data, count, error } = await req
           .order("created_at", { ascending: false })
           .order("id")
           .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
@@ -129,24 +151,33 @@ export const CustomerDataPage = () => {
         if (alive) {
           setRows(data || []);
           setTotal(count || 0);
+          setDetail((old) =>
+            old ? (data || []).find((r) => r.id === old.id) || old : null,
+          );
           setError("");
         }
       } catch {
-        if (alive)
-          setError("Customer records could not be loaded. Please retry.");
+        if (alive) setError("Could not load customer records. Please retry.");
       } finally {
         if (alive) setLoading(false);
       }
     };
-    void load();
+    void load(true);
     const timer = setInterval(() => {
       if (!document.hidden) void load();
-    }, 30000);
+    }, 15000);
     return () => {
       alive = false;
       clearInterval(timer);
     };
-  }, [workspaceId, selected?.id, listReady, page, query, revision]);
+  }, [workspaceId, selected?.id, page, query, revision]);
+  const openTable = (id: string) => {
+    setSelectedId(id);
+    setSearch("");
+    setQuery("");
+    setPage(0);
+    setDetail(null);
+  };
   const exportCsv = async () => {
     if (!selected || exporting) return;
     setExporting(true);
@@ -154,14 +185,14 @@ export const CustomerDataPage = () => {
     try {
       const all: CustomerRecord[] = [];
       for (let offset = 0; offset < 100000; offset += 1000) {
-        let request = supabase
+        let req = supabase
           .from("autoreply_customer_records")
-          .select("id,customer_key,username,data,created_at,updated_at")
+          .select(CUSTOMER_RECORD_COLUMNS)
           .eq("workspace_id", workspaceId)
           .eq("collection_id", selected.id);
         if (query.trim())
-          request = request.ilike("search_text", customerSearchPattern(query));
-        const { data, error } = await request
+          req = req.ilike("search_text", customerSearchPattern(query));
+        const { data, error } = await req
           .order("created_at", { ascending: false })
           .order("id")
           .range(offset, offset + 999);
@@ -177,15 +208,12 @@ export const CustomerDataPage = () => {
           type: "text/csv;charset=utf-8;",
         }),
         url = URL.createObjectURL(blob),
-        link = document.createElement("a");
-      link.href = url;
-      link.download =
+        a = document.createElement("a");
+      a.href = url;
+      a.download =
         (selected.automation_name.replace(/[^\p{L}\p{N}_-]/gu, "_") ||
-          "Customer_Data") +
-        "_v" +
-        selected.version +
-        ".csv";
-      link.click();
+          "Customer_Data") + ".csv";
+      a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e: any) {
       setError(e?.message || "Export failed. Please retry.");
@@ -193,257 +221,346 @@ export const CustomerDataPage = () => {
       setExporting(false);
     }
   };
+  useEffect(() => {
+    if (!selectedId) return;
+    const panel = document.getElementById("customer-records-panel");
+    panel?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+      block: "start",
+    });
+    panel?.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
+  }, [selectedId]);
+  useEffect(() => {
+    if (!detail) return;
+    document.querySelector(".cd-customer-detail")?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+      block: "nearest",
+    });
+  }, [detail?.id]);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return (
-    <div className="min-h-full bg-[#F8FAFC] p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-[1440px] space-y-6">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[.16em] text-indigo-600">
-              Your workspace database
-            </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
-              Customer Data
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Customer details, organized by automation. A lasting record of the
-              conversations that grow your business.
-            </p>
-          </div>
-          <button
-            onClick={() => setRevision((v) => v + 1)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600"
-          >
-            <RefreshCw
-              className={"h-4 w-4 " + (loading ? "animate-spin" : "")}
-            />
-            Refresh
-          </button>
-        </header>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Stat
-            icon={Table2}
-            label="Table versions"
-            value={scope === workspaceId ? collections.length : 0}
-          />
-          <Stat
-            icon={Database}
-            label="Automations with data tables"
-            value={
-              scope === workspaceId
-                ? new Set(collections.map((c) => c.automation_id)).size
-                : 0
-            }
-          />
-          <div className="flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-5">
-            <ShieldCheck className="mt-1 h-5 w-5 shrink-0 text-indigo-600" />
-            <div>
-              <p className="text-sm font-semibold text-slate-800">
-                Your records stay with you
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                Deleting an automation keeps its customer tables. Field changes
-                create a new version.
-              </p>
-            </div>
-          </div>
+    <div className="customer-data-workspace">
+      <header className="cd-page-header">
+        <div>
+          <span className="cd-kicker">WORKSPACE / CUSTOMER DATA</span>
+          <h1>Customer Data</h1>
+          <p>
+            Customer details, organized by automation. Instagram identity and
+            activity times are captured automatically.
+          </p>
         </div>
-        {error && (
-          <div
-            role="alert"
-            className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
-          >
-            {error}{" "}
-            <button
-              onClick={() => setRevision((v) => v + 1)}
-              className="ml-2 font-bold underline"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-        {!firebaseUser?.uid ? (
-          <Empty
-            title="Sign in to view Customer Data"
-            text="Customer information is available only to the signed-in workspace owner."
+        <button
+          className="cd-button cd-button-secondary"
+          onClick={() => setRevision((v) => v + 1)}
+        >
+          <RefreshCw
+            size={15}
+            className={loading || listLoading ? "cd-spin" : ""}
           />
-        ) : scope !== workspaceId || !listReady ? (
-          <Empty
-            title={error ? "Tables unavailable" : "Loading customer tables…"}
-            text="Your workspace records will appear here."
-          />
-        ) : !collections.length ? (
-          <Empty
-            title="Your first customer table starts here"
-            text="Enable Customer Data in an automation and choose the information to capture. New customer messages fill the table automatically."
-            action={() => setActiveTab("automations")}
-          />
-        ) : (
-          <div className="grid min-w-0 gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-            <aside className="self-start overflow-hidden rounded-2xl border border-slate-200 bg-white">
-              <div className="border-b border-slate-100 p-4">
-                <h2 className="text-sm font-bold text-slate-900">
-                  Automation tables
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Current and preserved versions
-                </p>
+          Refresh
+        </button>
+      </header>
+      <div className="cd-summary-bar">
+        <span>
+          <Database size={16} />
+          <strong>{groups.length}</strong> automations
+        </span>
+        <span>
+          <Users size={16} />
+          <strong>
+            {collections
+              .reduce((n, c) => n + (c.customer_count || 0), 0)
+              .toLocaleString()}
+          </strong>{" "}
+          customer records
+        </span>
+        <span>
+          <ShieldCheck size={16} />
+          Records stay saved after deletion
+        </span>
+      </div>
+      {error && (
+        <div role="alert" className="cd-error">
+          {error}
+          <button onClick={() => setRevision((v) => v + 1)}>Retry</button>
+        </div>
+      )}
+      {!firebaseUser?.uid ? (
+        <Empty
+          title="Sign in to view Customer Data"
+          text="Customer information is available only to the signed-in workspace owner."
+        />
+      ) : scope !== workspaceId ? (
+        <Empty
+          title={
+            error
+              ? "Automation tables unavailable"
+              : "Loading automation tables…"
+          }
+          text="Your customer records will appear here."
+        />
+      ) : !groups.length ? (
+        <Empty
+          title="A dedicated space for every automation"
+          text="Enable Customer Data in an automation. Names, phone numbers and other selected details will fill in automatically."
+          action={() => setActiveTab("automations")}
+        />
+      ) : (
+        <>
+          <section aria-labelledby="automation-data-heading">
+            <div className="cd-section-title">
+              <div>
+                <h2 id="automation-data-heading">Your automations</h2>
+                <p>Choose an automation to explore its customers.</p>
               </div>
-              <div className="max-h-[600px] space-y-1 overflow-y-auto p-2">
-                {collections.map((c) => (
+              <div className="cd-filters" aria-label="Filter automations">
+                {[
+                  ["all", "All"],
+                  ["active", "Active"],
+                  ["inactive", "Inactive"],
+                  ["updated", "Updated"],
+                  ["deleted", "Deleted"],
+                ].map(([value, label]) => (
                   <button
-                    key={c.id}
-                    aria-pressed={c.id === selectedId}
-                    onClick={() => {
-                      setSelectedId(c.id);
-                      setPage(0);
-                      setSearch("");
-                      setQuery("");
-                    }}
-                    className={
-                      "w-full rounded-xl border p-3 text-left " +
-                      (c.id === selectedId
-                        ? "border-indigo-200 bg-indigo-50"
-                        : "border-transparent hover:bg-slate-50")
-                    }
+                    key={value}
+                    aria-pressed={filter === value}
+                    onClick={() => setFilter(value)}
                   >
-                    <p className="break-words text-sm font-semibold text-slate-800">
-                      {c.automation_name}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                      <span className="text-slate-500">
-                        Version {c.version}
-                      </span>
-                      <span
-                        className={
-                          c.automation_deleted_at
-                            ? "text-rose-600"
-                            : c.active
-                              ? "text-emerald-700"
-                              : "text-amber-700"
-                        }
-                      >
-                        {c.automation_deleted_at
-                          ? "Automation deleted"
-                          : c.active
-                            ? "Current table"
-                            : "Archived"}
-                      </span>
-                    </div>
+                    {label}
                   </button>
                 ))}
               </div>
-            </aside>
-            {selected && (
-              <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Table2 className="h-5 w-5 text-indigo-500" />
-                        <h2 className="break-words text-lg font-bold text-slate-900">
-                          {selected.automation_name}
-                        </h2>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Version {selected.version} · {total.toLocaleString()}{" "}
-                        {query ? "matching " : ""}customers ·{" "}
-                        {selected.fields.length} fields
-                      </p>
-                    </div>
-                    <button
-                      disabled={loading || !total || exporting}
-                      onClick={() => void exportCsv()}
-                      className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white disabled:opacity-40"
-                    >
-                      <Download className="h-4 w-4" />
-                      {exporting ? "Exporting…" : "Export CSV"}
-                    </button>
-                  </div>
-                  {(!selected.active || selected.automation_deleted_at) && (
-                    <p className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-                      <Archive className="h-4 w-4 shrink-0" />
-                      {selected.automation_deleted_at
-                        ? "Automation deleted. These customer records are preserved and available for export."
-                        : "This table is archived. New captures use the current version when capture is enabled."}
-                    </p>
-                  )}
-                  <label className="mt-5 flex max-w-md items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
-                    <Search className="h-4 w-4 shrink-0 text-slate-400" />
-                    <input
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      aria-label="Search customer details"
-                      placeholder="Search name, phone, email or any detail…"
-                      className="min-h-11 w-full min-w-0 bg-transparent text-sm outline-none"
-                    />
-                  </label>
-                </div>
-                {loading ? (
-                  <div
-                    role="status"
-                    className="p-14 text-center text-sm text-slate-500"
-                  >
-                    Loading customer records…
-                  </div>
-                ) : !rows.length ? (
-                  <Empty
-                    title={
-                      query
-                        ? "No matching customers"
-                        : "Waiting for customer details"
-                    }
-                    text={
-                      query
-                        ? "Try a different name, phone number or search term."
-                        : "Customer messages received by this automation will create one row per customer. Only details they share are filled in."
-                    }
+            </div>
+            {visibleGroups.length ? (
+              <div className="cd-automation-grid">
+                {visibleGroups.map((group) => (
+                  <AutomationDataCard
+                    key={group.id}
+                    group={group}
+                    selected={selected?.automation_id === group.id}
+                    onOpen={() => openTable(group.current.id)}
                   />
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full whitespace-nowrap text-left text-sm">
-                      <thead className="bg-slate-50 text-xs font-semibold text-slate-500">
+                ))}
+              </div>
+            ) : (
+              <div className="cd-filter-empty">
+                No automations match this filter.
+              </div>
+            )}
+          </section>
+          {!selected && (
+            <div className="cd-get-started">
+              <Table2 size={19} />
+              <p>
+                <strong>Your customer workspace is ready.</strong> Open an
+                automation card to view customer information, Instagram
+                identities and activity times.
+              </p>
+            </div>
+          )}
+          {selected && (
+            <section
+              id="customer-records-panel"
+              className="cd-records-panel"
+              aria-labelledby="records-heading"
+            >
+              <header className="cd-records-header">
+                <div>
+                  <button
+                    className="cd-back"
+                    onClick={() => {
+                      setSelectedId("");
+                      setDetail(null);
+                    }}
+                  >
+                    <ArrowLeft size={14} />
+                    Close table
+                  </button>
+                  <h2 id="records-heading" tabIndex={-1}>
+                    {selected.automation_name}
+                  </h2>
+                  <p>
+                    <Instagram size={14} />
+                    {selected.instagram_username
+                      ? "@" + selected.instagram_username
+                      : "Instagram"}
+                    <span>·</span>
+                    {total.toLocaleString()} {query ? "matching " : ""}customers
+                    <span>·</span>
+                    {selected.fields.length} fields
+                  </p>
+                </div>
+                <div className="cd-records-actions">
+                  {(selectedGroup?.versions.length || 0) > 1 && (
+                    <label className="cd-version-select">
+                      <span>Saved table</span>
+                      <select
+                        aria-label="Saved table version"
+                        value={selected.id}
+                        onChange={(e) => openTable(e.target.value)}
+                      >
+                        {selectedGroup?.versions.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            Version {c.version}
+                            {c.id === selectedGroup.current.id
+                              ? " · Current"
+                              : " · Archived"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <button
+                    className="cd-button cd-button-primary"
+                    disabled={loading || !total || exporting}
+                    onClick={() => void exportCsv()}
+                  >
+                    <Download size={15} />
+                    {exporting ? "Exporting…" : "Export CSV"}
+                  </button>
+                </div>
+              </header>
+              {selected.automation_deleted_at && (
+                <div className="cd-notice cd-notice-deleted">
+                  <ShieldCheck size={16} />
+                  Automation deleted. All saved customer information is still
+                  available.
+                </div>
+              )}
+              {(selected.schema_revision || 1) > 1 &&
+                !selected.automation_deleted_at && (
+                  <div className="cd-notice cd-notice-updated">
+                    <Plus size={16} />
+                    Fields updated automatically. Earlier customer details are
+                    preserved.
+                  </div>
+                )}
+              <div className="cd-table-toolbar">
+                <label className="cd-search">
+                  <Search size={16} />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    aria-label="Search customer details"
+                    placeholder="Search name, phone, email or customer…"
+                  />
+                </label>
+                <span
+                  className={
+                    "cd-live-indicator " +
+                    (selected.active && selected.automation_status === "active"
+                      ? ""
+                      : "is-paused")
+                  }
+                >
+                  <i />
+                  {selected.automation_deleted_at
+                    ? "Preserved records"
+                    : !selected.active
+                      ? "Capture off"
+                      : selected.automation_status === "active"
+                        ? "Auto capture"
+                        : "Automation inactive"}
+                </span>
+              </div>
+              {loading ? (
+                <div role="status" className="cd-records-loading">
+                  Loading customer records…
+                </div>
+              ) : !rows.length ? (
+                <Empty
+                  title={
+                    query
+                      ? "No matching customers"
+                      : "Your next conversation starts this table"
+                  }
+                  text={
+                    query
+                      ? "Try another name, phone number or email."
+                      : "When a customer messages this automation, their Instagram identity and arrival time are captured. Shared details fill in the same row."
+                  }
+                />
+              ) : (
+                <>
+                  <div className="cd-table-wrap">
+                    <table>
+                      <thead>
                         <tr>
-                          <th className="px-5 py-3">Customer</th>
+                          <th>Customer</th>
                           {selected.fields.map((f) => (
-                            <th key={f} className="px-5 py-3">
-                              {f}
-                            </th>
+                            <th key={f}>{f}</th>
                           ))}
-                          <th className="px-5 py-3">Last updated</th>
-                          <th className="px-5 py-3">
-                            <span className="sr-only">Details</span>
+                          <th>First message</th>
+                          <th>Latest message</th>
+                          <th>Purchase reported</th>
+                          <th>
+                            <span className="cd-visually-hidden">
+                              Customer details
+                            </span>
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {rows.map((row) => (
-                          <tr key={row.id} className="hover:bg-indigo-50/30">
-                            <td className="px-5 py-4 font-medium text-slate-800">
-                              {row.username && row.username !== row.customer_key
-                                ? "@" + row.username
-                                : row.customer_key}
+                      <tbody>
+                        {rows.map((r) => (
+                          <tr key={r.id}>
+                            <td>
+                              <button
+                                className="cd-customer-name"
+                                onClick={() => setDetail(r)}
+                              >
+                                {customerDisplayName(r)}
+                              </button>
+                              <small>
+                                {r.username && r.username !== r.customer_key
+                                  ? "@" + r.username
+                                  : "ID " + (r.instagram_id || r.customer_key)}
+                              </small>
                             </td>
                             {selected.fields.map((f) => (
-                              <td
-                                key={f}
-                                className="max-w-60 truncate px-5 py-4 text-slate-600"
-                                title={row.data?.[f] || ""}
-                              >
-                                {row.data?.[f] || (
-                                  <span className="text-slate-300">—</span>
+                              <td key={f} title={r.data?.[f] || ""}>
+                                {r.data?.[f] || (
+                                  <span className="cd-unshared">
+                                    Not shared
+                                  </span>
                                 )}
                               </td>
                             ))}
-                            <td className="px-5 py-4 text-xs text-slate-500">
-                              {formatDate(row.updated_at)}
+                            <td className="cd-time-cell">
+                              {formatCustomerTime(
+                                r.first_seen_at || r.created_at,
+                              )}
                             </td>
-                            <td className="px-5 py-4">
+                            <td className="cd-time-cell">
+                              {formatCustomerTime(
+                                r.last_seen_at || r.updated_at,
+                              )}
+                            </td>
+                            <td className="cd-time-cell">
+                              {r.purchase_reported_at ? (
+                                <span className="cd-purchase">
+                                  <Check size={13} />
+                                  {formatCustomerTime(r.purchase_reported_at)}
+                                </span>
+                              ) : (
+                                <span className="cd-unshared">
+                                  Not reported
+                                </span>
+                              )}
+                            </td>
+                            <td>
                               <button
-                                onClick={() => setDetail(row)}
-                                aria-label={"View details for " + row.username}
-                                className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-50"
+                                className="cd-icon-button"
+                                aria-label={
+                                  "View details for " +
+                                  (r.username || r.customer_key)
+                                }
+                                onClick={() => setDetail(r)}
                               >
-                                <ArrowUpRight className="h-4 w-4" />
+                                <ArrowUpRight size={16} />
                               </button>
                             </td>
                           </tr>
@@ -451,102 +568,94 @@ export const CustomerDataPage = () => {
                       </tbody>
                     </table>
                   </div>
-                )}
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 text-xs text-slate-500">
-                  <span>
-                    {total
-                      ? `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} of ${total.toLocaleString()}`
-                      : "0 customers"}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <button
-                      aria-label="Previous page"
-                      disabled={page === 0 || loading}
-                      onClick={() => setPage((p) => p - 1)}
-                      className="rounded-lg border border-slate-200 p-2 disabled:opacity-30"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    <span>Page {page + 1}</span>
-                    <button
-                      aria-label="Next page"
-                      disabled={(page + 1) * PAGE_SIZE >= total || loading}
-                      onClick={() => setPage((p) => p + 1)}
-                      className="rounded-lg border border-slate-200 p-2 disabled:opacity-30"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                {detail && (
-                  <section
-                    className="border-t border-indigo-100 bg-indigo-50/30 p-5"
-                    aria-label="Customer details"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="font-semibold text-slate-900">
-                        Customer details
-                      </h3>
-                      <button
-                        onClick={() => setDetail(null)}
-                        className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs"
-                      >
-                        Close details
-                      </button>
-                    </div>
-                    <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-                      {[
-                        ["Instagram", detail.username || detail.customer_key],
-                        ...selected.fields.map((f) => [
-                          f,
-                          detail.data?.[f] || "Not shared",
-                        ]),
-                        ["First captured", formatDate(detail.created_at)],
-                        ["Last updated", formatDate(detail.updated_at)],
-                      ].map(([name, value]) => (
-                        <div key={name}>
-                          <dt className="text-xs font-semibold text-slate-500">
-                            {name}
-                          </dt>
-                          <dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">
-                            {value}
-                          </dd>
+                  <div className="cd-mobile-records">
+                    {rows.map((r) => (
+                      <article key={r.id} className="cd-mobile-customer">
+                        <div>
+                          <button
+                            className="cd-customer-name"
+                            onClick={() => setDetail(r)}
+                          >
+                            {customerDisplayName(r)}
+                          </button>
+                          <button
+                            className="cd-icon-button"
+                            aria-label={
+                              "View customer " + (r.username || r.customer_key)
+                            }
+                            onClick={() => setDetail(r)}
+                          >
+                            <ArrowUpRight size={16} />
+                          </button>
                         </div>
-                      ))}
-                    </dl>
-                  </section>
-                )}
-              </section>
-            )}
-          </div>
-        )}
-      </div>
+                        <p>
+                          {r.username && r.username !== r.customer_key
+                            ? "@" + r.username
+                            : "Instagram ID: " +
+                              (r.instagram_id || r.customer_key)}
+                        </p>
+                        <dl>
+                          {selected.fields.slice(0, 3).map((f) => (
+                            <div key={f}>
+                              <dt>{f}</dt>
+                              <dd>{r.data?.[f] || "Not shared"}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                        <span>
+                          <Clock3 size={13} />
+                          First message ·{" "}
+                          {formatCustomerTime(r.first_seen_at || r.created_at)}
+                        </span>
+                      </article>
+                    ))}
+                  </div>
+                </>
+              )}
+              <footer className="cd-table-footer">
+                <span>
+                  {total
+                    ? `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} of ${total.toLocaleString()}`
+                    : "0 customers"}
+                </span>
+                <div>
+                  <button
+                    className="cd-icon-button"
+                    aria-label="Previous page"
+                    disabled={page === 0 || loading}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span>Page {page + 1}</span>
+                  <button
+                    className="cd-icon-button"
+                    aria-label="Next page"
+                    disabled={(page + 1) * PAGE_SIZE >= total || loading}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </footer>
+              {detail && (
+                <CustomerRecordDetails
+                  record={detail}
+                  fields={selected.fields}
+                  onClose={() => setDetail(null)}
+                />
+              )}
+              <div className="cd-timezone-note">
+                <Clock3 size={13} />
+                Times shown in {timezone}. CSV timestamps use UTC.
+              </div>
+            </section>
+          )}
+        </>
+      )}
     </div>
   );
 };
-function Stat({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof Database;
-  label: string;
-  value: number;
-}) {
-  return (
-    <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5">
-      <span className="grid h-11 w-11 place-items-center rounded-xl bg-slate-50 text-indigo-600">
-        <Icon className="h-5 w-5" />
-      </span>
-      <div>
-        <p className="text-2xl font-bold text-slate-950">
-          {value.toLocaleString()}
-        </p>
-        <p className="mt-1 text-xs text-slate-500">{label}</p>
-      </div>
-    </div>
-  );
-}
 function Empty({
   title,
   text,
@@ -557,19 +666,14 @@ function Empty({
   action?: () => void;
 }) {
   return (
-    <div className="rounded-2xl bg-white px-5 py-14 text-center">
-      <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-indigo-50 text-indigo-500">
-        <Users className="h-6 w-6" />
+    <div className="cd-empty">
+      <span>
+        <Database size={25} />
       </span>
-      <h2 className="mt-4 text-base font-semibold text-slate-900">{title}</h2>
-      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
-        {text}
-      </p>
+      <h3>{title}</h3>
+      <p>{text}</p>
       {action && (
-        <button
-          onClick={action}
-          className="mt-5 min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white"
-        >
+        <button className="cd-button cd-button-primary" onClick={action}>
           Set up an automation
         </button>
       )}
