@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   cleanEnvironment,
@@ -114,7 +115,7 @@ export function cashfreeOrderExpiry(value: string) {
 export async function billingDb(path: string, method = "GET", body?: any) {
   const secret = cleanEnvironment(process.env.SUPABASE_SERVICE_ROLE_KEY);
   if (!secret) throw new BillingError("Payment storage is not configured.");
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  const response = await httpFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
     headers: {
       apikey: secret,
@@ -149,7 +150,7 @@ export async function cashfreeRequest(
     cfg.mode === "production"
       ? "https://api.cashfree.com/pg"
       : "https://sandbox.cashfree.com/pg";
-  const response = await fetch(base + path, {
+  const response = await httpFetch(base + path, {
     method,
     headers: {
       "x-client-id": cleanEnvironment(process.env.CASHFREE_CLIENT_ID),
