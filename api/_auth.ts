@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
 import { SUPABASE_URL, authenticatedUser } from '../src/server/supabaseConfig.js';
 
@@ -47,7 +48,7 @@ async function verifyBearer(req: any): Promise<Identity | null> {
 async function verifyGuestWorkspace(req: any): Promise<Identity | null> {
   const workspaceId = readCookie(req, 'autoreply_guest_workspace');
   if (!/^guest_[a-f0-9-]{16,}$/i.test(workspaceId)) return null;
-  const response = await fetch(ACCOUNT_STORE_URL, {
+  const response = await httpFetch(ACCOUNT_STORE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...guestStoreHeaders() },
     body: JSON.stringify({ action: 'load', workspaceId }),
