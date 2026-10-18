@@ -1047,9 +1047,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           );
         }
       })
-      .catch((err) =>
-        console.warn('[AUTOMATION_SAVE_WARN]', err?.message || err)
-      );
+      .catch((err) => {
+        console.error('[AUTOMATION_SAVE_FAILED]', err?.message || err);
+        // Optimistic UI state is not proof of persistence. Tell the user
+        // explicitly rather than silently losing the prompt after a reload.
+        window.alert('Automation could not be saved to the server. Your changes may disappear after refresh. Please retry. ' + (err?.message || ''));
+      });
   };
 
   const hasDuplicateAutomationName = (name: string, exceptId?: string) =>
