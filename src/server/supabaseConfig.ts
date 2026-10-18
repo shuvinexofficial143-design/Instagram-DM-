@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 /** One configuration for server auth, storage and webhook delivery. */
 export function cleanEnvironment(value: unknown): string {
   const text = String(value || '').trim();
@@ -47,7 +48,7 @@ export async function upstreamFetch(url: string, init: RequestInit = {}, service
   const attempts = (init.method || 'GET').toUpperCase() === 'GET' ? 2 : 1;
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
-      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      const response = await httpFetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
       if (attempt + 1 < attempts && [502, 503, 504].includes(response.status)) {
         await response.body?.cancel();
         continue;
