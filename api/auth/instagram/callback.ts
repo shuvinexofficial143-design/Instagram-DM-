@@ -1,4 +1,4 @@
-import { fetch as httpFetch } from 'undici';
+import { typedFetch as httpFetch } from '../../../src/server/typedFetch.js';
 import { normalizeAppUrl, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../../src/server/supabaseConfig.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
