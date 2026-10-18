@@ -97,9 +97,8 @@ export default async function handler(req: any, res: any) {
         return res.status(413).json({ ok: false, error: 'Automation is too large.' });
       }
 
-      if(automation.trigger_type==='dm_ai_conversation') {
-        await ensureAutomationSheet(workspaceId,String(req.headers?.authorization || '').replace(/^Bearer\s+/i,''),String(automation.id),String(automation.name)+' AI Leads',automation.trigger_config?.sheet_fields || ['Name','Phone','Product','City']);
-      }
+      // Sheets integration is optional; saving an AI automation must not provision a sheet.
+
       const { response, payload } = await callStore({
         action: 'save_automation',
         workspaceId,
