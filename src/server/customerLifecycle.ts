@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import {timingSafeEqual} from 'node:crypto';
 import {authenticatedUser,cleanEnvironment} from './supabaseConfig.js';
 import {billingDb,businessDetails} from './cashfree.js';
@@ -10,7 +11,7 @@ function trimmed(value:unknown,max=100){return String(value||'').trim().slice(0,
 async function sendProvider(to:string,subject:string,plain:string,html:string,key:string){
  if(!mailConfigured())return null;
  const token=cleanEnvironment(process.env.RESEND_API_KEY),from=cleanEnvironment(process.env.RESEND_FROM_EMAIL);
- const r=await fetch('https://api.resend.com/emails',{
+ const r=await httpFetch('https://api.resend.com/emails',{
   method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','Idempotency-Key':key},
   body:JSON.stringify({from,to:[to],subject,text:plain,html}),signal:AbortSignal.timeout(8000)
  });
