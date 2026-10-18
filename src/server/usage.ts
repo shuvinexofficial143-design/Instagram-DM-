@@ -1,3 +1,4 @@
+import { fetch as httpFetch } from 'undici';
 import { enforceRateLimit, resolveAiIdentity } from '../../api/_auth.js';
 
 const SUPABASE_URL = String(
@@ -34,7 +35,7 @@ export default async function handler(req: any, res: any) {
   };
 
   try {
-    const response = await fetch(SUPABASE_URL + '/rest/v1/rpc/autoreply_billing_entitlement', {
+    const response = await httpFetch(SUPABASE_URL + '/rest/v1/rpc/autoreply_billing_entitlement', {
       method: 'POST', headers, body: JSON.stringify({ p_workspace_id: identity.userId }), signal: AbortSignal.timeout(8000),
     });
     if (!response.ok) throw new Error('Could not verify workspace usage');
