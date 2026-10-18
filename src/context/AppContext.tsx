@@ -875,9 +875,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshInstagramAccounts = async (followCookie=false) => {
     if (!firebaseUser?.uid) return;
     try {
-      const token = await auth.currentUser?.getIdToken();
-      const response = await fetch('/api/instagram/account', {credentials:'same-origin',cache:'no-store',headers:{Authorization:`Bearer ${token}`,...(!followCookie && workspaceId ? {'X-Autoreply-Workspace':workspaceId} : {})}});
-      const payload = await response.json();
+      // A transient network failure must not turn a connected workspace into an
+      // apparent disconnect. Retry only network/5xx/429 failures, never auth or
+      // other permanent 4xx errors.
+      let response: Response | undefined;
+      let payload: any;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const token = await auth.currentUser?.getIdToken(attempt > 0);
+          response = await fetch('/api/instagram/account', {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: {Authorization: `Bearer ${token}`, ...(!followCookie && workspaceId ? {'X-Autoreply-Workspace': workspaceId} : {})},
+            signal: AbortSignal.timeout(12000),
+          });
+          payload = await response.json();
+          if (response.ok || (response.status !== 429 && response.status < 500)) break;
+        } catch (error) {
+          if (attempt === 2) throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)));
+      }
+      if (!response) throw new Error('Instagram workspace is temporarily unreachable. Please try again.');
       if (auth.currentUser?.uid !== firebaseUser?.uid) return;
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Could not load Instagram accounts.');
       setInstagramAccounts(payload.accounts || []);
