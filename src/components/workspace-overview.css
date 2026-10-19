@@ -1,0 +1,73 @@
+/* Dashboard and Analytics size themselves to the workspace beside the sidebar.
+   Long DM previews and the automation table must not size their parent grid. */
+.workspace-overview {
+  width:100%;
+  min-width:0;
+  container:workspace-overview / inline-size;
+}
+.workspace-overview .overview-content,
+.workspace-overview .overview-content > *,
+.workspace-overview .grid > *,
+.workspace-overview .overview-panel-heading > div,
+.workspace-overview .overview-footnote > div {
+  min-width:0;
+}
+.workspace-overview :where(.overview-content) > .grid {
+  grid-template-columns:minmax(0,1fr);
+}
+.workspace-overview .overview-kpis.dashboard-kpis,
+.workspace-overview .overview-kpis.analytics-kpis {
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.workspace-overview .analytics-insight-row > :last-child { grid-column:auto; }
+.workspace-overview .analytics-kpis article > div:first-child { flex-wrap:wrap; }
+.workspace-overview .overview-heading { flex-direction:column; }
+.workspace-overview .overview-heading > div:first-child { flex:1 1 auto; min-width:0; }
+.workspace-overview .overview-period { flex-shrink:0; max-width:100%; }
+.workspace-overview .overview-period button { white-space:nowrap; padding-inline:10px; }
+.workspace-overview .overview-panel-heading { align-items:flex-start; }
+.workspace-overview .overview-panel-heading > div { flex:1; }
+.workspace-overview .overview-panel-heading > button { flex-shrink:0; white-space:nowrap; }
+.workspace-overview .dashboard-automation-panel { container:automation-panel / inline-size; }
+.workspace-overview .dashboard-automation-row { grid-template-columns:minmax(0,1fr); }
+.workspace-overview .dashboard-rule-stats { flex-wrap:wrap; gap:12px 18px; text-align:left; }
+.workspace-overview .overview-table-scroll { min-width:0; max-width:100%; overscroll-behavior-x:contain; }
+.workspace-overview .overview-footnote { flex-wrap:wrap; }
+.workspace-overview .overview-footnote > div { flex:1 1 auto; }
+.workspace-overview .overview-footnote > span { white-space:normal; }
+.workspace-overview input { max-width:100%; min-width:0; }
+
+@container workspace-overview (min-width:560px) {
+  .workspace-overview .overview-heading { flex-direction:row; align-items:flex-end; flex-wrap:nowrap; }
+  .workspace-overview .overview-footnote > div { flex-basis:300px; }
+}
+@container workspace-overview (min-width:700px) {
+  .workspace-overview .overview-kpis.analytics-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .workspace-overview .overview-kpis.dashboard-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .workspace-overview .analytics-insight-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .workspace-overview .analytics-insight-row > :last-child { grid-column:1 / -1; }
+}
+@container workspace-overview (min-width:960px) {
+  .workspace-overview .dashboard-panels { grid-template-columns:minmax(0,1.2fr) minmax(0,1.05fr) minmax(0,.75fr); }
+  .workspace-overview .analytics-chart-row { grid-template-columns:minmax(0,1.55fr) minmax(0,.85fr); }
+  .workspace-overview .analytics-performance-row { grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr); }
+  .workspace-overview .analytics-insight-row { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .workspace-overview .analytics-insight-row > :last-child { grid-column:auto; }
+  .workspace-overview .analytics-activity-row { grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr); }
+}
+@container workspace-overview (min-width:1320px) {
+  .workspace-overview .overview-kpis.analytics-kpis { grid-template-columns:repeat(6,minmax(0,1fr)); }
+}
+@container automation-panel (min-width:540px) {
+  .workspace-overview .dashboard-automation-row { grid-template-columns:minmax(0,1fr) auto; }
+  .workspace-overview .dashboard-rule-stats { text-align:right; }
+}
+@container workspace-overview (max-width:430px) {
+  .workspace-overview .overview-period { width:100%; }
+  .workspace-overview .overview-period button { flex:1; min-width:0; padding-inline:7px; font-size:14px!important; }
+  .workspace-overview .dashboard-account-metrics .text-xs { font-size:12px!important; }
+  .workspace-overview .overview-kpis .text-xs { font-size:14px!important; }
+  .workspace-overview .grid p { overflow-wrap:anywhere; }
+  .workspace-overview .overview-chart-dates.text-xs { font-size:11px!important; }
+  .workspace-overview .overview-panel-heading { flex-wrap:wrap; gap:8px; }
+}

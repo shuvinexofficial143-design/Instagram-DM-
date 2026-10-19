@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import '../workspace-overview.css';
 import { billingRequest } from '../../lib/billing';
 import {
   Zap, ChevronRight, ArrowRight, Send, Plus, Instagram,
@@ -96,14 +97,14 @@ export const HomePage: React.FC = () => {
   ];
 
   return (
-    <div className="dashboard-premium min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1400px] space-y-5">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="dashboard-premium workspace-overview min-h-full px-4 py-5 sm:px-6 lg:px-8">
+      <div className="overview-content mx-auto max-w-[1400px] space-y-5">
+        <header className="overview-heading flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="dashboard-premium-eyebrow">YOUR WORKSPACE</p><h1 className="text-[22px] font-bold tracking-tight text-slate-950 sm:text-[26px]">Dashboard</h1>
             <p className="mt-1 text-sm font-medium text-slate-500">Here’s what’s happening with your Instagram automation in the selected period.</p>
           </div>
-          <div className="inline-flex self-start rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+          <div className="overview-period inline-flex self-start rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
             {([['all','All Time'],['today','Today'],['7d','7 Days'],['30d','30 Days']] as const).map(([id,label]) => (
               <button key={id} onClick={() => setPeriod(id)} className={`min-h-10 rounded-lg px-3 text-xs font-semibold transition ${period === id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>{label}</button>
             ))}
@@ -122,7 +123,7 @@ export const HomePage: React.FC = () => {
                 <div className="flex min-w-0 items-center gap-3">
                   <UserAvatar src={instagramAccount?.profile_pic_url} username={instagramAccount?.username} showInstagramBadge size="lg" />
                   <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <p className="max-w-[220px] truncate whitespace-nowrap text-[14px] font-semibold text-slate-900 sm:max-w-[320px]">@{instagramAccount?.username}</p>
                       <span className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-bold ${accountExpired?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'}`}><span className={`h-1.5 w-1.5 rounded-full ${accountExpired?'bg-amber-500':'bg-emerald-500'}`} />{accountExpired?'Action required':'Connected'}</span>
                     </div>
@@ -137,7 +138,7 @@ export const HomePage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 pt-3">
+              <div className="dashboard-account-metrics mt-3 grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 pt-3">
                 <Metric label="Followers" value={instagramAccount?.followers_count} />
                 <Metric label="Following" value={followingCount} />
                 <Metric label="Posts" value={postsCount} />
@@ -160,7 +161,7 @@ export const HomePage: React.FC = () => {
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <section className="overview-kpis dashboard-kpis grid grid-cols-2 gap-3 lg:grid-cols-4">
           {kpis.map(({label,value,icon:Icon,tone}) => (
             <div key={label} className="rounded-[18px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_8px_26px_rgba(30,41,59,.05)] transition hover:-translate-y-0.5 hover:shadow-md sm:p-5">
               <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4.5 w-4.5" /></div>
@@ -171,9 +172,9 @@ export const HomePage: React.FC = () => {
           ))}
         </section>
 
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(230px,.75fr)]">
-          <section className="rounded-[20px] border border-slate-200/80 bg-white p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">
-          <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="dashboard-panels grid items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(230px,.75fr)]">
+          <section className="dashboard-automation-panel rounded-[20px] border border-slate-200/80 bg-white p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">
+          <div className="overview-panel-heading flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div><h2 className="flex items-center gap-2 text-base font-bold text-slate-950"><Zap className="h-4.5 w-4.5 text-violet-600" />Top Performing Automations</h2><p className="mt-1 text-xs font-medium text-slate-500">Performance from your existing automation data.</p></div>
             <button onClick={() => setActiveTab('automations')} className="inline-flex min-h-10 items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800">View All <ArrowRight className="h-3.5 w-3.5" /></button>
           </div>
@@ -189,20 +190,20 @@ export const HomePage: React.FC = () => {
               {topAutomations.map(auto => {
                 const runs=auto.stats?.runs || 0, sent=auto.stats?.dms_sent || 0;
                 const pct=runs > 0 ? Math.min(100,Math.round((sent/runs)*100)) : 0;
-                return <div key={auto.id} className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                return <div key={auto.id} className="dashboard-automation-row grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2"><p className="truncate text-sm font-bold text-slate-900">{auto.name}</p><span className={`rounded-full px-2 py-0.5 text-xs font-bold ${auto.status==='active'?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-500'}`}>{auto.status==='active'?'Active':'Paused'}</span></div>
                     <p className="mt-1 text-xs capitalize text-slate-500">{auto.trigger_type.replaceAll('_',' ')} automation</p>
                     <div className="mt-2 h-1.5 max-w-md overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-500" style={{width:`${pct}%`}} /></div>
                   </div>
-                  <div className="flex gap-5 text-xs sm:text-right"><div><p className="font-bold text-slate-900">{runs.toLocaleString()}</p><p className="text-slate-400">Triggered</p></div><div><p className="font-bold text-slate-900">{sent.toLocaleString()}</p><p className="text-slate-400">DMs sent</p></div><div><p className="font-bold text-slate-900">{runs>0?`${pct}%`:'—'}</p><p className="text-slate-400">Sent per trigger</p></div></div>
+                  <div className="dashboard-rule-stats flex gap-5 text-xs sm:text-right"><div><p className="font-bold text-slate-900">{runs.toLocaleString()}</p><p className="text-slate-400">Triggered</p></div><div><p className="font-bold text-slate-900">{sent.toLocaleString()}</p><p className="text-slate-400">DMs sent</p></div><div><p className="font-bold text-slate-900">{runs>0?`${pct}%`:'—'}</p><p className="text-slate-400">Sent per trigger</p></div></div>
                 </div>;
               })}
             </div>
           )}
         </section>
           <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4"><h2 className="text-base font-bold text-slate-950">Recent Activity</h2><button onClick={() => setActiveTab('inbox')} className="inline-flex min-h-10 items-center gap-1 text-xs font-bold text-indigo-600">View All <ChevronRight className="h-4 w-4" /></button></div>
+            <div className="overview-panel-heading flex items-center justify-between border-b border-slate-100 pb-4"><h2 className="text-base font-bold text-slate-950">Recent Activity</h2><button onClick={() => setActiveTab('inbox')} className="inline-flex min-h-10 items-center gap-1 text-xs font-bold text-indigo-600">View All <ChevronRight className="h-4 w-4" /></button></div>
             {workspaceDataLoading ? <p className="py-8 text-sm text-slate-500">Loading recent activity…</p> : recentActivity.length === 0 ? <div className="py-8 text-center"><Activity className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-700">No recent activity yet</p><p className="mt-1 text-xs text-slate-500">New Instagram conversations will appear here.</p></div> :
               <div className="divide-y divide-slate-100">{recentActivity.map(msg => <div key={msg.id} className="flex items-center gap-3 py-3.5"><UserAvatar src={msg.from_avatar} username={msg.from_username} size="sm" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{msg.direction==='out' ? `DM sent to @${msg.from_username}` : `@${msg.from_username} sent a DM`}</p><p className="truncate text-xs text-slate-500">{msg.message_text}</p></div><span className="shrink-0 text-xs text-slate-400">{relativeTime(msg.timestamp)}</span></div>)}</div>}
           </section>

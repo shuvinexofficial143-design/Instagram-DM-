@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
+import '../workspace-overview.css';
 import {
   Activity,
   AlertCircle,
@@ -417,8 +418,8 @@ export const AnalyticsPage: React.FC = () => {
     : 'Once Instagram conversations start coming in, this page will show message trends, AI performance, lead conversion and the busiest customer times.';
 
   return (
-    <div className="min-h-full bg-[#F7FAFF] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-      <div className="mx-auto max-w-[1480px] space-y-5 sm:space-y-6">
+    <div className="workspace-overview analytics-overview min-h-full bg-[#F7FAFF] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+      <div className="overview-content mx-auto max-w-[1480px] space-y-5 sm:space-y-6">
         <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="min-w-0">
@@ -499,7 +500,7 @@ export const AnalyticsPage: React.FC = () => {
           </div>
         </section>
 
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <section className="overview-kpis analytics-kpis grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           {cards.map(({ label, value, icon: Icon, trend, inverse, note }) => (
             <article key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-5">
               <div className="flex items-start justify-between gap-3">
@@ -513,7 +514,7 @@ export const AnalyticsPage: React.FC = () => {
           ))}
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[1.55fr_.85fr]">
+        <section className="analytics-chart-row grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,.85fr)]">
           <MessageActivityChart days={analytics.daily} />
 
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -547,7 +548,7 @@ export const AnalyticsPage: React.FC = () => {
           </article>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[1.3fr_.7fr]">
+        <section className="analytics-performance-row grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,.7fr)]">
           <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div>
@@ -558,7 +559,7 @@ export const AnalyticsPage: React.FC = () => {
             </div>
 
             {topAutomations.length ? (
-              <div className="overflow-x-auto">
+              <div className="overview-table-scroll overflow-x-auto" tabIndex={0} role="region" aria-label="Automation performance table">
                 <table className="w-full min-w-[760px] text-left">
                   <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                     <tr>
@@ -641,7 +642,7 @@ export const AnalyticsPage: React.FC = () => {
           </article>
         </section>
 
-        <section className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+        <section className="analytics-insight-row grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <h2 className="text-base font-bold text-slate-900">Customer intent</h2>
             <p className="mt-1 text-xs text-slate-500">What people are asking about in incoming DMs.</p>
@@ -705,7 +706,7 @@ export const AnalyticsPage: React.FC = () => {
           </article>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[.85fr_1.15fr]">
+        <section className="analytics-activity-row grid gap-5 xl:grid-cols-[minmax(0,.85fr)_minmax(0,1.15fr)]">
           <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex items-center gap-2">
               <UserCheck className="h-5 w-5 text-violet-700" />
@@ -770,7 +771,7 @@ export const AnalyticsPage: React.FC = () => {
           </article>
         </section>
 
-        <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="overview-footnote flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
             <div>
@@ -850,7 +851,7 @@ const MessageActivityChart = ({ days }: { days: DailyPoint[] }) => {
           {selected&&active!==null&&<div role="status" className="pointer-events-none absolute top-2 z-10 max-w-full rounded-xl border border-slate-100 bg-white px-3 py-2 text-xs shadow-lg" style={{left:`${Math.min(74, Math.max(0, x(active)/width*100))}%`,transform:active>days.length/2?'translateX(-100%)':undefined}}><p className="mb-1 font-bold text-slate-800">{selected.label}</p><p className="text-[#0e9295]">Incoming: {selected.incoming}</p><p className="text-emerald-600">Replies: {selected.outgoing}</p></div>}
           {peak===0&&<p className="absolute inset-x-0 top-1/2 -translate-y-1/2 px-4 text-center text-sm text-slate-500">No message activity in this period.</p>}
         </div>
-        <div className="relative mt-3 h-6 text-xs font-medium text-slate-500 sm:text-sm">{indexes.map((index,i)=><span key={index} className="absolute whitespace-nowrap" style={{left:`${x(index)/width*100}%`,transform:i===0?'none':i===indexes.length-1?'translateX(-100%)':'translateX(-50%)'}}>{days[index].label}</span>)}</div>
+        <div className="overview-chart-dates relative mt-3 h-6 text-xs font-medium text-slate-500 sm:text-sm">{indexes.map((index,i)=><span key={index} className="absolute whitespace-nowrap" style={{left:`${x(index)/width*100}%`,transform:i===0?'none':i===indexes.length-1?'translateX(-100%)':'translateX(-50%)'}}>{days[index].label}</span>)}</div>
       </div>
     </div>
   </article>;
