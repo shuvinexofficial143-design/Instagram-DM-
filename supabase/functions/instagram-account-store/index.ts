@@ -45,6 +45,18 @@ function safeAccount(account: any) {
   return safe;
 }
 
+// Only the server that checked ADMIN_EMAILS can relay administrator actions.
+// The signature is bound to the verified session, action and a short expiry.
+async function verifyAdminRelay(req: Request, action: string, jwt: string): Promise<boolean> {
+  const secret = String(Deno.env.get("INSTAGRAM_APP_SECRET") || "").trim().replace(/^(["'])(.*)\1$/, "$2");
+  const timestamp = String(req.headers.get("x-autoreply-admin-time") || "");
+  const signature = String(req.headers.get("x-autoreply-admin-signature") || "");
+  if (!secret || !/^\d{13}$/.test(timestamp) || Math.abs(Date.now() - Number(timestamp)) > 60000 || !/^[a-f0-9]{64}$/.test(signature)) return false;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), {name:"HMAC",hash:"SHA-256"}, false, ["verify"]);
+  return crypto.subtle.verify("HMAC", key, Uint8Array.from(signature.match(/.{2}/g)!, value=>parseInt(value,16)), encoder.encode(`${action}\n${jwt}\n${timestamp}`));
+}
+
 async function readInstagramProfile(accessToken: string) {
   const params = new URLSearchParams({
     fields: "id,user_id,username,name,profile_picture_url,followers_count,follows_count,media_count,account_type",
@@ -415,7 +427,7 @@ Deno.serve(async (req: Request) => {
     if (tokenError) throw tokenError;
     return reply(200,{ok:true,accounts:(memberships||[]).map((row:any)=>{
       const token = (tokens||[]).find((item:any)=>item.user_id===row.workspace_id);
-      return {workspaceId:row.workspace_id,account:{...safeAccount(token?.account || row.profile),status:token ? "connected" : "disconnected"}};
+      return {workspaceId:row.workspace_id,account:{...safeAccount(token?.account || row.profile),status:token?.account?.access_token ? "connected" : "disconnected"}};
     })});
   }
   if (["send_dm","load","delete","list_media","list_workspace_data","list_automations","save_automation","delete_automation","refresh_contact_profiles","create_catalog_upload"].includes(action) && (action === "create_catalog_upload" || !String(workspaceId || "").startsWith("guest_"))) {
@@ -440,10 +452,7 @@ Deno.serve(async (req: Request) => {
     const admin = getAdminClient();
     const { data: authData, error: authError } = await admin.auth.getUser(jwt);
     const email = String(authData?.user?.email || "").trim().toLowerCase();
-    const configuredAdmins = String(Deno.env.get("ADMIN_EMAILS") || "")
-      .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
-    const allowed = new Set(["devsinghparmar9589@gmail.com", ...configuredAdmins]);
-    if (authError || !authData?.user || !allowed.has(email)) {
+    if (authError || !authData?.user?.email_confirmed_at || authData.user.is_anonymous || !email || !(await verifyAdminRelay(req, action, jwt))) {
       return reply(403, { ok: false, error: "Administrator access required" });
     }
 
@@ -496,9 +505,7 @@ Deno.serve(async (req: Request) => {
     const admin = getAdminClient();
     const { data: authData, error: authError } = await admin.auth.getUser(jwt);
     const email = String(authData?.user?.email || "").trim().toLowerCase();
-    const configuredAdmins = String(Deno.env.get("ADMIN_EMAILS") || "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
-    const allowed = new Set(["devsinghparmar9589@gmail.com", ...configuredAdmins]);
-    if (authError || !authData?.user || !allowed.has(email)) return reply(403, { ok: false, error: "Administrator access required" });
+    if (authError || !authData?.user?.email_confirmed_at || authData.user.is_anonymous || !email || !(await verifyAdminRelay(req, action, jwt))) return reply(403, { ok: false, error: "Administrator access required" });
 
     const plan = payload?.plan || {};
     const id = String(plan.id || "").trim();
@@ -1028,10 +1035,8 @@ Deno.serve(async (req: Request) => {
           await Promise.all([
             admin.from("autoreply_instagram_tokens").update({ account }).eq("user_id", workspaceId),
             admin.from("autoreply_instagram_memberships").update({ig_user_id:account.ig_user_id,profile:safeAccount(account)}).eq("workspace_id",workspaceId),
-            admin.from("autoreply_documents").upsert(
-              { user_id: workspaceId, collection: "instagram_account", id: "primary", data: safeAccount(account) },
-              { onConflict: "user_id,collection,id" }
-            ),
+            admin.from("autoreply_documents").update({data:safeAccount(account)})
+              .eq("user_id",workspaceId).eq("collection","instagram_account").eq("id","primary"),
           ]);
         } catch (refreshError) {
           console.warn("[IG_STORE_PROFILE_REFRESH_WARN]", refreshError);
@@ -1046,24 +1051,13 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "delete") {
-      const [tokenResult, docResult] = await Promise.all([
-        admin.from("autoreply_instagram_tokens").delete().eq("user_id", workspaceId),
-        admin
-          .from("autoreply_documents")
-          .delete()
-          .eq("user_id", workspaceId)
-          .eq("collection", "instagram_account")
-          .eq("id", "primary"),
-      ]);
-
-      if (tokenResult.error || docResult.error) {
-        console.error(
-          "[IG_STORE_DELETE_FAILED]",
-          tokenResult.error,
-          docResult.error
-        );
-        return reply(500, { ok: false, error: "Instagram account delete failed" });
-      }
+      // Credentials are the authority. Keep the membership, conversations and
+      // customer tables so reconnecting restores the same workspace.
+      const tokenResult = await admin.from("autoreply_instagram_tokens").delete().eq("user_id", workspaceId);
+      if (tokenResult.error) return reply(500, {ok:false,error:"Instagram account disconnect failed. Please try again."});
+      const docResult = await admin.from("autoreply_documents").delete()
+        .eq("user_id", workspaceId).eq("collection", "instagram_account");
+      if (docResult.error) return reply(500, {ok:false,error:"Instagram credentials were removed, but profile cleanup failed. Please retry disconnect."});
 
       return reply(200, { ok: true, account: null });
     }

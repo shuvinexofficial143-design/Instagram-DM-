@@ -1,3 +1,6 @@
+import adminHandler, { configuredAdminEmails, isConfiguredAdmin } from './src/server/adminAccess';
+import workspaceDataHandler from './api/workspace-data';
+import { authenticatedUser } from './src/server/supabaseConfig';
 import billingHandler from './api/billing';
 import usageHandler from './src/server/usage';
 import express, { Request, Response } from 'express';
@@ -133,6 +136,7 @@ async function startServer() {
   app.all('/api/usage', usageHandler);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.all('/api/workspace-data', workspaceDataHandler);
 
   // Config store for Meta Instagram Webhook & OAuth
   const metaConfigStore = {
@@ -319,18 +323,7 @@ async function startServer() {
 
   // ADMIN ACCESS CONTROL CONFIGURATION
   // Authorized email addresses that have administrative privileges to access the Admin Panel
-  const DEFAULT_ADMIN_EMAILS = [
-    'devsinghparmar9589@gmail.com', // Primary Application Owner & Super Administrator
-    'admin@autoreply.io',
-  ];
-
-  function getAuthorizedAdminEmails(): string[] {
-    const fromEnv = process.env.ADMIN_EMAILS
-      ? process.env.ADMIN_EMAILS.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
-      : [];
-    const set = new Set([...DEFAULT_ADMIN_EMAILS.map((e) => e.toLowerCase()), ...fromEnv]);
-    return Array.from(set);
-  }
+  function getAuthorizedAdminEmails(): string[] { return configuredAdminEmails(); }
 
   function isUserAdminEmail(email?: string | null): boolean {
     if (!email) return false;
@@ -921,14 +914,8 @@ async function startServer() {
 
   // 1. Verify if an email has administrative privileges
   app.get('/api/admin/check-access', (req: Request, res: Response) => {
-    const rawEmail = (req.query.email as string) || (req.headers['x-user-email'] as string) || '';
-    const cleanEmail = rawEmail.trim().toLowerCase();
-    const isAdmin = isUserAdminEmail(cleanEmail);
-    res.json({
-      isAdmin,
-      email: cleanEmail,
-      configuredAdmins: getAuthorizedAdminEmails(),
-    });
+    req.query.action = 'admin-access';
+    return adminHandler(req,res);
   });
 
   // 2. Synchronize user login and profile to registeredUsersMemory and legacy database users/{uid}
@@ -987,26 +974,8 @@ async function startServer() {
   };
   const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || '';
 
-  function isAuthorizedAdminRequest(req: Request): boolean {
-    const requesterEmail = (
-      (req.query.email as string) ||
-      (req.headers['x-user-email'] as string) ||
-      ''
-    ).trim().toLowerCase();
-
-    const authHeader = (req.headers['authorization'] as string) || '';
-    const adminToken = (req.headers['x-admin-token'] as string) || '';
-
-    if (
-      ADMIN_SESSION_SECRET &&
-      (adminToken === ADMIN_SESSION_SECRET ||
-        authHeader === `Bearer ${ADMIN_SESSION_SECRET}` ||
-        authHeader === ADMIN_SESSION_SECRET)
-    ) {
-      return true;
-    }
-
-    return isUserAdminEmail(requesterEmail);
+  async function isAuthorizedAdminRequest(req: Request): Promise<boolean> {
+    return isConfiguredAdmin(await authenticatedUser(req));
   }
 
   // Admin login with User ID and Password
@@ -1034,7 +1003,7 @@ async function startServer() {
           adminUser: {
             userId: ADMIN_CREDENTIALS.userId,
             role: 'super_admin',
-            email: 'devsinghparmar9589@gmail.com',
+            email: '',
           },
         });
       }
@@ -1058,14 +1027,13 @@ async function startServer() {
         ''
       ).trim().toLowerCase();
 
-      if (!isAuthorizedAdminRequest(req)) {
+      if (!(await isAuthorizedAdminRequest(req))) {
         console.warn(`[ADMIN_ACCESS_DENIED] Unauthorized request from: "${requesterEmail}"`);
         return res.status(403).json({
           success: false,
           error: 'Access Denied: You do not have administrator permissions to view this data.',
           isAdmin: false,
           requesterEmail: requesterEmail || 'anonymous',
-          configuredAdmins: getAuthorizedAdminEmails(),
         });
       }
 
@@ -1315,8 +1283,8 @@ async function startServer() {
         const nowIso = new Date().toISOString();
         const primaryAdminItem: AdminUserOverviewItem = {
           uid: 'owner_primary',
-          email: requesterEmail || 'devsinghparmar9589@gmail.com',
-          displayName: 'Dev Singh Parmar (Owner)',
+          email: requesterEmail || '',
+          displayName: 'Workspace administrator',
           photoURL: rootIgPic || undefined,
           first_login_at: rootIgConn || nowIso,
           last_login_at: nowIso,
@@ -1370,7 +1338,7 @@ async function startServer() {
       return res.json({
         success: true,
         isAdmin: true,
-        requesterEmail: requesterEmail || 'devsinghparmar9589@gmail.com',
+        requesterEmail: requesterEmail || '',
         overviewStats: {
           totalRegisteredUsers: usersList.length,
           totalConnectedInstagram: totalConnectedCount,
@@ -1381,7 +1349,7 @@ async function startServer() {
         totalUsers: usersList.length,
         totalAutomatedDms: totalAutomatedDmsAll,
         totalAutomations: totalAutomationsAll,
-        configuredAdmins: getAuthorizedAdminEmails(),
+        configuredAdmins: [],
       });
     } catch (err: any) {
       console.error('[ADMIN_USERS_OVERVIEW_ERR]', err);

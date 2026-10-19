@@ -29,7 +29,7 @@ export interface InstagramAccount {
   access_token?: string;
   token_expires_at: string;
   connected_at: string;
-  status: 'connected' | 'expired' | 'action_required';
+  status: 'connected' | 'disconnected' | 'expired' | 'action_required';
 }
 
 export type TriggerType = 'dm' | 'comment' | 'story_reply' | 'dm_ai_conversation';

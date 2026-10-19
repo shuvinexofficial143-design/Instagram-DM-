@@ -1,3 +1,4 @@
+import { isConfiguredAdmin } from './adminAccess.js';
 import { typedFetch as httpFetch } from './typedFetch.js';
 import { authenticatedUser, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabaseConfig.js';
 import { cleanEnvironment } from './supabaseConfig.js';
@@ -47,9 +48,7 @@ async function verifiedAdmin(req:any,uid:string):Promise<boolean>{
   if(!r.ok)return false;
   const identity:any=await r.json();
   if(identity?.id!==uid || !identity?.email_confirmed_at) return false;
-  const email=String(identity.email||'').trim().toLowerCase();
-  const allowed=new Set(['devsinghparmar9589@gmail.com',...String(process.env.ADMIN_EMAILS||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)]);
-  return allowed.has(email);
+  return isConfiguredAdmin(identity);
 }
 async function getTicket(id:string,uid:string,isAdmin:boolean){
   if(!uuid.test(id))throw new SupportError('Invalid ticket reference.');

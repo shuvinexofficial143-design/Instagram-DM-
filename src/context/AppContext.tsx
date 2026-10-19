@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, startTransition } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, startTransition } from 'react';
+import { connectedInstagramAccount } from '../lib/instagramConnection';
 import { normalizeActivityLog } from '../lib/activityLogs';
 import {
   UserProfile,
@@ -247,14 +248,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [accountSwitching,setAccountSwitching] = useState(false);
   const [accountError,setAccountError] = useState('');
   const [instagramConnectMode,setInstagramConnectMode] = useState<'add'|'reconnect'>('reconnect');
+  const accountRequestVersion = useRef(0);
+  const accountMutation = useRef(false);
   const [instagramAccount, setInstagramAccountState] = useState<InstagramAccount | null>(null);
 
   const setInstagramAccount = (acc: InstagramAccount | null) => {
-    const clientSafeAccount = (() => {
-      if (!acc) return null;
-      const { access_token: _serverOnlyToken, ...safe } = acc;
-      return safe as InstagramAccount;
-    })();
+    const clientSafeAccount = connectedInstagramAccount(acc);
 
     setInstagramAccountState(clientSafeAccount);
     try {
@@ -333,7 +332,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const userProfile: UserProfile = {
             id: result.user.uid,
             name: result.user.displayName || result.user.email?.split('@')[0] || 'Creator Admin',
-            email: result.user.email || 'admin@autoreply.io',
+            email: result.user.email || '',
             avatar_url: result.user.photoURL || '',
             plan: 'free',
             trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -368,7 +367,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const userProfile: UserProfile = {
           id: currUser.uid,
           name: currUser.displayName || currUser.email?.split('@')[0] || 'Creator Admin',
-          email: currUser.email || 'admin@autoreply.io',
+          email: currUser.email || '',
           avatar_url: currUser.photoURL || '',
           plan: 'free',
           trial_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -439,56 +438,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
   }, []);
 
-  // Check Admin privileges & sync the user profile to Supabase.
+  // Only the authenticated server can grant admin access; failures deny access.
   useEffect(() => {
-    const currentEmail = firebaseUser?.email || user?.email || '';
-    if (!currentEmail) {
-      setIsAdmin(false);
-      return;
-    }
-
-    const checkAdminStatus = async () => {
+    let cancelled = false;
+    setIsAdmin(false);
+    if (!firebaseUser?.uid) return;
+    const current = firebaseUser;
+    void (async () => {
       try {
-        const res = await fetch(`/api/admin/check-access?email=${encodeURIComponent(currentEmail)}`);
-        if (res.ok) {
-          const data = await res.json();
-          setIsAdmin(Boolean(data.isAdmin));
-        } else {
-          setIsAdmin(currentEmail.toLowerCase() === 'devsinghparmar9589@gmail.com');
-        }
-      } catch {
-        setIsAdmin(currentEmail.toLowerCase() === 'devsinghparmar9589@gmail.com');
-      }
-    };
-
-    checkAdminStatus();
-
-    // Sync the authenticated profile to Supabase.
-    if (firebaseUser?.uid && currentEmail) {
-      const isOwnerAdmin = currentEmail.toLowerCase() === 'devsinghparmar9589@gmail.com';
-      const profileData = {
-        id: firebaseUser.uid,
-        uid: firebaseUser.uid,
-        email: currentEmail,
-        displayName: firebaseUser.displayName || user?.name || currentEmail.split('@')[0],
-        photoURL: firebaseUser.photoURL || '',
-        created_at: firebaseUser.metadata?.creationTime || new Date().toISOString(),
-        last_login_at: firebaseUser.metadata?.lastSignInTime || new Date().toISOString(),
-        last_active_at: new Date().toISOString(),
-        role: isOwnerAdmin ? 'admin' : 'user',
-      };
-
-      // Write profile data through the Supabase-backed client helper.
-      syncUserProfileDocument(firebaseUser.uid, profileData);
-
-      // Also synchronize the server-side profile registry. for Admin panel
-      fetch('/api/user/sync-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profileData),
-      }).catch(() => {});
-    }
-  }, [firebaseUser, user?.email]);
+        const token = await current.getIdToken();
+        const res = await fetch('/api/workspace-data?action=admin-access', {
+          headers:{Authorization:`Bearer ${token}`}, cache:'no-store',
+        });
+        const data = await res.json();
+        if (!cancelled) setIsAdmin(res.ok && data.isAdmin === true);
+      } catch { if (!cancelled) setIsAdmin(false); }
+    })();
+    void syncUserProfileDocument(current.uid, {
+      email:current.email, displayName:current.displayName || current.email?.split('@')[0],
+      photoURL:current.photoURL || '', last_login_at:current.metadata?.lastSignInTime,
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [firebaseUser?.uid, firebaseUser?.email]);
 
   // 2. Multi-Tenant Firestore Synchronization (Strictly scoped by active authenticated user UID)
   useEffect(() => {
@@ -754,13 +725,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubscribeLogs = subscribeToUserCollection<WebhookLogEvent>(uid, 'webhook_logs', (data) => { legacyLogs = (data || []).map(normalizeActivityLog); refreshLogs(); });
     const unsubscribeEvents = subscribeToUserCollection<WebhookLogEvent>(uid, 'webhook_events', (data) => { liveLogs = (data || []).map(row=>normalizeActivityLog({...row,id:'event:'+row.id})); refreshLogs(); });
 
-    const unsubscribeAccount = subscribeToUserCollection<InstagramAccount>(uid, 'instagram_account', (data) => {
-      if (data && data.length > 0 && data[0]?.username) {
-        const { access_token: _serverOnlyToken, ...safeAccount } = data[0];
-        setInstagramAccount(safeAccount as InstagramAccount);
-      } else {
-        setInstagramAccount(null);
-      }
+    // Documents can contain a preserved profile. Re-check the server's token
+    // status instead of treating any profile row as a connected account.
+    const unsubscribeAccount = subscribeToUserCollection<InstagramAccount>(uid, 'instagram_account', () => {
+      if (live) void refreshInstagramAccounts();
     });
 
     return () => {
@@ -809,72 +777,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // 3. Handle OAuth callback parameters, window postMessage events, and initial account load.
-  // When there is no app login, the backend uses a secure HttpOnly guest-workspace cookie.
-  useEffect(() => {
-    const uid = workspaceId || firebaseUser?.uid;
-
-    if (firebaseUser?.uid && !workspaceId) {setInstagramAccountState(null);return;}
-    let cancelled = false;
-    if(firebaseUser?.uid)setWorkspaceHydrating(true);
-    const fetchAccountData = async () => {
-      if (!uid) {
-        setInstagramAccountState(null);
-        setWorkspaceHydrating(false);
-        return;
-      }
-
-      // Authenticated workspaces are isolated by the Google/Supabase user id.
-      // Never hydrate one signed-in user's Instagram account from the shared guest cookie.
-      try {
-        const saved = await import('../lib/supabase').then(({ getUserDocument }) =>
-          getUserDocument<InstagramAccount>(uid, 'instagram_account', 'primary')
-        );
-        if (cancelled) return;
-        if (saved?.username) {
-          const { access_token: _serverOnlyToken, ...safeAccount } = saved as any;
-          setInstagramAccountState(safeAccount as InstagramAccount);
-        } else {
-          // The membership response may already have provided connected metadata.
-          // Missing optional "primary" must not erase that verified account.
-          setInstagramAccountState(current=>current?.username?current:null);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        console.warn('[FETCH_USER_IG_ACCOUNT_ERR]', err);
-        setAccountError('Instagram account status could not be checked. Retry before reconnecting.');
-      } finally {
-        if (!cancelled) setWorkspaceHydrating(false);
-      }
-    };
-
-    fetchAccountData();
-
-    const searchParams = new URLSearchParams(window.location.search);
-    const statusParam = searchParams.get('status');
-
-    if (statusParam === 'ig_connected') {
-      fetchAccountData();
-      if (window.history && window.history.replaceState) {
-        const cleanUrl = window.location.pathname + (window.location.hash || '');
-        window.history.replaceState({}, document.title, cleanUrl);
-      }
-    }
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data === 'ig_connected' || event.data?.type === 'ig_connected') {
-        // OAuth credentials never cross postMessage. Re-fetch only safe metadata.
-        fetchAccountData();
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => {cancelled=true;window.removeEventListener('message', handleMessage);};
-  }, [firebaseUser?.uid, workspaceId]);
-
   const refreshInstagramAccounts = async (followCookie=false) => {
-    if (!firebaseUser?.uid) return;
+    if (!firebaseUser?.uid || accountMutation.current) return;
+    const version = ++accountRequestVersion.current;
     try {
       // A transient network failure must not turn a connected workspace into an
       // apparent disconnect. Retry only network/5xx/429 failures, never auth or
@@ -898,27 +803,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)));
       }
       if (!response) throw new Error('Instagram workspace is temporarily unreachable. Please try again.');
-      if (auth.currentUser?.uid !== firebaseUser?.uid) return;
+      if (auth.currentUser?.uid !== firebaseUser?.uid || version !== accountRequestVersion.current) return;
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Could not load Instagram accounts.');
       setInstagramAccounts(payload.accounts || []);
       const target = payload.activeWorkspaceId || firebaseUser.uid;
       if (target !== (workspaceId || firebaseUser.uid)) {setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);setPausedAiUsers([]);setInstagramAccountState(null);setEditingAutomation(null);setIsBuilderOpen(false);}
       const selected=(payload.accounts||[]).find((a:any)=>a.workspaceId===target)?.account;
-      if(selected?.username){
-        const {access_token:_serverOnly,...safe}=selected;
-        setInstagramAccountState(safe as InstagramAccount);
-      } else {
-        setInstagramAccountState(null);
-      }
+      if(selected?.username) setInstagramAccount(connectedInstagramAccount(selected));
+      else setInstagramAccount(null);
       setWorkspaceId(target); setIsConnectModalOpen(false); setInstagramConnectMode('reconnect');
       setAccountError('');
+      setWorkspaceHydrating(false);
     } catch(error:any) {
+      if (version !== accountRequestVersion.current || auth.currentUser?.uid !== firebaseUser?.uid) return;
       setAccountError(error?.message || 'Could not load Instagram accounts.');
       setWorkspaceHydrating(false);
     }
   };
   const switchInstagramAccount = async (id:string) => {
-    if (accountSwitching || id === (workspaceId || firebaseUser?.uid)) return;
+    if (accountMutation.current || accountSwitching || id === (workspaceId || firebaseUser?.uid)) return;
+    accountMutation.current = true; ++accountRequestVersion.current;
     setAccountSwitching(true); setAccountError('');
     try {
       const token = await auth.currentUser?.getIdToken();
@@ -929,17 +833,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);setPausedAiUsers([]);setInstagramAccountState(null);setEditingAutomation(null);setIsBuilderOpen(false);
       setWorkspaceId(payload.activeWorkspaceId);setInstagramAccounts(payload.accounts || []);
     } catch(error:any) {setAccountError(error?.message || 'Could not switch Instagram account.');}
-    finally {setAccountSwitching(false);}
+    finally {accountMutation.current=false;setAccountSwitching(false);}
   };
   const startInstagramConnection = (mode:'add'|'reconnect'='reconnect') => {setInstagramConnectMode(mode);setIsConnectModalOpen(true);};
   useEffect(()=>{
+    ++accountRequestVersion.current;
     setWorkspaceId('');setInstagramAccounts([]);
     if (!firebaseUser?.uid) {setWorkspaceHydrating(false);return;}
     setWorkspaceHydrating(true);
-    void refreshInstagramAccounts();
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('status') === 'ig_connected';
+    void refreshInstagramAccounts(connected);
+    if (connected) { params.delete('status'); const query=params.toString(); window.history.replaceState({},document.title,window.location.pathname+(query?'?'+query:'')+window.location.hash); }
     const onConnected = (event:MessageEvent)=>{if(event.origin===window.location.origin && (event.data==='ig_connected'||event.data?.type==='ig_connected'))void refreshInstagramAccounts(true);};
     window.addEventListener('message',onConnected);
-    return ()=>window.removeEventListener('message',onConnected);
+    return ()=>{++accountRequestVersion.current;window.removeEventListener('message',onConnected);};
   },[firebaseUser?.uid]);
 
   useEffect(()=>{if (!isConnectModalOpen) setInstagramConnectMode('reconnect');},[isConnectModalOpen]);
@@ -1681,29 +1589,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const disconnectChannel = async () => {
-    const uid = workspaceId || firebaseUser?.uid || user?.id || '';
-    setInstagramAccount(null);
+    if (accountMutation.current) throw new Error('Please wait for the current account change to finish.');
+    const uid = workspaceId || firebaseUser?.uid || '';
+    const ownerId = firebaseUser?.uid;
+    accountMutation.current = true;
+    ++accountRequestVersion.current;
     try {
-      localStorage.removeItem('autoreply_connected_instagram_account');
-    } catch {}
-
-    if (uid && firebaseUser) {
-      await removeUserDocument(uid, 'instagram_account', 'primary');
-      if (instagramAccount?.id) {
-        await removeUserDocument(uid, 'instagram_account', instagramAccount.id);
-      }
-    }
-    try {
-      await fetch('/api/instagram/account', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await automationAuthHeaders()) },
-        credentials: 'same-origin',
-        body: JSON.stringify({ account: null }),
+      // Delete credentials on the server before showing a successful disconnect.
+      const response = await fetch('/api/instagram/account', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json', ...(await automationAuthHeaders())},
+        body:JSON.stringify({account:null}), signal:AbortSignal.timeout(20000),
       });
-    } catch (err) {
-      console.warn('[DISCONNECT_CHANNEL_ERR]', err);
-    }
-    await refreshInstagramAccounts();
+      const result = await response.json();
+      if (!response.ok || !(result.ok || result.success)) throw new Error(result.error || 'Could not disconnect Instagram. Please try again.');
+      if (auth.currentUser?.uid !== ownerId) return;
+      setInstagramAccount(null);
+      setInstagramAccounts(accounts=>accounts.map(item=>item.workspaceId===uid?{...item,account:{...item.account,status:'disconnected'}}:item));
+      setAccountError('');
+    } finally { accountMutation.current = false; }
   };
 
   const connectChannel = async (_accountInput: Partial<InstagramAccount> | string) => {

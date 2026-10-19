@@ -50,6 +50,7 @@ export const SettingsPage: React.FC = () => {
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState('');
   const [defaultLanguage, setDefaultLanguage] = useState(() => readPreference(LANGUAGE_KEY, 'Auto detect'));
   const [defaultTone, setDefaultTone] = useState(() => readPreference(TONE_KEY, 'Friendly'));
   const [savedPreference, setSavedPreference] = useState('');
@@ -133,9 +134,11 @@ export const SettingsPage: React.FC = () => {
   const handleDisconnect = async () => {
     if (!instagramAccount) return;
     if (!window.confirm(`Disconnect @${instagramAccount.username} from Auto Replies? Active Instagram automations may stop working until an account is connected again.`)) return;
-    setIsDisconnecting(true);
+    setIsDisconnecting(true); setDisconnectError('');
     try {
       await disconnectChannel();
+    } catch (error:any) {
+      setDisconnectError(error?.message || 'Could not disconnect Instagram. Please try again.');
     } finally {
       setIsDisconnecting(false);
     }
@@ -365,6 +368,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </section>
 
+      {disconnectError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{disconnectError}</p>}
       {instagramAccount && (
         <section className="rounded-2xl border border-rose-200 bg-white shadow-sm">
           <div className="border-b border-rose-100 p-5 sm:p-6">

@@ -82,6 +82,7 @@ export default async function handler(req: any, res: any) {
       const payload = await response.json();
       if (!response.ok || !payload?.ok) return res.status(response.status).json(payload);
       const accounts = payload.accounts || [];
+      res.setHeader('Cache-Control','private, no-store');
       const explicit = String(req.headers?.['x-autoreply-workspace'] || '');
       const selected = explicit || getRequestCookie(req,'autoreply_active_workspace');
       if (explicit && explicit !== owner.id && !accounts.some((item:any)=>item.workspaceId===explicit)) return res.status(403).json({ok:false,error:'This Instagram account does not belong to your login.'});
@@ -101,7 +102,8 @@ export default async function handler(req: any, res: any) {
       }
       if (req.method !== 'GET') return res.status(405).json({ok:false,error:'Method Not Allowed'});
       res.setHeader('Cache-Control','private, no-store');
-      return res.status(200).json({ok:true,success:true,accounts,activeWorkspaceId:current,account:accounts.find((item:any)=>item.workspaceId===current)?.account || null});
+      const account = accounts.find((item:any)=>item.workspaceId===current)?.account;
+      return res.status(200).json({ok:true,success:true,accounts,activeWorkspaceId:current,account:account?.status === 'connected' ? account : null});
     }
     const workspaceId = getGuestWorkspaceId(req);
 

@@ -12,15 +12,16 @@ function fixture(maxAccounts=5){
   const tables={autoreply_instagram_memberships:[],autoreply_instagram_tokens:[],autoreply_documents:[]};
   const uploadPaths=[];
   const admin={rpc: async(name)=>({data: name==='autoreply_billing_entitlement'?{accounts:maxAccounts,automationLimit:5}:null,error:null}),storage:{getBucket:async()=>({data:{id:'catalog-images'},error:null}),from:()=>({createSignedUploadUrl:async path=>{uploadPaths.push(path);return {data:{token:'signed-upload'}};},getPublicUrl:path=>({data:{publicUrl:'https://example.supabase.co/storage/v1/object/public/catalog-images/'+path}})})},auth:{getUser:async jwt=>jwt==='session' ? {data:{user:{id:owner}}} : {data:null,error:{message:'Unauthorized'}}},from(table){
-    let filters={},sets={},mutation;
+    let filters={},sets={},mutation,deleting=false;
     const q={select(){return q;},eq(k,v){filters[k]=v;return q;},in(k,v){sets[k]=v;return q;},order(){return q;},
-      upsert(value){mutation=value;return q;},async maybeSingle(){return result(true);},then(resolve,reject){return Promise.resolve(result(false)).then(resolve,reject);}};
+      delete(){deleting=true;return q;},upsert(value){mutation=value;return q;},async maybeSingle(){return result(true);},then(resolve,reject){return Promise.resolve(result(false)).then(resolve,reject);}};
     function result(single){
       const rows=tables[table]||[];
       if(mutation){const key=table==='autoreply_instagram_memberships'?'workspace_id':table==='autoreply_instagram_tokens'?'user_id':'id';
         const found=rows.find(row=>row[key]===mutation[key]&&(key!=='id'||row.user_id===mutation.user_id&&row.collection===mutation.collection));
         if(found)Object.assign(found,mutation);else rows.push({...mutation});return {data:null,error:null};}
       const matches=rows.filter(row=>Object.entries(filters).every(([k,v])=>row[k]===v)&&Object.entries(sets).every(([k,v])=>v.includes(row[k])));
+      if(deleting){tables[table]=rows.filter(row=>!matches.includes(row));return {data:null,error:null};}
       return {data:single?matches[0]||null:matches,error:null,count:matches.length};
     }return q;
   }};
@@ -92,4 +93,34 @@ test('catalog uploads reject unsafe types, oversized files and path traversal',a
  const f=fixture();for(const input of [{mimeType:'image/svg+xml'},{size:6*1024*1024},{size:0},{catalogId:'../foreign'}]){
  const result=await f.post({action:'create_catalog_upload',workspaceId:owner,catalogId:'default',mimeType:'image/png',size:1000,...input},{Authorization:'Bearer session'});assert.equal(result.status,400);
  }assert.equal(f.uploadPaths.length,0);
+});
+
+
+test('disconnect is durable across account reload and retains ownership and customer data',async()=>{
+ const f=fixture();await f.save();
+ f.tables.autoreply_documents.push({user_id:owner,collection:'contacts',id:'customer',data:{full_name:'Customer'}});
+ f.tables.autoreply_documents.push({user_id:owner,collection:'instagram_account',id:'legacy-account',data:{username:'business-a'}});
+ assert.equal((await f.post({action:'delete',workspaceId:owner},{Authorization:'Bearer session'})).status,200);
+ assert.equal(f.tables.autoreply_instagram_tokens.length,0);
+ assert.equal(f.tables.autoreply_documents.filter(row=>row.collection==='instagram_account').length,0);
+ assert.equal(f.tables.autoreply_documents.filter(row=>row.collection==='contacts').length,1);
+ assert.equal(f.tables.autoreply_instagram_memberships.length,1);
+ for(let retry=0;retry<3;retry++){
+   const listing=await f.post({action:'list_accounts'},{Authorization:'Bearer session'});
+   assert.equal(listing.body.accounts[0].account.status,'disconnected');
+   assert.equal(f.tables.autoreply_instagram_tokens.length,0);
+ }
+ await f.save();
+ const listing=await f.post({action:'list_accounts'},{Authorization:'Bearer session'});
+ assert.equal(listing.body.accounts[0].workspaceId,owner);
+ assert.equal(listing.body.accounts[0].account.status,'connected');
+});
+
+test('disconnecting one account never removes another connected account',async()=>{
+ const f=fixture();await f.save();f.setBusiness('business-b');const second=await f.save();
+ await f.post({action:'delete',workspaceId:owner},{Authorization:'Bearer session'});
+ assert.equal(f.tables.autoreply_instagram_tokens.length,1);
+ assert.equal(f.tables.autoreply_instagram_tokens[0].user_id,second.body.workspaceId);
+ const list=await f.post({action:'list_accounts'},{Authorization:'Bearer session'});
+ assert.equal(list.body.accounts.find(row=>row.workspaceId===second.body.workspaceId).account.status,'connected');
 });

@@ -65,7 +65,7 @@ export async function upstreamFetch(url: string, init: RequestInit = {}, service
   throw new UpstreamError(service);
 }
 
-export async function authenticatedUser(req: any): Promise<{ id: string } | null> {
+export async function authenticatedUser(req: any): Promise<{ id: string; email?: string; email_confirmed_at?: string; is_anonymous?: boolean } | null> {
   const header = String(req.headers?.authorization || '').trim();
   const token = /^Bearer\s+/i.test(header) ? header.replace(/^Bearer\s+/i, '').trim() : '';
   if (!token) return null;

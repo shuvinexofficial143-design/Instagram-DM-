@@ -93,9 +93,8 @@ export const AdminPage: React.FC = () => {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token || '';
     if (!token) return;
-    const res = await fetch('https://dwgxmmftybxwpurgsxkx.supabase.co/functions/v1/instagram-account-store', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ action: 'admin_overview' }),
+    const res = await fetch('/api/workspace-data?action=admin-overview', {
+      headers: { Authorization: `Bearer ${token}` }, cache:'no-store',
     });
     const result = await res.json();
     if (res.status === 401 || res.status === 403) {
@@ -149,9 +148,9 @@ export const AdminPage: React.FC = () => {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token || '';
-      const res = await fetch('https://dwgxmmftybxwpurgsxkx.supabase.co/functions/v1/instagram-account-store', {
+      const res = await fetch('/api/workspace-data?action=admin-update-plan', {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: 'admin_update_plan', plan }),
+        body: JSON.stringify({ plan }),
       });
       const result = await res.json();
       if (!res.ok || !result?.ok) throw new Error(result?.error || 'Plan update failed');
@@ -385,10 +384,10 @@ export const AdminPage: React.FC = () => {
               <span>Backend Access Security</span>
             </div>
             <p>
-              Access is strictly governed by the backend whitelist in <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">server.ts</code> and <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">ADMIN_EMAILS</code>.
+              Access is managed privately by the workspace administrator. Sign in with an authorized account.
             </p>
             <p className="text-[11px] text-slate-500">
-              Authorized Owner Email: <span className="font-mono text-indigo-600 font-semibold">devsinghparmar9589@gmail.com</span>
+              Administrator email addresses are never published.
             </p>
           </div>
 
@@ -476,7 +475,7 @@ export const AdminPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>
-              Admin: <strong className="text-slate-900 font-semibold">Google verified</strong>\n            </span>\n            <span className="text-slate-300">•</span>\n            <span>\n              Email: <strong className="text-slate-900 font-semibold">{currentEmail || 'devsinghparmar9589@gmail.com'}</strong>
+              Admin: <strong className="text-slate-900 font-semibold">Google verified</strong>\n            </span>\n            <span className="text-slate-300">•</span>\n            <span>\n              Email: <strong className="text-slate-900 font-semibold">{currentEmail || 'Signed-in administrator'}</strong>
             </span>
           </div>
 
