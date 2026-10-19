@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { auth } from '../lib/supabase';
-import { getFallbackWorkspaceUsage, getPlanConfig } from '../lib/planUsage';
+import { ADMINISTRATOR_PLAN, getFallbackWorkspaceUsage, getPlanConfig } from '../lib/planUsage';
 import { usePlanCatalog } from './usePlanCatalog';
 
 type ServerUsage = {
@@ -9,8 +9,11 @@ type ServerUsage = {
   plan?: string;
   totalUsed?: number;
   aiUsed?: number;
-  totalLimit?: number;
-  aiLimit?: number;
+  totalLimit?: number | null;
+  aiLimit?: number | null;
+  unlimited?: boolean;
+  automationLimit?: number | null;
+  accounts?: number | null;
   expiresAt?: string;
   baseMessageLimit?: number;
   baseAiLimit?: number;
@@ -93,20 +96,21 @@ export const useWorkspaceUsage = () => {
     };
   }, [userId, user?.plan, retryTick]);
 
-  const plan = getPlanConfig(serverUsage?.plan || fallback.plan.id,catalog.plans);
+  const unlimited = serverUsage?.unlimited === true;
+  const plan = unlimited ? ADMINISTRATOR_PLAN : getPlanConfig(serverUsage?.plan || fallback.plan.id,catalog.plans);
   const freeBonusMessages = plan.id === 'free' ? 0 : Math.max(0, Number(serverUsage?.freeBonusMessages ?? (fallback.messageLimit - fallback.plan.messages)));
   const freeBonusAi = plan.id === 'free' ? 0 : Math.max(0, Number(serverUsage?.freeBonusAi ?? (fallback.aiLimit - fallback.plan.ai)));
   const baseMessageLimit = Number(serverUsage?.baseMessageLimit ?? plan.messages);
   const baseAiLimit = Number(serverUsage?.baseAiLimit ?? plan.ai);
   return {
-    plan,
+    plan, unlimited,
     messageUsed: Number(serverUsage?.totalUsed ?? fallback.messageUsed),
-    messageLimit: Number(serverUsage?.totalLimit ?? (baseMessageLimit + freeBonusMessages)),
+    messageLimit: unlimited ? Infinity : Number(serverUsage?.totalLimit ?? (baseMessageLimit + freeBonusMessages)),
     aiUsed: Number(serverUsage?.aiUsed ?? fallback.aiUsed),
-    aiLimit: Number(serverUsage?.aiLimit ?? (baseAiLimit + freeBonusAi)),
+    aiLimit: unlimited ? Infinity : Number(serverUsage?.aiLimit ?? (baseAiLimit + freeBonusAi)),
     baseMessageLimit, baseAiLimit, freeBonusMessages, freeBonusAi,
     automationUsed: fallback.automationUsed,
-    automationLimit: plan.automations,
+    automationLimit: unlimited ? null : serverUsage?.automationLimit === null ? null : serverUsage?.automationLimit ?? plan.automations,
     expiresAt: serverUsage?.expiresAt,
     loading,error,
     retry:()=>setRetryTick(t=>t+1),

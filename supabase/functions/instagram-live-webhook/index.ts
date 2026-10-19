@@ -1711,7 +1711,7 @@ Deno.serve(async (req: Request) => {
     // Keep non-AI/ignored events ordered within this batch, including their
     // contact updates. Only an eligible AI turn benefits from parallel storage.
     const canStartAi = automation?.trigger_type === "dm_ai_conversation" &&
-      context.quota && context.quota.aiUsed < context.quota.aiLimit;
+      context.quota && (context.quota.unlimited === true || context.quota.aiUsed < context.quota.aiLimit);
     if (!canStartAi && !await inboundSaved) {
       results.push({ messageId: item.messageId, ok: false, reason: "inbox_save_failed" });
       continue;
@@ -1746,12 +1746,12 @@ Deno.serve(async (req: Request) => {
       continue;
     }
     const quota = context.quota;
-    if (automation.trigger_type !== "dm_ai_conversation" && quota.normalUsed >= quota.normalLimit) {
+    if (quota.unlimited !== true && automation.trigger_type !== "dm_ai_conversation" && quota.normalUsed >= quota.normalLimit) {
       runInBackground(logEvent(admin, workspaceId, item.messageId, {status:"ignored", reason:"monthly_standard_limit_reached", sender_id:item.senderId, incoming_text:item.text, trigger_type:item.triggerType}));
       results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_standard_limit_reached" });
       continue;
     }
-    if (automation.trigger_type === "dm_ai_conversation" && quota.aiUsed >= quota.aiLimit) {
+    if (quota.unlimited !== true && automation.trigger_type === "dm_ai_conversation" && quota.aiUsed >= quota.aiLimit) {
       runInBackground(logEvent(admin, workspaceId, item.messageId, {status:"ignored", reason:"monthly_ai_limit_reached", sender_id:item.senderId, incoming_text:item.text, trigger_type:item.triggerType}));
       results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_ai_limit_reached" });
       continue;

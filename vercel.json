@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "vite build",
+  "buildCommand": "vite build && node --import tsx scripts/sync-admin-policy.ts",
   "outputDirectory": "dist",
   "rewrites": [
     {

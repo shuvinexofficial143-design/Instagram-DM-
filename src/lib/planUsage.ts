@@ -1,6 +1,6 @@
 import { Automation, InboxMessage, UserProfile } from '../types';
 
-export type PlanId = 'free' | 'starter' | 'pro' | 'business';
+export type PlanId = 'free' | 'starter' | 'pro' | 'business' | 'administrator';
 
 export type PlanConfig = {
   id: PlanId;
@@ -11,6 +11,12 @@ export type PlanConfig = {
   accounts: number;
   automations: number | null;
   billingDays?: number;
+};
+
+/** Display only after a server-verified unlimited entitlement. Never sold in the catalog. */
+export const ADMINISTRATOR_PLAN: PlanConfig = {
+  id: 'administrator', name: 'Administrator', price: '₹0', messages: Infinity,
+  ai: Infinity, accounts: Infinity, automations: null,
 };
 
 export const PLAN_CATALOG: PlanConfig[] = [

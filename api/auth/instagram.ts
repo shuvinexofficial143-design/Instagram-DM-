@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { authenticatedUser, authenticatedWorkspace, cleanEnvironment, normalizeAppUrl, UpstreamError, upstreamFetch, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../src/server/supabaseConfig.js';
 import { createInstagramOAuthState, type InstagramReconnectTarget } from '../../src/server/instagramOAuthState.js';
+import { isConfiguredAdmin, synchronizeAdminPolicy } from '../../src/server/adminPolicy.js';
 
 const PROD_ORIGIN = normalizeAppUrl(process.env.APP_URL || 'https://autoreplys.vercel.app');
 const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
@@ -109,10 +110,12 @@ export default async function handler(req: any, res: any) {
 
     // Signed-in users are bound to their Supabase UID, so each Google account
     // gets its own Instagram account/tokens. Guest cookie remains only as legacy fallback.
-    const authenticatedUid = (await authenticatedUser(req))?.id || "";
+    const verifiedUser = await authenticatedUser(req);
+    const authenticatedUid = verifiedUser?.id || "";
     if (req.headers?.authorization && !authenticatedUid) {
       return res.status(401).json({ ok: false, code: "SESSION_EXPIRED", error: "Your login session expired. Sign in again before connecting Instagram." });
     }
+    if (isConfiguredAdmin(verifiedUser)) await synchronizeAdminPolicy();
     let workspaceId = authenticatedUid || getOrCreateWorkspaceId(req,res);
     if (authenticatedUid && req.query?.intent === 'add') workspaceId = randomUUID();
     else if (authenticatedUid && (req.headers?.['x-autoreply-workspace'] || String(req.headers?.cookie || '').includes('autoreply_active_workspace=')))

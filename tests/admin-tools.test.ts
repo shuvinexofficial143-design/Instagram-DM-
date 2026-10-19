@@ -31,6 +31,7 @@ test('automation validation checks AI prompt, empty replies, keywords, actions a
 test('admin automation changes use the verified actor and selected workspace, never forged identity fields',async()=>{
  let payload:any;globalThis.fetch=async(url:any,init:any)=>{
   if(String(url).includes('/auth/'))return Response.json(identity);
+  if(String(url).includes('rpc/autoreply_sync_admin_allowlist'))return Response.json(null);
   if(String(url).includes('memberships?'))return Response.json([{workspace_id:workspace,owner_user_id:'another-owner'}]);
   assert.ok(String(url).endsWith('/rpc/autoreply_admin_edit_automation'));payload=JSON.parse(init.body);assert.equal(init.headers.apikey,'server-private-test');return Response.json({ok:true,automation:rule()});
  };

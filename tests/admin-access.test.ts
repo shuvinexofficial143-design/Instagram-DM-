@@ -8,8 +8,9 @@ import adminHandler, { configuredAdminEmails, isConfiguredAdmin, adminRelayHeade
 import { connectedInstagramAccount } from '../src/lib/instagramConnection';
 const uid='12345678-1234-4234-8234-123456789012';
 const originalFetch=globalThis.fetch;
-const originalAdmins=process.env.ADMIN_EMAILS, originalSecret=process.env.INSTAGRAM_APP_SECRET;
-test.afterEach(()=>{globalThis.fetch=originalFetch;for(const [key,value] of Object.entries({ADMIN_EMAILS:originalAdmins,INSTAGRAM_APP_SECRET:originalSecret})){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+const originalAdmins=process.env.ADMIN_EMAILS, originalSecret=process.env.INSTAGRAM_APP_SECRET, originalService=process.env.SUPABASE_SERVICE_ROLE_KEY;
+test.beforeEach(()=>{process.env.SUPABASE_SERVICE_ROLE_KEY='test-service-key';});
+test.afterEach(()=>{globalThis.fetch=originalFetch;for(const [key,value] of Object.entries({ADMIN_EMAILS:originalAdmins,INSTAGRAM_APP_SECRET:originalSecret,SUPABASE_SERVICE_ROLE_KEY:originalService})){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
 function response(){return {statusCode:200,body:null as any,headers:{} as Record<string,string>,setHeader(k:string,v:string){this.headers[k]=v;},status(code:number){this.statusCode=code;return this;},json(body:any){this.body=body;return this;}};}
 function request(action='admin-access',method='GET'){return {method,query:{action,email:'owner@example.test'},headers:{authorization:'Bearer session','x-user-email':'owner@example.test'},body:{}};}
 const identity=(email='owner@example.test',confirmed=true)=>({id:uid,email,email_confirmed_at:confirmed?'2026-10-01':null});
@@ -36,6 +37,7 @@ test('only configured admin receives a signed, action-bound server relay',async(
  process.env.ADMIN_EMAILS='owner@example.test';process.env.INSTAGRAM_APP_SECRET='private-relay-test';let relays=0;
  globalThis.fetch=async(url:any,init:any)=>{
   if(String(url).includes('/auth/'))return Response.json(identity());
+  if(String(url).includes('rpc/autoreply_sync_admin_allowlist'))return Response.json(null);
   relays++;assert.equal(JSON.parse(init.body).action,'admin_overview');
   const h=init.headers;assert.equal(h['X-Autoreply-Admin-Signature'],createHmac('sha256','private-relay-test').update(`admin_overview\nsession\n${h['X-Autoreply-Admin-Time']}`).digest('hex'));
   return Response.json({ok:true,profiles:[]});

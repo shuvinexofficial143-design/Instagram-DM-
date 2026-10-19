@@ -9,6 +9,7 @@ export const PlanRenewModal: React.FC = () => {
   const catalog=usePlanCatalog();
   const usage=useWorkspaceUsage();
   if (!isRenewModalOpen) return null;
+  if (usage.unlimited) return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4"><div role="dialog" aria-modal="true" aria-labelledby="admin-access-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"><ShieldCheck className="h-8 w-8 text-violet-700"/><h2 id="admin-access-title" className="mt-4 text-xl font-bold">Administrator · Unlimited</h2><p className="mt-2 text-sm leading-6 text-slate-600">Your account has no website plan limits. You do not need to buy or renew a plan.</p><button onClick={()=>setIsRenewModalOpen(false)} className="mt-5 min-h-11 w-full rounded-xl bg-violet-700 px-4 font-semibold text-white">Continue to workspace</button></div></div>;
   const current = String(user?.plan || 'free').toLowerCase();
   const freeMessagesLeft = Math.max(0, usage.messageLimit - usage.messageUsed);
   const freeAiLeft = Math.max(0, usage.aiLimit - usage.aiUsed);
@@ -40,7 +41,7 @@ export const PlanRenewModal: React.FC = () => {
                   <div key={item} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><span>{item}</span></div>
                 )}
               </div>
-              <button disabled={!catalog.synced || plan.id === 'free'} onClick={() => renewPlan(plan.id)} className={`mt-6 w-full rounded-xl px-4 py-3 text-sm font-bold transition ${plan.id === 'free' ? 'cursor-default bg-slate-100 text-slate-500' : 'bg-gradient-to-r from-violet-700 to-indigo-600 text-white shadow-lg shadow-violet-500/15 hover:opacity-95'}`}>
+              <button disabled={!catalog.synced || plan.id === 'free'} onClick={() => { if (plan.id !== 'administrator') renewPlan(plan.id); }} className={`mt-6 w-full rounded-xl px-4 py-3 text-sm font-bold transition ${plan.id === 'free' ? 'cursor-default bg-slate-100 text-slate-500' : 'bg-gradient-to-r from-violet-700 to-indigo-600 text-white shadow-lg shadow-violet-500/15 hover:opacity-95'}`}>
                 {active ? (plan.id === 'free' ? 'Current Plan' : 'Renew current plan') : plan.id === 'free' ? 'Use Free Plan' : `Choose ${plan.name}`}
               </button>
             </article>;

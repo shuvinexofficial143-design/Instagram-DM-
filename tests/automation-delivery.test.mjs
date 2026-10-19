@@ -71,7 +71,7 @@ function fixture(automations = [ai], options = {}) {
         if(options.quotaError) return {data:null,error:{code:'quota_unavailable'}};
         const isAi=args.p_is_ai,used=isAi?aiUsedCount:standardUsed,limit=1500;
         if(deliveryKeys.has(args.p_delivery_key)) return {data:{allowed:false,reason:'already_claimed'},error:null};
-        if(used>=limit) return {data:{allowed:false,reason:isAi?'ai_limit_reached':'normal_limit_reached'},error:null};
+        if(!options.unlimited&&used>=limit) return {data:{allowed:false,reason:isAi?'ai_limit_reached':'normal_limit_reached'},error:null};
         deliveryKeys.add(args.p_delivery_key);
         if(isAi) aiUsedCount++; else standardUsed++;
         return {data:{allowed:true,reason:'reserved'},error:null};
@@ -85,7 +85,7 @@ function fixture(automations = [ai], options = {}) {
         const duplicate = claims.has(args.p_message_id);
         claims.add(args.p_message_id);
         return { data: { user_id: 'workspace', account, automation: ai,
-          automations:automations.map(a=>({...a})), campaign_automation:options.campaignAutomation||null, thread_ai_paused:options.threadPausedAtPrepare===true, quota: { normalUsed: options.quotaUsed || 0, normalLimit: 1500, totalUsed: options.quotaUsed || 0, totalLimit:1500, aiUsed: options.aiUsed || 0, aiLimit: 1500 },
+          automations:automations.map(a=>({...a})), campaign_automation:options.campaignAutomation||null, thread_ai_paused:options.threadPausedAtPrepare===true, quota: { normalUsed: options.quotaUsed || 0, normalLimit: options.unlimited?null:1500, unlimited:options.unlimited===true, totalUsed: options.quotaUsed || 0, totalLimit:1500, aiUsed: options.aiUsed || 0, aiLimit: options.unlimited?null:1500 },
           history: history.get(args.p_sender_id) || [], message_state: duplicate ? 'duplicate' : 'new' } };
       }
       return { data: {}, error: null };
@@ -154,6 +154,17 @@ test('first AI DM generates and sends a confirmed reply against real schema', as
   assert.equal(f.apiCalls.filter(c => c.body.message).length, 1);
   assert.deepEqual(f.apiCalls.filter(c => c.body.sender_action).map(c => c.body.sender_action), ['typing_on', 'typing_off']);
   assert.ok(f.apiCalls.findIndex(c => c.body.sender_action === 'typing_off') > f.apiCalls.findIndex(c => c.body.message), 'Typing is stopped after the send request');
+});
+test('unlimited administrator continues AI replies beyond all plan quotas',async()=>{
+ const f=fixture([ai],{unlimited:true,aiUsed:200000,quotaUsed:200000});const r=await f.post(dm());
+ assert.equal(r.body.sent,1);assert.equal(f.aiInputs.length,1);
+ assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_reserve_automation_delivery'&&c.args.p_is_ai===true));
+ const duplicate=await f.post(dm());assert.equal(duplicate.body.sent,0);
+});
+test('unlimited administrator continues standard replies without bypassing a paused automation',async()=>{
+ const f=fixture([staticRule('dm')],{unlimited:true,quotaUsed:200000});assert.equal((await f.post(dm())).body.sent,1);
+ const paused=fixture([{...ai,status:'paused'}],{unlimited:true,aiUsed:200000});assert.equal((await paused.post(dm())).body.sent,0);
+ const disconnected=fixture([ai],{unlimited:true,aiUsed:200000,disconnected:true});assert.equal((await disconnected.post(dm())).body.sent,0);
 });
 test('two distinct messages in one batch both reply and the second sees history', async () => {
   const f = fixture(); const event = dm('m1', 'first'); event.entry[0].messaging.push(dm('m2', 'second').entry[0].messaging[0]);

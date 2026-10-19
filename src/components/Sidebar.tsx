@@ -43,9 +43,9 @@ export const Sidebar = () => {
       </div>
       {!collapsed&&<div className="sidebar-upgrade">
         <div className="sidebar-upgrade-title"><Zap/><strong>{usage.plan.name==='Free'?'Upgrade your workspace':usage.plan.name+' plan'}</strong></div>
-        <p>{usage.messageUsed.toLocaleString()} / {usage.messageLimit.toLocaleString()} messages used</p>
-        <div className="sidebar-usage-track" role="progressbar" aria-label="Message usage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><i style={{width:pct+'%',background:pct>=90?'#b45309':undefined}}/></div>
-        <button onClick={()=>setActiveTab('billing')}>View plans <ChevronRight/></button>
+        <p>{usage.unlimited ? 'Unlimited · No plan required' : `${usage.messageUsed.toLocaleString()} / ${usage.messageLimit.toLocaleString()} messages used`}</p>
+        {!usage.unlimited&&<div className="sidebar-usage-track" role="progressbar" aria-label="Message usage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><i style={{width:pct+'%',background:pct>=90?'#b45309':undefined}}/></div>}
+        <button onClick={()=>setActiveTab(usage.unlimited?'admin':'billing')}>{usage.unlimited?'Open Admin panel':'View plans'} <ChevronRight/></button>
       </div>}
       {!collapsed&&<div className="sidebar-owner" title={name}><strong>{name}</strong><span>{user.email || 'Workspace owner'}</span></div>}
     </div>

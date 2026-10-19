@@ -1,15 +1,8 @@
 import {adminOperationMethods,runAdminOperation,AdminOperationError} from './adminOperations.js';
 import { createHmac } from 'node:crypto';
 import { authenticatedUser, cleanEnvironment, SUPABASE_URL, upstreamFetch } from './supabaseConfig.js';
-
-/** Server-only policy. An empty allowlist grants nobody access. */
-export function configuredAdminEmails(): string[] {
-  return [...new Set(cleanEnvironment(process.env.ADMIN_EMAILS).split(',')
-    .map(value => cleanEnvironment(value).toLowerCase()).filter(value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)))];
-}
-export function isConfiguredAdmin(user: {email?: string; email_confirmed_at?: string; is_anonymous?: boolean} | null): boolean {
-  return Boolean(user?.email_confirmed_at && !user.is_anonymous && configuredAdminEmails().includes(String(user.email || '').trim().toLowerCase()));
-}
+import { isConfiguredAdmin, synchronizeAdminPolicy } from './adminPolicy.js';
+export { configuredAdminEmails, isConfiguredAdmin } from './adminPolicy.js';
 
 export function adminRelayHeaders(action: string, token: string): Record<string,string> {
   const secret = cleanEnvironment(process.env.INSTAGRAM_APP_SECRET);
@@ -30,8 +23,12 @@ export default async function adminHandler(req: any, res: any) {
     const user = await authenticatedUser(req);
     if (!user) return res.status(401).json({ok:false,isAdmin:false,error:'Sign in to continue.'});
     const isAdmin = isConfiguredAdmin(user);
-    if (action === 'admin-access') return res.status(200).json({ok:true,isAdmin});
+    if (action === 'admin-access') {
+      await synchronizeAdminPolicy();
+      return res.status(200).json({ok:true,isAdmin});
+    }
     if (!isAdmin) return res.status(403).json({ok:false,error:'Administrator access required.'});
+    await synchronizeAdminPolicy();
     if (adminOperationMethods[action]) return res.status(200).json(await runAdminOperation(req,user));
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
     const edgeAction = action === 'admin-overview' ? 'admin_overview' : 'admin_update_plan';

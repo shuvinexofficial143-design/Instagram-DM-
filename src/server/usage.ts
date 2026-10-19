@@ -1,5 +1,6 @@
 import { typedFetch as httpFetch } from './typedFetch.js';
 import { enforceRateLimit, resolveAiIdentity } from '../../api/_auth.js';
+import { synchronizeAdminPolicy } from './adminPolicy.js';
 
 const SUPABASE_URL = String(
   process.env.SUPABASE_URL ||
@@ -35,6 +36,7 @@ export default async function handler(req: any, res: any) {
   };
 
   try {
+    await synchronizeAdminPolicy();
     const response = await httpFetch(SUPABASE_URL + '/rest/v1/rpc/autoreply_billing_entitlement', {
       method: 'POST', headers, body: JSON.stringify({ p_workspace_id: identity.userId }), signal: AbortSignal.timeout(8000),
     });

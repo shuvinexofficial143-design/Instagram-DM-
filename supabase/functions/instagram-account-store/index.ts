@@ -950,7 +950,7 @@ Deno.serve(async (req: Request) => {
           const {count,error:countError}=await admin.from("autoreply_instagram_memberships")
             .select("workspace_id",{count:"exact",head:true}).eq("owner_user_id",ownerId);
           if(countError) return reply(503,{ok:false,error:"Unable to verify connected accounts"});
-          if((count||0)>=Number(limits.accounts||0)) return reply(403,{ok:false,code:"INSTAGRAM_ACCOUNT_LIMIT_REACHED",error:"Your plan's Instagram account limit is reached. Upgrade to connect more accounts."});
+          if(limits.unlimited!==true && (count||0)>=Number(limits.accounts||0)) return reply(403,{ok:false,code:"INSTAGRAM_ACCOUNT_LIMIT_REACHED",error:"Your plan's Instagram account limit is reached. Upgrade to connect more accounts."});
         }
         if (existing) workspaceId = existing.workspace_id;
         else {

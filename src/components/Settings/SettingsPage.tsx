@@ -174,7 +174,7 @@ export const SettingsPage: React.FC = () => {
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarClock className="h-5 w-5" /></span>
             <div>
               <h2 className="text-lg font-bold text-slate-950">Manage subscription</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">{usage.plan.id==='free'?'Free plan · no purchase required.':`${usage.plan.name} plan · ${usage.plan.price} for 30 days. Renew manually when you need it; no automatic charges.`}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{usage.unlimited?'Administrator · Unlimited. No plan purchase or renewal required.':usage.plan.id==='free'?'Free plan · no purchase required.':`${usage.plan.name} plan · ${usage.plan.price} for 30 days. Renew manually when you need it; no automatic charges.`}</p>
               {usage.expiresAt && <p className="mt-2 text-sm text-slate-500">Access until {new Date(usage.expiresAt).toLocaleString()}</p>}
             </div>
           </div>
@@ -204,7 +204,7 @@ export const SettingsPage: React.FC = () => {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="truncate text-base font-bold text-slate-900">{accountName}</h3>
-                <span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-bold capitalize text-indigo-700">{user.plan} plan</span>
+                <span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-bold capitalize text-indigo-700">{usage.unlimited?'Administrator':`${user.plan} plan`}</span>
               </div>
               <p className="mt-1 flex min-w-0 items-center gap-2 text-sm text-slate-500">
                 <Mail className="h-4 w-4 shrink-0" />

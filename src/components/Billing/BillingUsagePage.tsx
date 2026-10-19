@@ -17,16 +17,16 @@ const comparisonRows = [
 
 
 export const FreeBonus=({amount}:{amount:number})=>amount>0?<span title="Unused Free credits carried into your first paid plan" className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700"><Plus className="h-3 w-3" aria-hidden="true"/>{amount.toLocaleString()} Free bonus</span>:null;
-const Usage=({icon:Icon,label,used,limit,note,bonus=0}:{icon:any,label:string,used:number,limit:number,note:string,bonus?:number})=>{
+const Usage=({icon:Icon,label,used,limit,note,bonus=0,unlimited=false}:{icon:any,label:string,used:number,limit:number,note:string,bonus?:number,unlimited?:boolean})=>{
   const pct=Math.min(100,Math.round(used/Math.max(limit,1)*100));
   return <div className="rounded-[24px] border border-white bg-white p-4 shadow-[0_16px_42px_rgba(31,23,76,.06)] sm:p-6">
     <div className="flex items-start justify-between gap-3">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#ede8ff] text-[#6844d1]"><Icon className="h-4.5 w-4.5"/></span>
-      <span className="text-xs font-bold text-slate-500">{pct}% used</span>
+      <span className="text-xs font-bold text-slate-500">{unlimited?'Unlimited':`${pct}% used`}</span>
     </div>
     <p className="mt-4 text-xs font-semibold text-slate-500">{label}</p>
-    <p className="mt-1 text-2xl font-black tracking-tight text-slate-950">{used.toLocaleString()} <span className="text-sm font-semibold text-slate-400">/ {(limit-bonus).toLocaleString()}</span>{bonus>0&&<span className="ml-2 inline-block align-middle"><FreeBonus amount={bonus}/></span>}</p>
-    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-violet-700 to-indigo-500 transition-all" style={{width:`${pct}%`}}/></div>
+    <p className="mt-1 text-2xl font-black tracking-tight text-slate-950">{used.toLocaleString()} <span className="text-sm font-semibold text-slate-400">{unlimited?'used':`/ ${(limit-bonus).toLocaleString()}`}</span>{bonus>0&&<span className="ml-2 inline-block align-middle"><FreeBonus amount={bonus}/></span>}</p>
+    {!unlimited&&<div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-violet-700 to-indigo-500 transition-all" style={{width:`${pct}%`}}/></div>}
     <p className="mt-2 min-h-8 text-xs leading-4 text-slate-500">{note}</p>
   </div>
 };
@@ -40,6 +40,18 @@ export const BillingUsagePage:React.FC=()=>{
   const plan=usage.plan;
   const usageVerified=usage.source==='server';
   const autoLimit=usage.automationLimit===null?Math.max(usage.automationUsed,1):usage.automationLimit;
+
+  if (usage.unlimited) return <div className="min-h-full bg-[#f5f6fc] px-4 py-6 sm:px-7 lg:px-8"><div className="mx-auto max-w-[1380px] space-y-6">
+    <header><p className="text-xs font-bold uppercase tracking-widest text-violet-700">YOUR WORKSPACE</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Billing & Usage</h1><p className="mt-2 text-sm text-slate-500">Administrator access and workspace activity.</p></header>
+    <section className="rounded-2xl border border-violet-200 bg-white p-5 shadow-sm sm:p-7"><div className="flex items-start gap-3"><ShieldCheck className="h-6 w-6 shrink-0 text-violet-700"/><div><h2 className="text-xl font-bold text-slate-950">Administrator · Unlimited</h2><p className="mt-2 text-sm leading-6 text-slate-600">No plan purchase or renewal is required. Standard messages, AI replies, automations and connected Instagram accounts have no website plan limits.</p><p className="mt-2 text-xs leading-5 text-slate-500">Usage is still recorded. Instagram messaging permissions and platform rate limits apply.</p></div></div></section>
+    <section aria-label="Administrator usage" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <Usage icon={BarChart3} label="Standard replies" used={usage.messageUsed} limit={Infinity} unlimited note="No monthly plan limit"/>
+      <Usage icon={Bot} label="AI Replies" used={usage.aiUsed} limit={Infinity} unlimited note="No monthly plan limit"/>
+      <Usage icon={Zap} label="Automations" used={usage.automationUsed} limit={Infinity} unlimited note="No plan count limit"/>
+      <Usage icon={Instagram} label="Instagram Accounts" used={instagramAccounts.filter(({account})=>account?.status==='connected').length} limit={Infinity} unlimited note="No plan count limit"/>
+    </section>
+    <BillingHistory/>
+  </div></div>;
 
   return <div className="min-h-full bg-[#f5f6fc] px-4 py-6 sm:px-7 lg:px-8">
     <div className="mx-auto max-w-[1380px] space-y-7">
