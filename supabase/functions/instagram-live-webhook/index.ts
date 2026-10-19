@@ -573,9 +573,9 @@ async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:s
 
 // Atomic, durable reservation BEFORE delivery. Never permit parallel sends to
 // overrun a customer's purchased standard or AI allowance.
-async function reserveDeliveryQuota(admin:any, workspaceId:string, deliveryKey:string, isAi:boolean):Promise<{allowed:boolean;reason?:string}> {
-  const { data, error } = await admin.rpc("autoreply_reserve_delivery_quota", {
-    p_workspace_id: workspaceId, p_delivery_key: deliveryKey, p_is_ai: isAi
+async function reserveDeliveryQuota(admin:any, workspaceId:string, deliveryKey:string, isAi:boolean, automationId:string, senderId:string):Promise<{allowed:boolean;reason?:string}> {
+  const { data, error } = await admin.rpc("autoreply_reserve_automation_delivery", {
+    p_workspace_id: workspaceId, p_delivery_key: deliveryKey, p_is_ai: isAi, p_automation_id:automationId, p_sender_id:senderId
   });
   if(error || !data) throw new Error("Delivery quota could not be verified");
   return data;
@@ -996,24 +996,9 @@ async function updateAutomationStats(
 ) {
   if (!automation?.id) return;
 
-  const next = {
-    ...automation,
-    stats: {
-      runs: Number(automation?.stats?.runs || 0) + 1,
-      dms_sent: Number(automation?.stats?.dms_sent || 0) + 1,
-      unique_users: Number(automation?.stats?.unique_users || 0),
-      open_rate: Number(automation?.stats?.open_rate ?? 100),
-    },
-    updated_at: new Date().toISOString(),
-  };
-  delete next._updated_at;
-
-  const { error } = await admin
-    .from("autoreply_documents")
-    .update({ data: next })
-    .eq("user_id", workspaceId)
-    .eq("collection", "automations")
-    .eq("id", automation.id);
+  const { error } = await admin.rpc("autoreply_increment_automation_stats", {
+    p_user_id:workspaceId, p_automation_id:String(automation.id),
+  });
 
   if (error) {
     console.error("[LIVE_DM_AUTOMATION_STATS_FAILED]", error);
@@ -1386,7 +1371,7 @@ async function executeStaticActions(admin: any, workspaceId: string, item: any, 
         if (!text && !catalog) continue;
         if(catalog) text=`[Catalog: ${catalog.name}]`;
         const deliveryKey=`standard:${item.messageId||item.commentId||item.senderId}:${automation.id}:${index}:${action.type}`;
-        const slot=await reserveDeliveryQuota(admin,workspaceId,deliveryKey,false);
+        const slot=await reserveDeliveryQuota(admin,workspaceId,deliveryKey,false,String(automation.id),item.senderId);
         if(slot.allowed) unresolvedDeliveryKey=deliveryKey;
         if(!slot.allowed) return {ok:false,sent:deliveries.length>0,reason:slot.reason||"monthly_standard_limit_reached",deliveries};
         const recipient = item.triggerType === "comment" ? { comment_id: item.commentId } : { id: item.senderId };
@@ -1402,7 +1387,7 @@ async function executeStaticActions(admin: any, workspaceId: string, item: any, 
       }
       if (action.type === "reply_comment" && item.triggerType === "comment" && action.comment_reply_text) {
         const deliveryKey=`standard:${item.messageId||item.commentId||item.senderId}:${automation.id}:${index}:${action.type}`;
-        const slot=await reserveDeliveryQuota(admin,workspaceId,deliveryKey,false);
+        const slot=await reserveDeliveryQuota(admin,workspaceId,deliveryKey,false,String(automation.id),item.senderId);
         if(slot.allowed) unresolvedDeliveryKey=deliveryKey;
         if(!slot.allowed) return {ok:false,sent:deliveries.length>0,reason:slot.reason||"monthly_standard_limit_reached",deliveries};
         const payload = await metaWrite(`${encodeURIComponent(item.commentId)}/replies`, account.access_token, { message: asText(action.comment_reply_text, 1000) });
@@ -1718,7 +1703,8 @@ Deno.serve(async (req: Request) => {
     // The service-only RPC returns a single fresh snapshot. No additional
     // network reads stand between the durable claim and starting typing/AI.
     const eligibilityMs = 0, rulesMs = 0, quotaMs = 0;
-    const automation = matchAutomation(context.automations || [], item);
+    let automation = matchAutomation(context.automations || [], item);
+    if (context.thread_ai_paused === true && automation?.trigger_type === "dm_ai_conversation") automation = null;
     context.automation = automation;
     if(automation)runInBackground((async()=>{if(await inboundSaved)await captureCustomerData(admin,workspaceId,automation,item,openaiKey,account);})());
 
@@ -1931,7 +1917,7 @@ Instagram DM style rules:
     try {
       // Separate AI allowance, reserved under an owner-level database lock.
       const aiDeliveryKey=`ai:${item.messageId||item.senderId}:${automation.id}`;
-      const slot=await reserveDeliveryQuota(admin,workspaceId,aiDeliveryKey,true);
+      const slot=await reserveDeliveryQuota(admin,workspaceId,aiDeliveryKey,true,String(automation.id),item.senderId);
       if(slot.allowed) unresolvedAiKey=aiDeliveryKey;
       if(!slot.allowed) {
         stopTyping();

@@ -63,7 +63,11 @@ function fixture(automations = [ai], options = {}) {
         if (options.usageGate) await options.usageGate;
         return { data: { total_messages: options.quotaUsed || 0, ai_replies: 0 } };
       }
-      if(name === 'autoreply_reserve_delivery_quota') {
+      if(name === 'autoreply_increment_automation_stats') {options.onStats?.(args);return {data:null,error:null};}
+      if(name === 'autoreply_reserve_automation_delivery') {
+        if(options.disconnected)return {data:{allowed:false,reason:'instagram_disconnected'}};
+        if(options.automationPaused)return {data:{allowed:false,reason:'automation_paused_or_deleted'}};
+        if(options.threadPaused)return {data:{allowed:false,reason:'conversation_ai_paused'}};
         if(options.quotaError) return {data:null,error:{code:'quota_unavailable'}};
         const isAi=args.p_is_ai,used=isAi?aiUsedCount:standardUsed,limit=1500;
         if(deliveryKeys.has(args.p_delivery_key)) return {data:{allowed:false,reason:'already_claimed'},error:null};
@@ -81,7 +85,7 @@ function fixture(automations = [ai], options = {}) {
         const duplicate = claims.has(args.p_message_id);
         claims.add(args.p_message_id);
         return { data: { user_id: 'workspace', account, automation: ai,
-          automations, quota: { normalUsed: options.quotaUsed || 0, normalLimit: 1500, totalUsed: options.quotaUsed || 0, totalLimit:1500, aiUsed: options.aiUsed || 0, aiLimit: 1500 },
+          automations:automations.map(a=>({...a})), thread_ai_paused:options.threadPausedAtPrepare===true, quota: { normalUsed: options.quotaUsed || 0, normalLimit: 1500, totalUsed: options.quotaUsed || 0, totalLimit:1500, aiUsed: options.aiUsed || 0, aiLimit: 1500 },
           history: history.get(args.p_sender_id) || [], message_state: duplicate ? 'duplicate' : 'new' } };
       }
       return { data: {}, error: null };
@@ -472,7 +476,7 @@ test('normal DM sends one swipeable carousel with product photos and counts one 
  const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,1);
  const payload=sent[0].body.message.attachment.payload;assert.equal(payload.template_type,'generic');assert.equal(payload.elements.length,2);
  assert.equal(payload.elements[0].title,'Silver watch');assert.equal(payload.elements[0].buttons[0].url,'https://shop.example/watch');
- assert.ok(f.writes.some(w=>w.collection==='inbox_messages'&&w.data.catalog_id==='watches'));assert.equal(f.aiInputs.length,0);assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_reserve_delivery_quota').length,1);
+ assert.ok(f.writes.some(w=>w.collection==='inbox_messages'&&w.data.catalog_id==='watches'));assert.equal(f.aiInputs.length,0);assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_reserve_automation_delivery').length,1);
 });
 test('AI can select an approved catalog without a second AI request; normal questions remain text',async()=>{
  const rule={...ai,actions:[{type:'ai_chatbot',ai_system_instruction:'Sell watches',catalog_id:'watches'}]};
@@ -503,4 +507,31 @@ test('customer data capture failure does not block a confirmed Instagram reply',
 test('customer data is captured even when reply quota has been exhausted',async()=>{
  const f=fixture([ai],{aiUsed:1500});const response=await f.post(dm('capture-no-quota','Phone 9876543210'));
  assert.equal(response.body.sent,0);assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_capture_customer'));
+});
+
+
+test('OFF during AI generation blocks dispatch and never writes the old active snapshot',async()=>{
+ const options={};options.onAIStart=()=>{options.automationPaused=true;};
+ const f=fixture([ai],options);const result=await f.post(dm('pause-during-generation'));
+ assert.equal(result.body.sent,0);assert.equal(result.body.results[0].reason,'automation_paused_or_deleted');
+ assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
+ assert.equal(f.writes.filter(row=>row.collection==='automations').length,0);
+});
+test('disconnect during AI generation blocks the pending reply',async()=>{
+ const options={};options.onAIStart=()=>{options.disconnected=true;};const f=fixture([ai],options);
+ const result=await f.post(dm('disconnect-during-generation'));assert.equal(result.body.sent,0);
+ assert.equal(result.body.results[0].reason,'instagram_disconnected');
+});
+test('durable conversation takeover blocks new AI turns and takeover during generation blocks sends',async()=>{
+ const f=fixture([ai],{threadPausedAtPrepare:true});const result=await f.post(dm('thread-paused'));
+ assert.equal(result.body.sent,0);assert.equal(f.aiInputs.length,0);
+ assert.ok(f.writes.some(row=>row.collection==='inbox_messages'&&row.data.direction==='in'));
+ const options={};options.onAIStart=()=>{options.threadPaused=true;};const pending=fixture([ai],options);
+ const blocked=await pending.post(dm('thread-takeover-during-generation'));assert.equal(blocked.body.sent,0);
+ assert.equal(blocked.body.results[0].reason,'conversation_ai_paused');
+});
+test('completed replies update only the atomic stats RPC',async()=>{
+ const f=fixture();await f.post(dm('stats-atomic'));
+ assert.ok(f.rpcCalls.some(call=>call.name==='autoreply_increment_automation_stats'&&call.args.p_automation_id===ai.id));
+ assert.equal(f.writes.filter(row=>row.collection==='automations').length,0);
 });

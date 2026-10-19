@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, startTransition } from 'react';
+import { reconcileAutomationRecords } from '../lib/automationState';
 import { connectedInstagramAccount } from '../lib/instagramConnection';
 import { normalizeActivityLog } from '../lib/activityLogs';
 import {
@@ -103,14 +104,15 @@ interface AppContextType {
 
   // AI Conversion Toggle (Human Takeover)
   isAiPausedForUser: (username: string) => boolean;
-  toggleAiForUser: (username: string) => void;
-  setAiPausedForUser: (username: string, paused: boolean) => void;
+  toggleAiForUser: (username: string) => Promise<void>;
+  setAiPausedForUser: (username: string, paused: boolean) => Promise<void>;
 
   // Actions
   createAutomation: (newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'> & {id?:string}) => void;
   updateAutomation: (id: string, updates: Partial<Automation>) => void;
   deleteAutomation: (id: string) => void;
-  toggleAutomationStatus: (id: string) => void;
+  toggleAutomationStatus: (id: string) => Promise<void>;
+  isAutomationSaving: (id: string) => boolean;
   
   // Simulator & Webhook Engine
   simulateWebhookEvent: (triggerType: TriggerType, username: string, incomingText: string) => Promise<WebhookLogEvent>;
@@ -277,6 +279,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([]);
   const [webhookLogs, setLogs] = useState<WebhookLogEvent[]>([]);
   const [pausedAiUsers, setPausedAiUsers] = useState<string[]>([]);
+  const pendingAutomationStatuses=useRef(new Map<string,Automation['status']>());
+  const threadPauseVersions=useRef(new Map<string,number>());
+  const threadControlRecords=useRef(new Map<string,any>());
+  const workspaceScope=useRef('');
+  workspaceScope.current=workspaceId || firebaseUser?.uid || '';
+  const isAutomationSaving=(id:string)=>pendingAutomationStatuses.current.has(id);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() =>
@@ -614,6 +622,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAutomations([]);
     setContacts([]);
     setInboxMessages([]);setLogs([]);setPausedAiUsers([]);
+    pendingAutomationStatuses.current.clear();threadPauseVersions.current.clear();threadControlRecords.current.clear();
     const loadAutomationsFromServer = async () => {
       try {
         const token = await auth.currentUser?.getIdToken().catch(() => '');
@@ -630,7 +639,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const sanitized: Automation[] = (
           Array.isArray(payload.automations) ? payload.automations : []
         ).map(sanitizeAutomationRecord);
-        if(live)setAutomations(sanitized);
+        if(live)setAutomations(current=>reconcileAutomationRecords(current,sanitized,pendingAutomationStatuses.current));
         markLoaded('automations');
       } catch (err: any) {
         console.warn('[AUTOMATION_API_LOAD_WARN]', err?.message || err);
@@ -644,9 +653,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (data) => {
         if (data) {
           const sanitized: Automation[] = data.map(sanitizeAutomationRecord);
-          setAutomations(sanitized);
+          setAutomations(current=>reconcileAutomationRecords(current,sanitized,pendingAutomationStatuses.current));
         } else {
-          setAutomations([]);
+          setAutomations(current=>reconcileAutomationRecords(current,[],pendingAutomationStatuses.current));
         }
         markLoaded('automations');
       },
@@ -663,6 +672,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let signedInProfileRefreshRequested = false;
     setCustomerInsights([]);
     const unsubscribeInsights=subscribeToUserCollection<any>(uid,'customer_insights',setCustomerInsights);
+    const unsubscribeThreadControls=subscribeToUserCollection<any>(uid,'ai_thread_controls',(rows)=>{
+      if(!live)return;
+      for(const row of rows||[]){const old=threadControlRecords.current.get(row.id);if(!old || (Date.parse(old.updated_at||'')||0)<=(Date.parse(row.updated_at||'')||0))threadControlRecords.current.set(row.id,row);}
+      setPausedAiUsers([...threadControlRecords.current.values()].filter(row=>row.paused===true).flatMap(row=>[String(row.sender_id||row.id||'').toLowerCase(),String(row.username||'').replace(/^@/,'').toLowerCase()]).filter(Boolean));
+    });
     const unsubscribeContacts = subscribeToUserCollection<Contact>(uid, 'contacts', (data) => {
       if (data) {
         const sanitized: Contact[] = data.map((c) => ({
@@ -736,6 +750,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribeAutomations();
       unsubscribeContacts();
       unsubscribeInsights();
+      unsubscribeThreadControls();
       unsubscribeInbox();
       unsubscribeLogs();
       unsubscribeEvents();
@@ -745,37 +760,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // AI Human Takeover state
   const isAiPausedForUser = (username: string): boolean => {
-    if (!username) return false;
-    const clean = username.replace(/^@/, '').toLowerCase();
-    return pausedAiUsers.some((u) => u.toLowerCase() === clean);
+    const clean=String(username||'').replace(/^@/,'').toLowerCase();
+    const contact=contacts.find(c=>c.ig_username?.toLowerCase()===clean || c.ig_user_id===clean);
+    const sender=contact?.ig_user_id || inboxMessages.find(m=>m.from_username?.toLowerCase()===clean)?.from_ig_id;
+    return pausedAiUsers.includes(clean) || Boolean(sender && pausedAiUsers.includes(sender.toLowerCase()));
   };
 
-  const toggleAiForUser = (username: string) => {
-    if (!username) return;
-    const clean = username.replace(/^@/, '').toLowerCase();
-    setPausedAiUsers((prev) => {
-      const exists = prev.some((u) => u.toLowerCase() === clean);
-      if (exists) {
-        return prev.filter((u) => u.toLowerCase() !== clean);
-      } else {
-        return [...prev, clean];
-      }
-    });
+  const setAiPausedForUser = async (username: string, paused: boolean) => {
+    const clean=String(username||'').replace(/^@/,'').toLowerCase();
+    const uid=workspaceId || firebaseUser?.uid || '';
+    const contact=contacts.find(c=>c.ig_username?.toLowerCase()===clean || c.ig_user_id===clean);
+    const senderId=contact?.ig_user_id || inboxMessages.find(m=>m.from_username?.toLowerCase()===clean || m.from_ig_id===clean)?.from_ig_id || (/^\d+$/.test(clean)?clean:'');
+    if(!uid || !senderId)throw new Error('This conversation is still loading. Please try again.');
+    const key=uid+':'+senderId,version=(threadPauseVersions.current.get(key)||0)+1;
+    threadPauseVersions.current.set(key,version);
+    const control={id:senderId,sender_id:senderId,username:clean,paused,updated_at:new Date().toISOString()};
+    await saveUserDocument(uid,'ai_thread_controls',control);
+    if(workspaceScope.current!==uid || threadPauseVersions.current.get(key)!==version)return;
+    threadControlRecords.current.set(senderId,control);
+    setPausedAiUsers(previous=>{const rest=previous.filter(value=>value!==clean&&value!==senderId.toLowerCase());return paused?[...rest,clean,senderId.toLowerCase()]:rest;});
   };
-
-  const setAiPausedForUser = (username: string, paused: boolean) => {
-    if (!username) return;
-    const clean = username.replace(/^@/, '').toLowerCase();
-    setPausedAiUsers((prev) => {
-      const exists = prev.some((u) => u.toLowerCase() === clean);
-      if (paused && !exists) {
-        return [...prev, clean];
-      } else if (!paused && exists) {
-        return prev.filter((u) => u.toLowerCase() !== clean);
-      }
-      return prev;
-    });
-  };
+  const toggleAiForUser = (username: string) => setAiPausedForUser(username,!isAiPausedForUser(username));
 
   const refreshInstagramAccounts = async (followCookie=false) => {
     if (!firebaseUser?.uid || accountMutation.current) return;
@@ -1097,50 +1102,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const toggleAutomationStatus = (id: string) => {
-    const current = automations.find((auto) => auto.id === id);
-    if (!current) return;
-
-    const now = new Date().toISOString();
-    const nextStatus = current.status === 'active' ? 'paused' : 'active';
-    const updated: Automation = {
-      ...current,
-      status: nextStatus,
-      updated_at: now,
-    };
-
-    const shouldBeOnlyLiveDmAi =
-      updated.trigger_type === 'dm_ai_conversation' && nextStatus === 'active';
-
-    const pausedOthers = shouldBeOnlyLiveDmAi
-      ? automations
-          .filter(
-            (auto) =>
-              auto.id !== id &&
-              auto.trigger_type === 'dm_ai_conversation' &&
-              auto.status === 'active'
-          )
-          .map((auto) => ({
-            ...auto,
-            status: 'paused' as const,
-            updated_at: now,
-          }))
-      : [];
-
-    const pausedIds = new Set(pausedOthers.map((auto) => auto.id));
-
-    setAutomations((prev) =>
-      prev.map((auto) => {
-        if (auto.id === id) return updated;
-        if (pausedIds.has(auto.id)) {
-          return { ...auto, status: 'paused', updated_at: now };
-        }
-        return auto;
-      })
-    );
-
-    for (const paused of pausedOthers) persistAutomationRecord(paused);
-    persistAutomationRecord(updated);
+  const toggleAutomationStatus = async (id: string) => {
+    const current=automations.find(item=>item.id===id);
+    if(!current || pendingAutomationStatuses.current.has(id))return;
+    const uid=workspaceId || firebaseUser?.uid || '';
+    const status=current.status==='active'?'paused':'active';
+    pendingAutomationStatuses.current.set(id,status);
+    setAutomations(previous=>previous.map(item=>item.id===id?{...item,status}:item));
+    try{
+      const response=await fetch('/api/automations',{method:'PATCH',credentials:'same-origin',
+        headers:{'Content-Type':'application/json',...(await automationAuthHeaders())},
+        body:JSON.stringify({automationId:id,status}),signal:AbortSignal.timeout(20000)});
+      const result=await response.json();
+      if(!response.ok || !result.ok || !result.automation)throw new Error(result.error||'Could not save automation status.');
+      if(workspaceScope.current!==uid)return;
+      pendingAutomationStatuses.current.delete(id);
+      const paused=new Set<string>(result.pausedAutomationIds||[]);
+      setAutomations(previous=>reconcileAutomationRecords(previous,previous.map(item=>item.id===id?sanitizeAutomationRecord(result.automation):paused.has(item.id)?{...item,status:'paused',updated_at:result.automation.updated_at}:item)));
+    }catch(error:any){
+      if(workspaceScope.current!==uid)return;
+      pendingAutomationStatuses.current.delete(id);
+      setAutomations(previous=>previous.map(item=>item.id===id?{...item,status:current.status}:item));
+      window.alert('Automation status could not be saved. Please retry. '+(error?.message||''));
+    }
   };
 
   // Simulator & Webhook Engine implementation
@@ -1322,14 +1306,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       saveUserDocument(userUid, 'contacts', updatedContact);
     }
 
-    // Update Automation Stats
-    updateAutomation(matched.id, {
-      stats: {
-        ...matched.stats,
-        runs: (matched.stats?.runs || 0) + 1,
-        dms_sent: (matched.stats?.dms_sent || 0) + 1,
-      },
-    });
+    // Preview messages never rewrite a live automation or its delivery counters.
 
     const finalLog: WebhookLogEvent = {
       id: `log_${Date.now()}`,
@@ -1408,7 +1385,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (payload?.ok !== true || payload?.sent !== true || !payload?.message_id || !payload?.message) {
         throw new Error(payload?.error || 'Instagram did not confirm delivery');
       }
-      setAiPausedForUser(cleanUser, true);
+      await setAiPausedForUser(cleanUser, true).catch(()=>{});
       const sent: InboxMessage = payload.message;
       setInboxMessages((prev) => [sent, ...prev.filter((m) => m.id !== newOutMsg.id && m.id !== sent.id)]);
     } catch (err) {
@@ -1674,7 +1651,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createAutomation,
         updateAutomation,
         deleteAutomation,
-        toggleAutomationStatus,
+        toggleAutomationStatus, isAutomationSaving,
         simulateWebhookEvent,
         triggerWebhookSimulation,
         sendManualReply,

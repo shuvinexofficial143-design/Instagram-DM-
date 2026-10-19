@@ -32,7 +32,7 @@ import { automationSummary, relativeAutomationTime, uniqueAutomationName } from 
 export const AutomationsPage: React.FC = () => {
   const {
     automations,
-    toggleAutomationStatus,
+    toggleAutomationStatus, isAutomationSaving,
     deleteAutomation,
     createAutomation,
     setEditingAutomation,
@@ -414,7 +414,9 @@ export const AutomationsPage: React.FC = () => {
                   {/* Toggle Switch & Menu */}
                   <div className="flex items-center gap-3 self-end sm:self-auto">
                     <button
-                      onClick={() => toggleAutomationStatus(auto.id)}
+                      onClick={() => void toggleAutomationStatus(auto.id)}
+                      disabled={Boolean(isAutomationSaving?.(auto.id))}
+                      aria-busy={Boolean(isAutomationSaving?.(auto.id))}
                       title={isActive ? 'Pause Automation' : 'Activate Automation'}
                       role="switch" aria-checked={isActive} aria-label={`${isActive ? 'Pause' : 'Activate'} ${auto.name}`}
                       className="min-h-11 min-w-11 flex items-center justify-center transition-opacity hover:opacity-80"

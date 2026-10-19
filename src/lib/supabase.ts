@@ -291,7 +291,7 @@ export function subscribeToUserCollection<T extends { id?: string }>(
   // Supabase Realtime is not guaranteed for every document collection.
   // Periodically reconcile true server records so counts keep updating even
   // when database replication misses events, a tab sleeps, or a socket drops.
-  const shouldReconcile = ['inbox_messages','automations','contacts','webhook_events','webhook_logs'].includes(subcollectionName);
+  const shouldReconcile = ['inbox_messages','automations','contacts','webhook_events','webhook_logs','ai_thread_controls'].includes(subcollectionName);
   const poll = shouldReconcile ? window.setInterval(() => {
     if(!document.hidden)void refresh();
   }, 30000) : null;

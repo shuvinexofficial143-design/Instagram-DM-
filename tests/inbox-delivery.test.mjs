@@ -27,7 +27,8 @@ function fixture(options={}) {
       function result(single){const rows=tables[table]||[];
         const matches=rows.filter(row=>Object.entries(filters).every(([k,v])=>row[k]===v)&&Object.entries(sets).every(([k,v])=>v.includes(row[k])));
         if(update){matches.forEach(row=>Object.assign(row,update));return {data:null,error:null};}
-        if(mutation){if(options.saveFails&&table==='autoreply_documents'&&mutation.collection==='inbox_messages')return {error:{message:'Unavailable'}};
+        if(mutation){if(options.pauseFails&&mutation.collection==='ai_thread_controls')return {error:{message:'Pause unavailable'}};
+          if(options.saveFails&&table==='autoreply_documents'&&mutation.collection==='inbox_messages')return {error:{message:'Unavailable'}};
           const key=table==='autoreply_instagram_memberships'?'workspace_id':table==='autoreply_instagram_tokens'?'user_id':'id';
           const existing=rows.find(row=>row[key]===mutation[key]&&(key!=='id'||row.collection===mutation.collection&&row.user_id===mutation.user_id));
           if(existing)Object.assign(existing,mutation);else rows.push({...mutation});return {data:null,error:null};}
@@ -117,4 +118,13 @@ test('production DM URL resolves to an existing Vercel function',async()=>{
   const config=JSON.parse(await fs.readFile('vercel.json','utf8'));
   assert.equal(config.rewrites.find(r=>r.source==='/api/instagram/send-dm')?.destination,'/api/instagram/account?action=send-dm');
   assert.match(await fs.readFile('api/instagram/account.ts','utf8'),/req.query\?\.action === 'send-dm'.*manualDmHandler/);
+});
+
+test('manual replies durably pause AI by Instagram sender ID before sending',async()=>{
+ const f=fixture();const r=await f.post(send);assert.equal(r.status,200);
+ const control=f.tables.autoreply_documents.find(row=>row.collection==='ai_thread_controls');
+ assert.equal(control.id,customer);assert.equal(control.data.paused,true);assert.equal(control.data.username,'customer');
+});
+test('manual reply stops if the AI takeover cannot be persisted',async()=>{
+ const f=fixture({pauseFails:true});const r=await f.post(send);assert.equal(r.status,503);assert.equal(f.calls.length,0);
 });

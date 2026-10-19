@@ -69,6 +69,9 @@ export const InboxPage: React.FC = () => {
   const [newReplyTitle, setNewReplyTitle] = useState('');
   const [newReplyText, setNewReplyText] = useState('');
   const [showSavedReplies, setShowSavedReplies] = useState(false);
+  const [aiControlSaving,setAiControlSaving]=useState(false);
+  const [aiControlError,setAiControlError]=useState('');
+  const changeAiControl=async(username:string)=>{setAiControlSaving(true);setAiControlError('');try{await toggleAiForUser(username);}catch(error:any){setAiControlError(error.message||'Could not save AI reply setting.');}finally{setAiControlSaving(false);}};
 
   useEffect(() => {
     const uid = workspaceId || auth.currentUser?.uid;
@@ -291,12 +294,13 @@ export const InboxPage: React.FC = () => {
                     <button onClick={() => void toggleCustomerPriority()} className={'rounded-lg border p-2 ' + ((selectedContact?.customer_insight?.priority || selectedMeta.priority) === 'high' ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-500')} title="Toggle priority"><Star className="h-4 w-4" /></button>
                     <button onClick={() => void saveMeta({ assignee: selectedMeta.assignee ? '' : (firebaseUser?.displayName || firebaseUser?.email || 'Me') })} className="rounded-lg border border-slate-200 p-2 text-slate-600" title="Assign to me"><UserCheck className="h-4 w-4" /></button>
                     <button onClick={() => void snoozeFor(1)} className="rounded-lg border border-slate-200 p-2 text-slate-600" title="Snooze 1 hour"><AlarmClock className="h-4 w-4" /></button>
-                    <button onClick={() => toggleAiForUser(selectedUser)} className={'rounded-lg border p-2 ' + (aiPaused ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700')} aria-label={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'} title={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'}><span className="flex items-center gap-2 text-sm font-semibold">{aiPaused ? <BotOff className="h-4 w-4" /> : <Bot className="h-4 w-4" />}{aiPaused?'Resume AI':'Take over'}</span></button>
+                    <button disabled={aiControlSaving} aria-busy={aiControlSaving} onClick={() => void changeAiControl(selectedUser)} className={'rounded-lg border p-2 ' + (aiPaused ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700')} aria-label={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'} title={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'}><span className="flex items-center gap-2 text-sm font-semibold">{aiPaused ? <BotOff className="h-4 w-4" /> : <Bot className="h-4 w-4" />}{aiPaused?'Resume AI':'Take over'}</span></button>
                     <button onClick={() => void saveMeta({ status: selectedMeta.status === 'resolved' ? 'open' : 'resolved', snooze_until: undefined })} className={'rounded-lg px-3 py-2 text-xs font-bold ' + (selectedMeta.status === 'resolved' ? 'bg-slate-100 text-slate-700' : 'bg-emerald-600 text-white')}>{selectedMeta.status === 'resolved' ? 'Reopen' : 'Resolve'}</button>
                     <button onClick={() => setRightPanelOpen(!rightPanelOpen)} className="rounded-lg border border-slate-200 p-2 text-slate-500"><MoreHorizontal className="h-4 w-4" /></button>
                   </div>
                 </div>
 
+                {aiControlError && <p role="alert" className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{aiControlError}</p>}
                 {selectedMeta.snooze_until && new Date(selectedMeta.snooze_until).getTime() > Date.now() && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800">Snoozed until {new Date(selectedMeta.snooze_until).toLocaleString()} · <button onClick={() => void saveMeta({ snooze_until: undefined, status: 'open' })} className="underline">Unsnooze</button></div>}
 
                 <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">

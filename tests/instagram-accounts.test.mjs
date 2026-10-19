@@ -124,3 +124,19 @@ test('disconnecting one account never removes another connected account',async()
  const list=await f.post({action:'list_accounts'},{Authorization:'Bearer session'});
  assert.equal(list.body.accounts.find(row=>row.workspaceId===second.body.workspaceId).account.status,'connected');
 });
+
+
+test('any selected account can disconnect without reconnecting itself or affecting other IDs',async()=>{
+ const f=fixture();await f.save();f.setBusiness('business-b');const second=await f.save();f.setBusiness('business-c');const third=await f.save();
+ for(const id of [second.body.workspaceId,owner,third.body.workspaceId]){
+   assert.equal((await f.post({action:'delete',workspaceId:id},{Authorization:'Bearer session'})).status,200);
+   const current=await f.post({action:'list_accounts'},{Authorization:'Bearer session'});
+   assert.equal(current.body.accounts.find(row=>row.workspaceId===id).account.status,'disconnected');
+   assert.equal(f.tables.autoreply_instagram_tokens.some(row=>row.user_id===id),false);
+ }
+ assert.equal(f.tables.autoreply_instagram_memberships.length,3);
+ for(let retry=0;retry<3;retry++){
+   const current=await f.post({action:'list_accounts'},{Authorization:'Bearer session'});
+   assert.ok(current.body.accounts.every(row=>row.account.status==='disconnected'));
+ }
+});

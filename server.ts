@@ -1,5 +1,6 @@
 import adminHandler, { configuredAdminEmails, isConfiguredAdmin } from './src/server/adminAccess';
 import workspaceDataHandler from './api/workspace-data';
+import automationsHandler from './api/automations';
 import { authenticatedUser } from './src/server/supabaseConfig';
 import billingHandler from './api/billing';
 import usageHandler from './src/server/usage';
@@ -137,6 +138,7 @@ async function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.all('/api/workspace-data', workspaceDataHandler);
+  app.all('/api/automations', automationsHandler);
 
   // Config store for Meta Instagram Webhook & OAuth
   const metaConfigStore = {

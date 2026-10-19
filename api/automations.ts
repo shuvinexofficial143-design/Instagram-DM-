@@ -78,6 +78,14 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    if (req.method === 'PATCH') {
+      const automationId=String(req.body?.automationId || ''), status=String(req.body?.status || '');
+      if (!/^auto_[a-zA-Z0-9_-]{4,}$/.test(automationId) || !['active','paused'].includes(status))
+        return res.status(400).json({ok:false,error:'Invalid automation status change.'});
+      const {response,payload}=await callStore({action:'set_automation_status',workspaceId,automationId,status},String(req.headers?.authorization || ''));
+      return res.status(response.status).json(payload || {ok:false,error:'Could not save automation status.'});
+    }
+
     if (req.method === 'POST') {
       const automation = req.body?.automation;
       if (!automation || typeof automation !== 'object') {
@@ -144,7 +152,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ ok: true, automationId });
     }
 
-    res.setHeader('Allow', 'GET, POST, DELETE');
+    res.setHeader('Allow', 'GET, POST, PATCH, DELETE');
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   } catch (err: any) {
     console.error('[AUTOMATIONS_API_FATAL]', err);

@@ -430,7 +430,7 @@ Deno.serve(async (req: Request) => {
       return {workspaceId:row.workspace_id,account:{...safeAccount(token?.account || row.profile),status:token?.account?.access_token ? "connected" : "disconnected"}};
     })});
   }
-  if (["send_dm","load","delete","list_media","list_workspace_data","list_automations","save_automation","delete_automation","refresh_contact_profiles","create_catalog_upload"].includes(action) && (action === "create_catalog_upload" || !String(workspaceId || "").startsWith("guest_"))) {
+  if (["send_dm","load","delete","list_media","list_workspace_data","list_automations","set_automation_status","save_automation","delete_automation","refresh_contact_profiles","create_catalog_upload"].includes(action) && (action === "create_catalog_upload" || !String(workspaceId || "").startsWith("guest_"))) {
     const jwt = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
     const admin = getAdminClient();
     const {data:identity,error:authError} = await admin.auth.getUser(jwt);
@@ -660,6 +660,17 @@ Deno.serve(async (req: Request) => {
       return reply(200, { ok: true, automations });
     }
 
+    if (action === "set_automation_status") {
+      const id=String(payload?.automationId || "");
+      const status=String(payload?.status || "");
+      if (!/^auto_[a-zA-Z0-9_-]{4,}$/.test(id) || !["active","paused"].includes(status))
+        return reply(400,{ok:false,error:"Invalid automation status change"});
+      const {data,error}=await admin.rpc("autoreply_set_automation_status",{p_user_id:workspaceId,p_automation_id:id,p_status:status});
+      if(error) return reply(503,{ok:false,error:"Could not save automation status. Please retry."});
+      if(!data?.ok) return reply(404,{ok:false,error:"Automation no longer exists"});
+      return reply(200,data);
+    }
+
     if (action === "save_automation") {
       const automation = payload?.automation;
       const id = String(automation?.id || "").trim();
@@ -865,6 +876,11 @@ Deno.serve(async (req: Request) => {
       const recipients = [...new Set(matches.map((row:any)=>String(row.data?.ig_user_id || row.id || "")).filter((id:string)=>/^\d+$/.test(id)))];
       if (recipients.length !== 1) return reply(409,{ok:false,sent:false,error:"No unique Instagram conversation found for this contact. Ask them to send a new DM first."});
       const recipientId = String(recipients[0]);
+      // A manual reply is a durable human takeover, even after a reload.
+      const {error:pauseError}=await admin.from("autoreply_documents").upsert({user_id:workspaceId,
+        collection:"ai_thread_controls",id:recipientId,
+        data:{sender_id:recipientId,username,paused:true,updated_at:new Date().toISOString()}},{onConflict:"user_id,collection,id"});
+      if(pauseError) return reply(503,{ok:false,sent:false,error:"Could not pause AI replies for this conversation. Please retry."});
       let response: Response;
       try {
         // Never retry an ambiguous message write: Meta may already have accepted it.
