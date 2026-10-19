@@ -1,5 +1,6 @@
-import { createHmac, randomUUID } from 'node:crypto';
-import { authenticatedUser, authenticatedWorkspace, cleanEnvironment, normalizeAppUrl, UpstreamError } from '../../src/server/supabaseConfig.js';
+import { randomUUID } from 'node:crypto';
+import { authenticatedUser, authenticatedWorkspace, cleanEnvironment, normalizeAppUrl, UpstreamError, upstreamFetch, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../src/server/supabaseConfig.js';
+import { createInstagramOAuthState, type InstagramReconnectTarget } from '../../src/server/instagramOAuthState.js';
 
 const PROD_ORIGIN = normalizeAppUrl(process.env.APP_URL || 'https://autoreplys.vercel.app');
 const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
@@ -67,15 +68,6 @@ function getOrCreateWorkspaceId(req: any, res: any): string {
   return workspaceId;
 }
 
-function createState(workspaceId: string, secret: string, ownerId = ''): string {
-  const ts = Date.now();
-  const sig = createHmac('sha256', secret)
-    .update(ownerId ? `${workspaceId}:${ownerId}:${ts}` : `${workspaceId}:${ts}`)
-    .digest('hex');
-
-  return JSON.stringify({ workspaceId, ownerId, ts, sig });
-}
-
 export default async function handler(req: any, res: any) {
   try {
     if (req.method !== 'GET') {
@@ -126,8 +118,26 @@ export default async function handler(req: any, res: any) {
     else if (authenticatedUid && (req.headers?.['x-autoreply-workspace'] || String(req.headers?.cookie || '').includes('autoreply_active_workspace=')))
       workspaceId = (await authenticatedWorkspace(req))?.id || authenticatedUid;
 
+    // Read the retained membership through this user's RLS session. Disconnect
+    // removes credentials, not the identity whose history we are reconnecting.
+    let target: InstagramReconnectTarget | undefined;
+    if (authenticatedUid && req.query?.intent !== 'add') {
+      const response = await upstreamFetch(`${SUPABASE_URL}/rest/v1/autoreply_instagram_memberships?workspace_id=eq.${encodeURIComponent(workspaceId)}&owner_user_id=eq.${encodeURIComponent(authenticatedUid)}&select=ig_user_id,profile`, {
+        headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: String(req.headers.authorization) },
+      }, 'Instagram reconnect identity');
+      if (!response.ok) throw new UpstreamError('Instagram reconnect identity');
+      const rows = await response.json();
+      if (!Array.isArray(rows)) throw new UpstreamError('Instagram reconnect identity');
+      const membership = rows[0];
+      if (membership) {
+        const ids = [...new Set([membership.ig_user_id, membership.profile?.ig_scoped_id].filter(id => typeof id === 'string' && /^\d{5,30}$/.test(id)))];
+        const username = String(membership.profile?.username || '');
+        if (!ids.length || !/^[a-zA-Z0-9._]{1,30}$/.test(username)) throw new Error('The saved Instagram identity could not be verified. Please contact support.');
+        target = { ids, username };
+      }
+    }
     const redirectUri = getRedirectUri(req);
-    const state = createState(workspaceId, stateSecret, authenticatedUid);
+    const state = createInstagramOAuthState(workspaceId, authenticatedUid, stateSecret, target);
 
     const scopes = [
       'instagram_business_basic',
@@ -141,6 +151,7 @@ export default async function handler(req: any, res: any) {
       redirect_uri: redirectUri,
       scope: scopes,
       response_type: 'code',
+      force_reauth: 'true',
       state,
     });
 

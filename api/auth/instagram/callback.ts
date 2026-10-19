@@ -1,6 +1,6 @@
 import { typedFetch as httpFetch } from '../../../src/server/typedFetch.js';
 import { normalizeAppUrl, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../../src/server/supabaseConfig.js';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { verifyInstagramOAuthState } from '../../../src/server/instagramOAuthState.js';
 
 const PROD_ORIGIN = normalizeAppUrl(process.env.APP_URL || 'https://autoreplys.vercel.app');
 const PROD_HOST = (() => { try { return new URL(PROD_ORIGIN).host.toLowerCase(); } catch { return 'autoreplys.vercel.app'; } })();
@@ -33,18 +33,22 @@ function escapeHtml(value: unknown): string {
 }
 
 function renderError(res: any, message: string, status = 400) {
+  const safeMessage = JSON.stringify(message).replaceAll('<', '\\u003c');
   return res.status(status).send(`<!doctype html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Instagram connection failed</title>
 </head>
-<body style="font-family:system-ui,-apple-system,sans-serif;background:#f8fafc;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
-  <div style="max-width:440px;background:white;border:1px solid #e2e8f0;border-radius:20px;padding:28px;box-shadow:0 12px 40px rgba(15,23,42,.08);text-align:center">
+<body style="font-family:system-ui,-apple-system,sans-serif;background:#f8fafc;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box">
+  <div style="box-sizing:border-box;overflow-wrap:anywhere;width:100%;max-width:440px;background:white;border:1px solid #e2e8f0;border-radius:20px;padding:28px;box-shadow:0 12px 40px rgba(15,23,42,.08);text-align:center">
     <h2 style="margin:0 0 10px;color:#be123c">Instagram connection failed</h2>
     <p style="color:#475569;line-height:1.6;font-size:14px">${escapeHtml(message)}</p>
+    <a href="/settings" style="display:inline-block;background:#2563eb;color:white;border-radius:10px;padding:11px 18px;font-weight:700;text-decoration:none">Back to settings</a>
     <button onclick="window.close()" style="border:0;background:#2563eb;color:white;border-radius:10px;padding:11px 18px;font-weight:700">Close</button>
+    <p style="color:#64748b;line-height:1.5;font-size:12px">Choose Reconnect in Settings to start a fresh Instagram login. If Instagram shows another account, switch to the account you want to reconnect.</p>
   </div>
+  <script>try { if(window.opener && !window.opener.closed) window.opener.postMessage({type:'ig_connection_failed',message:${safeMessage}},window.location.origin); } catch(e) {}</script>
 </body>
 </html>`);
 }
@@ -61,50 +65,6 @@ function getRedirectUri(req: any): string {
   if (configured && !configured.includes('localhost')) return normalizeAppUrl(configured);
   if (host) return `${proto}://${host}/api/auth/instagram/callback`;
   return `${PROD_ORIGIN}/api/auth/instagram/callback`;
-}
-
-function isWorkspaceId(value: string): boolean {
-  return /^guest_[a-f0-9-]{16,}$/i.test(value) ||
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-function verifyOAuthState(rawState: unknown): string {
-  if (!rawState || !OAUTH_STATE_SECRET) return '';
-
-  let parsed: any;
-  const raw = String(rawState);
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    try {
-      parsed = JSON.parse(decodeURIComponent(raw));
-    } catch {
-      return '';
-    }
-  }
-
-  const workspaceId = String(parsed?.workspaceId || '');
-  const ownerId = String(parsed?.ownerId || '');
-  if (ownerId && !isWorkspaceId(ownerId)) return '';
-  const ts = Number(parsed?.ts || 0);
-  const sig = String(parsed?.sig || '');
-
-  if (!isWorkspaceId(workspaceId) || !Number.isFinite(ts) || !sig) return '';
-  if (Math.abs(Date.now() - ts) > 15 * 60 * 1000) return '';
-
-  const expected = createHmac('sha256', OAUTH_STATE_SECRET)
-    .update(ownerId ? `${workspaceId}:${ownerId}:${ts}` : `${workspaceId}:${ts}`)
-    .digest('hex');
-
-  try {
-    const a = Buffer.from(sig, 'hex');
-    const b = Buffer.from(expected, 'hex');
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return '';
-  } catch {
-    return '';
-  }
-
-  return workspaceId;
 }
 
 function sanitizeAccessToken(value: unknown): string {
@@ -167,11 +127,10 @@ async function persistInstagramAccount(
       payload?.error || payload,
       payload?.detail || ''
     );
-    throw new Error(
-      payload?.detail ||
-        payload?.error ||
-        `Instagram account storage failed (HTTP ${response.status})`
-    );
+    throw Object.assign(new Error(
+      response.status === 409 ? 'This Instagram account belongs to a different Auto Replys login. Sign in with the Google account originally used for this Instagram account, or choose another Instagram account.' :
+      payload?.detail || payload?.error || `Instagram account storage failed (HTTP ${response.status})`
+    ), { status: response.status });
   }
   return String(payload.workspaceId || workspaceId);
 }
@@ -244,8 +203,8 @@ export default async function handler(req: any, res: any) {
       );
     }
 
-    const workspaceId = verifyOAuthState(state);
-    if (!workspaceId) {
+    const verifiedState = verifyInstagramOAuthState(state, OAUTH_STATE_SECRET);
+    if (!verifiedState) {
       return renderError(
         res,
         'The Instagram login session expired or was invalid. Please connect Instagram again.'
@@ -256,6 +215,7 @@ export default async function handler(req: any, res: any) {
       return renderError(res, 'Instagram did not return an authorization code.');
     }
 
+    const workspaceId = verifiedState.workspaceId;
     const redirectUri = getRedirectUri(req);
 
     let shortToken = '';
@@ -328,6 +288,7 @@ export default async function handler(req: any, res: any) {
     const accessToken = sanitizeAccessToken(longToken || shortToken);
 
     let username = '';
+    let igScopedId = '';
     let profilePicUrl = '';
     let followersCount = 0;
 
@@ -353,6 +314,7 @@ export default async function handler(req: any, res: any) {
 
       const me: any = await meRes.json();
       igUserId = String(me?.user_id || me?.id || igUserId);
+      igScopedId = String(me?.id || '');
       username = String(me?.username || '').trim();
       profilePicUrl = String(me?.profile_picture_url || '').trim();
       followersCount = Number(me?.followers_count || 0);
@@ -363,6 +325,10 @@ export default async function handler(req: any, res: any) {
 
     if (!igUserId || !username) {
       return renderError(res, 'Meta did not return a verified Instagram professional account.');
+    }
+
+    if (verifiedState.target && !verifiedState.target.ids.some(id => id === igUserId || id === igScopedId)) {
+      return renderError(res, `You are reconnecting @${verifiedState.target.username}, but Instagram signed in as @${username}. No connection was changed. Return to Settings, choose Reconnect, and sign in to @${verifiedState.target.username} on Instagram. To connect a different account, use Add Instagram account.`, 409);
     }
 
     const account: StoredInstagramAccount = {
@@ -380,16 +346,15 @@ export default async function handler(req: any, res: any) {
     };
 
     try {
-      const parsedState = JSON.parse(typeof state === 'string' ? state : '{}');
-      const savedWorkspace = await persistInstagramAccount(workspaceId, account, String(parsedState.ownerId || ''));
-      if (parsedState.ownerId) res.setHeader('Set-Cookie',`autoreply_active_workspace=${encodeURIComponent(savedWorkspace)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`);
+      const savedWorkspace = await persistInstagramAccount(workspaceId, account, verifiedState.ownerId);
+      if (verifiedState.ownerId) res.setHeader('Set-Cookie',`autoreply_active_workspace=${encodeURIComponent(savedWorkspace)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`);
     } catch (err: any) {
       console.error('[INSTAGRAM_PERSIST_FAILED]', err);
       return renderError(
         res,
         'Instagram login worked, but the account could not be saved securely: ' +
           (err?.message || 'unknown storage error'),
-        500
+        err?.status === 409 ? 409 : 500
       );
     }
 

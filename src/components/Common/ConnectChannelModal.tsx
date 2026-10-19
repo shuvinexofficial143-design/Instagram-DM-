@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   X,
   Instagram,
@@ -15,12 +15,25 @@ export const ConnectChannelModal: React.FC = () => {
   const {
     isConnectModalOpen,
     setIsConnectModalOpen, instagramConnectMode, workspaceId,
-    instagramAccount,
+    instagramAccount, instagramAccounts, user,
     disconnectChannel,
   } = useApp();
 
   const [isLaunching, setIsLaunching] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const oauthPopup = useRef<Window | null>(null);
+  const reconnectTarget = instagramConnectMode === 'add' ? null : instagramAccounts.find(item => item.workspaceId === workspaceId)?.account;
+  const connectedAccount = instagramConnectMode === 'add' ? null : instagramAccount;
+
+  useEffect(() => { setFeedback(null); }, [isConnectModalOpen, workspaceId, instagramConnectMode]);
+  useEffect(() => {
+    const onFailed = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || !oauthPopup.current || event.source !== oauthPopup.current || event.data?.type !== 'ig_connection_failed') return;
+      setFeedback({ type: 'error', message: String(event.data.message || 'Instagram connection failed. Please try again.').slice(0, 1000) });
+    };
+    window.addEventListener('message', onFailed);
+    return () => window.removeEventListener('message', onFailed);
+  }, []);
 
   const readableError = (value: unknown): string => {
     if (!value) return '';
@@ -64,6 +77,7 @@ export const ConnectChannelModal: React.FC = () => {
       'MetaInstagramOAuth',
       `width=${width},height=${height},left=${left},top=${top},status=no,toolbar=no,menubar=no`
     );
+    oauthPopup.current = popup;
 
     try {
       // This same-origin fetch is automatically decorated with the active Supabase
@@ -127,7 +141,7 @@ export const ConnectChannelModal: React.FC = () => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/30 p-4 backdrop-blur-[3px] motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
       <div className="pointer-events-none absolute h-[360px] w-[360px] rounded-full bg-gradient-to-tr from-amber-300/20 via-pink-400/20 to-violet-500/20 blur-3xl" aria-hidden="true" />
-      <div className="relative my-auto w-[calc(100%-32px)] max-w-[500px] overflow-hidden rounded-[22px] border border-white/80 bg-white/95 shadow-[0_28px_80px_rgba(49,46,129,0.18)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200">
+      <div role="dialog" aria-modal="true" aria-labelledby="instagram-connect-title" className="relative my-auto w-[calc(100%-32px)] max-w-[500px] overflow-hidden rounded-[22px] border border-white/80 bg-white/95 shadow-[0_28px_80px_rgba(49,46,129,0.18)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200">
         <button
           onClick={() => setIsConnectModalOpen(false)}
           aria-label="Close Instagram connection"
@@ -142,21 +156,23 @@ export const ConnectChannelModal: React.FC = () => {
               <Instagram className="h-7 w-7 stroke-[2.2]" />
             </div>
             <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-violet-600">Connect Instagram</p>
-            <h2 className="mt-1.5 text-[22px] font-bold tracking-tight text-slate-950 sm:text-[24px]">
-              {instagramAccount ? 'Instagram connected' : 'Connect your Instagram'}
+            <h2 id="instagram-connect-title" className="mt-1.5 break-words text-[22px] font-bold tracking-tight text-slate-950 sm:text-[24px]">
+              {reconnectTarget ? `Reconnect @${reconnectTarget.username}` : instagramConnectMode === 'add' ? 'Add another Instagram account' : 'Connect your Instagram'}
             </h2>
             <p className="mx-auto mt-1.5 max-w-sm text-[13px] font-medium leading-5 text-slate-500 sm:text-[14px]">
-              Start automating your DMs and comments with AI.
+              {reconnectTarget ? `Choose @${reconnectTarget.username} on the Instagram login screen to restore this connection.` : 'Start automating your DMs and comments with AI.'}
             </p>
           </div>
 
-          {instagramAccount ? (
+          {user.email && <p className="mt-3 break-all text-center text-xs text-slate-500">Auto Replys login: {user.email}</p>}
+
+          {connectedAccount ? (
             <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3.5">
               <div className="flex min-w-0 items-center gap-3">
-                <UserAvatar src={instagramAccount.profile_pic_url} username={instagramAccount.username} showInstagramBadge size="md" />
+                <UserAvatar src={connectedAccount.profile_pic_url} username={connectedAccount.username} showInstagramBadge size="md" />
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5"><span className="truncate text-sm font-bold text-slate-950">@{instagramAccount.username}</span><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /></div>
-                  <p className="mt-0.5 text-xs font-medium text-slate-600">{instagramAccount.followers_count?.toLocaleString() || 0} followers · Connected</p>
+                  <div className="flex items-center gap-1.5"><span className="truncate text-sm font-bold text-slate-950">@{connectedAccount.username}</span><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /></div>
+                  <p className="mt-0.5 text-xs font-medium text-slate-600">{connectedAccount.followers_count?.toLocaleString() || 0} followers · Connected</p>
                 </div>
               </div>
               <button onClick={handleDisconnect} className="shrink-0 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50">Disconnect</button>
@@ -168,7 +184,7 @@ export const ConnectChannelModal: React.FC = () => {
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-violet-600 shadow-sm ring-1 ring-indigo-100"><ShieldCheck className="h-5 w-5" /></div>
                   <div className="min-w-0">
                     <h3 className="text-[14px] font-bold text-slate-900">Secure connection through Meta</h3>
-                    <p className="mt-1 text-xs font-medium leading-[18px] text-slate-600 sm:text-[13px]">You’ll continue to Instagram/Meta authorization and choose the account to connect. Your Instagram password is not entered or stored on AutoReply.</p>
+                    <p className="mt-1 text-xs font-medium leading-[18px] text-slate-600 sm:text-[13px]">{reconnectTarget ? `Sign in as @${reconnectTarget.username}. If Instagram shows another profile, switch accounts there before continuing. Your saved conversations and automations stay in this workspace.` : 'You’ll continue to Instagram/Meta authorization and choose the account to connect. Your Instagram password is not entered or stored on AutoReply.'}</p>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-xs font-semibold text-slate-600 sm:text-xs">
@@ -190,7 +206,7 @@ export const ConnectChannelModal: React.FC = () => {
           )}
 
           {feedback && (
-            <div className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs font-semibold ${feedback.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>
+            <div role="status" aria-live="polite" className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs font-semibold ${feedback.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>
               {feedback.type === 'success' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />}
               <span className="leading-5">{feedback.message}</span>
             </div>
@@ -203,7 +219,7 @@ export const ConnectChannelModal: React.FC = () => {
             className="mt-5 flex h-[52px] w-full cursor-pointer items-center justify-between rounded-[13px] bg-gradient-to-r from-[#FEDA75] via-[#FA7E1E] via-25% to-[#4F5BD5] px-4 text-[14px] font-bold text-white shadow-[0_9px_24px_rgba(214,41,118,0.20)] transition duration-200 hover:-translate-y-px hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D62976] focus-visible:ring-offset-2 active:translate-y-0 active:scale-[0.995] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transform-none motion-reduce:transition-none"
             style={{ backgroundImage: 'linear-gradient(100deg, #FEDA75 0%, #FA7E1E 20%, #D62976 48%, #962FBF 72%, #4F5BD5 100%)' }}
           >
-            <span className="flex items-center gap-2.5">{isLaunching ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Instagram className="h-5 w-5" />}<span>{isLaunching ? 'Connecting...' : instagramAccount ? 'Reconnect Instagram' : 'Continue with Instagram'}</span></span>
+            <span className="flex min-w-0 items-center gap-2.5">{isLaunching ? <RefreshCw className="h-5 w-5 shrink-0 animate-spin" /> : <Instagram className="h-5 w-5 shrink-0" />}<span className="truncate">{isLaunching ? 'Connecting...' : reconnectTarget ? `Reconnect @${reconnectTarget.username}` : 'Continue with Instagram'}</span></span>
             <ExternalLink className="h-4 w-4 opacity-85" />
           </button>
 

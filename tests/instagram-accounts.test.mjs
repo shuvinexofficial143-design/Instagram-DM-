@@ -140,3 +140,22 @@ test('any selected account can disconnect without reconnecting itself or affecti
    assert.ok(current.body.accounts.every(row=>row.account.status==='disconnected'));
  }
 });
+
+test('disconnect then reconnect at the account limit retains customer history and automation off state',async()=>{
+ const f=fixture(1);await f.save();
+ f.tables.autoreply_documents.push({user_id:owner,collection:'automations',id:'paused-ai',data:{status:'paused',ai_prompt:'Saved prompt'}});
+ f.tables.autoreply_documents.push({user_id:owner,collection:'customer_data',id:'customer-row',data:{name:'Saved customer'}});
+ await f.post({action:'delete',workspaceId:owner},{Authorization:'Bearer session'});
+ const reconnected=await f.save('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+ assert.equal(reconnected.status,200);assert.equal(reconnected.body.workspaceId,owner);
+ assert.equal(f.tables.autoreply_instagram_memberships.length,1);assert.equal(f.tables.autoreply_instagram_tokens.length,1);
+ assert.equal(f.tables.autoreply_documents.find(r=>r.id==='paused-ai').data.status,'paused');
+ assert.equal(f.tables.autoreply_documents.find(r=>r.id==='customer-row').data.name,'Saved customer');
+});
+
+test('disconnected accounts remain protected from registration under a different login',async()=>{
+ const f=fixture();await f.save();await f.post({action:'delete',workspaceId:owner},{Authorization:'Bearer session'});
+ const result=await f.post({action:'save',ownerId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',workspaceId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',accessToken:'private-instagram-token'},{'x-autoreply-oauth-secret':'oauth-secret'});
+ assert.equal(result.status,409);assert.equal(f.tables.autoreply_instagram_tokens.length,0);
+ assert.equal(f.tables.autoreply_instagram_memberships[0].owner_user_id,owner);
+});

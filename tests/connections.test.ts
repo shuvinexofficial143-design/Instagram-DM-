@@ -47,7 +47,7 @@ test('Instagram rejects invalid bearer instead of creating guest state', async (
 });
 test('Instagram recovers transient auth failure and signs the verified user', async () => {
   let calls = 0;
-  globalThis.fetch = async () => { if (++calls === 1) throw new TypeError('fetch failed'); return json({ id: uid }); };
+  globalThis.fetch = async (url) => { if (++calls === 1) throw new TypeError('fetch failed'); return String(url).includes('/auth/') ? json({ id: uid }) : json([]); };
   const res = response(); await instagram(request(''), res);
   assert.equal(res.statusCode, 200);
   const url = new URL(res.body.url);
