@@ -1,0 +1,4 @@
+import React,{useEffect,useState} from 'react';
+import {useApp} from '../../context/AppContext';
+import {subscribeToUserCollection} from '../../lib/supabase';
+export function AdminChangeNotices(){const {workspaceId}=useApp(),[notices,setNotices]=useState<any[]>([]);useEffect(()=>{setNotices([]);if(!workspaceId)return;return subscribeToUserCollection<any>(workspaceId,'workspace_notices',rows=>setNotices(rows.sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at)).slice(0,3)));},[workspaceId]);if(!notices.length)return null;return <aside aria-label="Administrator updates" className="mb-5 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4"><p className="mb-2 text-sm font-semibold text-indigo-900">Workspace updates</p>{notices.map(n=><p key={n.id} className="text-sm leading-6 text-indigo-800">{n.title}: <strong>{n.automation_name}</strong> <span className="text-xs text-indigo-600">· {new Date(n.created_at).toLocaleString()}</span></p>)}</aside>;}

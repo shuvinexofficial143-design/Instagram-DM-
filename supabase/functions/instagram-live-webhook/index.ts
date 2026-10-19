@@ -1703,7 +1703,7 @@ Deno.serve(async (req: Request) => {
     // The service-only RPC returns a single fresh snapshot. No additional
     // network reads stand between the durable claim and starting typing/AI.
     const eligibilityMs = 0, rulesMs = 0, quotaMs = 0;
-    let automation = matchAutomation(context.automations || [], item);
+    let automation = item.triggerType === "dm" && context.campaign_automation?.status === "active" ? context.campaign_automation : matchAutomation(context.automations || [], item);
     if (context.thread_ai_paused === true && automation?.trigger_type === "dm_ai_conversation") automation = null;
     context.automation = automation;
     if(automation)runInBackground((async()=>{if(await inboundSaved)await captureCustomerData(admin,workspaceId,automation,item,openaiKey,account);})());

@@ -25,6 +25,7 @@ import {
   Wand2,
   Instagram,
 } from 'lucide-react';
+import {AdminChangeNotices} from './AdminChangeNotices';
 import { useApp } from '../../context/AppContext';
 import { Automation, TriggerType } from '../../types';
 import { automationSummary, relativeAutomationTime, uniqueAutomationName } from '../../lib/automationPresentation';
@@ -201,6 +202,7 @@ export const AutomationsPage: React.FC = () => {
 
   return (
     <div className="automations-readable automations-premium min-h-screen space-y-7 p-4 sm:p-8">
+      <AdminChangeNotices/>
       <header className="automation-page-heading"><div><p className="automation-page-eyebrow">INSTAGRAM AUTOMATION</p><h1>Automations</h1><p>Build helpful workflows, test your replies, and see real recorded activity.</p></div></header>
       {/* 1. Unified Active Automations & Metrics Banner */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
@@ -404,7 +406,7 @@ export const AutomationsPage: React.FC = () => {
                   <div className="automation-card-identity">
                     <div className={`automation-channel-icon ${summary.isAi ? 'is-ai' : ''}`}><ChannelIcon aria-hidden="true" /></div>
                     <div className="min-w-0">
-                      <div className="automation-card-title"><h3>{auto.name}</h3>
+                      <div className="automation-card-title"><h3>{auto.name}</h3>{auto.admin_updated_at&&<span title={new Date(auto.admin_updated_at).toLocaleString()} className="rounded-md bg-indigo-50 px-2 py-1 text-xs text-indigo-700">{auto.admin_change==='created'?'Created by admin':'Updated by admin'}</span>}
                         <span className={`automation-state ${isActive ? 'is-active' : ''}`}>{isActive ? 'Active' : 'Paused'}</span>
                       </div>
                       <p className="automation-card-channel">{summary.channel} <span>·</span> {summary.scope}</p>

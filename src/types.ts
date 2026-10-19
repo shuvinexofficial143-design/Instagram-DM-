@@ -92,6 +92,8 @@ export interface ActionItem {
 }
 
 export interface Automation {
+  admin_updated_at?: string;
+  admin_change?: string;
   id: string;
   name: string;
   trigger_type: TriggerType;

@@ -1,3 +1,5 @@
+import {AdminWorkspaceManager} from './AdminWorkspaceManager';
+import {AdminCampaignCenter} from './AdminCampaignCenter';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   ShieldAlert,
@@ -37,6 +39,7 @@ import {
   ReceiptText,
   LayoutDashboard,
   Database,
+  Send,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AdminUserOverviewItem, AdminOverviewResponse } from '../../types';
@@ -74,7 +77,7 @@ export const AdminPage: React.FC = () => {
 
   // Selected User Detail Modal
   const [selectedUser, setSelectedUser] = useState<AdminUserOverviewItem | null>(null);
-  const [adminSection, setAdminSection] = useState<'dashboard' | 'users' | 'instagram' | 'automations' | 'plans' | 'payments' | 'support' | 'ai' | 'health' | 'activity' | 'settings'>('dashboard');
+  const [adminSection, setAdminSection] = useState<'dashboard' | 'users' | 'instagram' | 'automations' | 'plans' | 'payments' | 'support' | 'ai' | 'health' | 'activity' | 'settings' | 'campaigns'>('dashboard');
   const [platformData, setPlatformData] = useState<any>(null);
   const [planDrafts, setPlanDrafts] = useState<Record<string, any>>({});
   const [savingPlan, setSavingPlan] = useState<string>('');
@@ -415,20 +418,20 @@ export const AdminPage: React.FC = () => {
   // 3. FULL ADMIN DASHBOARD VIEW
   // ----------------------------------------------------
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="admin-page p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       {/* Top Header Card */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 md:p-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shadow-2xs">
+              <div className="w-10 h-10 shrink-0 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shadow-2xs">
                 <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-black tracking-tight text-slate-900">Admin Dashboard</h1>
                   <span className="px-2.5 py-0.5 text-xs font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300/60 rounded-full">
-                    Owner Active
+                    Administrator
                   </span>
                 </div>
                 <p className="text-xs text-slate-500">
@@ -438,7 +441,7 @@ export const AdminPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="admin-header-actions flex flex-wrap items-center gap-2.5 shrink-0">
             <button
               onClick={() => void fetchPlatformData()}
               disabled={loading}
@@ -472,19 +475,19 @@ export const AdminPage: React.FC = () => {
 
         {/* Status Bar */}
         <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0 break-words">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>
-              Admin: <strong className="text-slate-900 font-semibold">Google verified</strong>\n            </span>\n            <span className="text-slate-300">•</span>\n            <span>\n              Email: <strong className="text-slate-900 font-semibold">{currentEmail || 'Signed-in administrator'}</strong>
+              Admin: <strong className="text-slate-900 font-semibold">Google verified</strong>
+            </span>
+            <span className="text-slate-300">•</span>
+            <span>
+              Email: <strong className="text-slate-900 font-semibold">{currentEmail || 'Signed-in administrator'}</strong>
             </span>
           </div>
 
           <div className="flex items-center gap-3">
             <span>Last sync: {lastRefreshedAt.toLocaleTimeString()}</span>
-            <span className="text-slate-300">•</span>
-            <span className="font-mono text-[11px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-              /api/admin/dashboard-overview
-            </span>
           </div>
         </div>
       </div>
@@ -495,7 +498,8 @@ export const AdminPage: React.FC = () => {
             ['dashboard', 'Dashboard', LayoutDashboard],
             ['users', 'Users', Users],
             ['instagram', 'Instagram Accounts', Instagram],
-            ['automations', 'Automations', Zap],
+            ['automations', 'Automation Manager', Zap],
+            ['campaigns', 'Campaign Center', Send],
             ['plans', 'Plans', CreditCard],
             ['payments', 'Payments', ReceiptText],
             ['support', 'Customer Support', MessageSquare],
@@ -511,7 +515,9 @@ export const AdminPage: React.FC = () => {
         </div>
       </div>
 
-      {adminSection !== 'dashboard' && adminSection !== 'users' && (
+      {adminSection === 'automations' && <AdminWorkspaceManager/>}
+      {adminSection === 'campaigns' && <AdminCampaignCenter/>}
+      {adminSection !== 'dashboard' && adminSection !== 'users' && adminSection !== 'automations' && adminSection !== 'campaigns' && (
         <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 md:p-8">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -527,7 +533,6 @@ export const AdminPage: React.FC = () => {
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {adminSection === 'instagram' && <><Metric label="Connected" value={totalConnectedInstagram} /><Metric label="Registered Users" value={totalRegisteredUsers} /><Metric label="Disconnected" value={Math.max(0,totalRegisteredUsers-totalConnectedInstagram)} /><Metric label="Secrets Exposed" value={0} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.instagramAccounts || []).map((row:any)=><div key={row.user_id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-xs"><span><strong>@{row.account?.username || 'instagram'}</strong> · {row.user_id}</span><span className="text-slate-400">{formatDateTime(row.updated_at || row.created_at)}</span></div>)}</div></>}
-            {adminSection === 'automations' && <><Metric label="Active Automations" value={totalActiveAutomationsCombined} /><Metric label="Runtime Contexts" value={platformData?.runtimeContexts?.length || 0} /><Metric label="DM History Threads" value={platformData?.dmHistory?.length || 0} /><Metric label="Users" value={totalRegisteredUsers} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.activeAutomations || []).map((row:any)=><div key={row.user_id+'-'+row.automation_id} className="rounded-xl border border-slate-200 p-3 text-xs"><strong>{row.data?.name || row.automation_id}</strong> · {row.data?.trigger_type || 'automation'} · {row.data?.status || 'active'}<span className="float-right text-slate-400">{formatDateTime(row.updated_at)}</span></div>)}</div></>}
             {adminSection === 'ai' && <><Metric label="Monthly standard replies" value={(platformData?.usageMonthly || []).reduce((sum:number,r:any)=>sum+Math.max(0,Number(r.total_messages||0)-Number(r.ai_replies||0)),0)} /><Metric label="Monthly AI Replies" value={(platformData?.usageMonthly || []).reduce((s:number,r:any)=>s+Number(r.ai_replies||0),0)} /><Metric label="DM History Threads" value={platformData?.dmHistory?.length || 0} /><Metric label="Message Claims" value={platformData?.messageClaims?.length || 0} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.usageMonthly || []).map((row:any)=><div key={row.user_id+'-'+row.month_key} className="grid grid-cols-4 rounded-xl border border-slate-200 p-3 text-xs"><span className="col-span-2 truncate">{row.user_id}</span><span>{Math.max(0,Number(row.total_messages||0)-Number(row.ai_replies||0))} standard</span><span>{row.ai_replies || 0} AI</span></div>)}</div></>}
             {adminSection === 'health' && <><Metric label="Message Claims" value={platformData?.messageClaims?.length || 0} /><Metric label="Stored Documents" value={platformData?.documents?.length || 0} /><Metric label="Runtime Contexts" value={platformData?.runtimeContexts?.length || 0} /><Metric label="DM History Threads" value={platformData?.dmHistory?.length || 0} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.runtimeContexts || []).map((row:any)=><div key={row.ig_user_id} className="rounded-xl border border-slate-200 p-3 text-xs"><strong>{row.automation?.name || row.automation_id || 'Runtime'}</strong> · {row.automation?.status || 'unknown'} · IG {row.ig_user_id}<span className="float-right text-slate-400">{formatDateTime(row.updated_at)}</span></div>)}</div></>}
             {adminSection === 'plans' && <div className="sm:col-span-2 lg:col-span-4 grid gap-4 lg:grid-cols-2">{(platformData?.plans || []).map((plan:any) => { const p=planDrafts[plan.id] || plan; const field=(key:string,label:string)=><label className="text-xs font-bold text-slate-600">{label}<input type="number" value={p[key] ?? ''} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,[key]:e.target.value}}))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"/></label>; return <div key={plan.id} className="rounded-2xl border border-slate-200 p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-lg font-black text-slate-900">{p.name}</p><p className="text-xs text-slate-400">{plan.id}</p></div><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={Boolean(p.is_active)} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,is_active:e.target.checked}}))}/> Active</label></div><label className="mb-3 block text-xs font-bold text-slate-600">Display name<input value={p.name||''} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,name:e.target.value}}))} maxLength={64} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"/></label><div className="grid grid-cols-2 gap-3">{field('price_inr','Price ₹')}{field('billing_days','Billing days')}{field('total_messages','Standard replies · DM/comment/story')}{field('ai_replies','AI replies (separate)')}{field('instagram_accounts','Instagram accounts')}{field('automations_limit','Automations (blank = unlimited)')}</div><p className="my-3 text-xs text-slate-500">Standard and AI monthly reply quotas are independent. Price changes apply to new Cashfree orders; existing orders keep their original amount.</p><button onClick={()=>savePlan(p)} disabled={savingPlan===plan.id} className="mt-4 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">{savingPlan===plan.id?'Saving...':'Save Plan'}</button></div>})}</div>}

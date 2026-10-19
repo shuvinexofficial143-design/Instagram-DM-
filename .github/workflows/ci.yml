@@ -73,5 +73,8 @@ jobs:
       - name: Page design regression safeguards (excluding Analytics & Billing)
         run: bun run test:visual
 
+      - name: Administrator workspace, campaign and pause security
+        run: bun run test:admin
+
       - name: Production build
         run: bun run build

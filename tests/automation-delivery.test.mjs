@@ -85,7 +85,7 @@ function fixture(automations = [ai], options = {}) {
         const duplicate = claims.has(args.p_message_id);
         claims.add(args.p_message_id);
         return { data: { user_id: 'workspace', account, automation: ai,
-          automations:automations.map(a=>({...a})), thread_ai_paused:options.threadPausedAtPrepare===true, quota: { normalUsed: options.quotaUsed || 0, normalLimit: 1500, totalUsed: options.quotaUsed || 0, totalLimit:1500, aiUsed: options.aiUsed || 0, aiLimit: 1500 },
+          automations:automations.map(a=>({...a})), campaign_automation:options.campaignAutomation||null, thread_ai_paused:options.threadPausedAtPrepare===true, quota: { normalUsed: options.quotaUsed || 0, normalLimit: 1500, totalUsed: options.quotaUsed || 0, totalLimit:1500, aiUsed: options.aiUsed || 0, aiLimit: 1500 },
           history: history.get(args.p_sender_id) || [], message_state: duplicate ? 'duplicate' : 'new' } };
       }
       return { data: {}, error: null };
@@ -534,4 +534,19 @@ test('completed replies update only the atomic stats RPC',async()=>{
  const f=fixture();await f.post(dm('stats-atomic'));
  assert.ok(f.rpcCalls.some(call=>call.name==='autoreply_increment_automation_stats'&&call.args.p_automation_id===ai.id));
  assert.equal(f.writes.filter(row=>row.collection==='automations').length,0);
+});
+
+const campaignRule={...ai,id:'campaign_fixture',name:'Campaign follow-up',actions:[{type:'ai_chatbot',ai_system_instruction:'Discuss the campaign offer'},{type:'send_dm',message_text:'Fallback'}]};
+test('campaign reply uses its own prompt and multi-turn history while global automation remains OFF',async()=>{
+ const paused={...ai,status:'paused'};const f=fixture([paused],{campaignAutomation:campaignRule});
+ const first=await f.post(dm('campaign-reply-1','Tell me more'));assert.equal(first.body.sent,1);
+ const second=await f.post(dm('campaign-reply-2','Can I order?'));assert.equal(second.body.sent,1);
+ assert.ok(f.aiInputs[0].some(m=>m.content.includes('Discuss the campaign offer')));
+ assert.ok(f.aiInputs[1].some(m=>m.role==='assistant'&&m.content.includes('Tell me more')));
+ assert.equal(paused.status,'paused');assert.ok(!f.writes.some(w=>w.collection==='automations'));
+});
+test('campaign follow-up respects human takeover and stops before dispatch if disabled while AI is preparing',async()=>{
+ const takeover=fixture([{...ai,status:'paused'}],{campaignAutomation:campaignRule,threadPausedAtPrepare:true});await takeover.post(dm('campaign-takeover'));assert.equal(takeover.apiCalls.filter(c=>c.body.message).length,0);
+ const stopped=fixture([{...ai,status:'paused'}],{campaignAutomation:campaignRule,automationPaused:true});await stopped.post(dm('campaign-stopped'));assert.equal(stopped.apiCalls.filter(c=>c.body.message).length,0);
+ const off=fixture([{...ai,status:'paused'}]);await off.post(dm('campaign-off'));assert.equal(off.aiInputs.length,0);
 });

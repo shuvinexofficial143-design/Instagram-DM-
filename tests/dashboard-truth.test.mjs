@@ -72,7 +72,7 @@ test('Admin counts come from complete private owner-scoped contact ledger, not f
 test('Signed-in Inbox and Analytics refresh from real records when Realtime is delayed',()=>{
  const client=read('src/lib/supabase.ts');
  assert.match(client,/window\.setInterval/);
- assert.match(client,/\['inbox_messages','automations','contacts','webhook_events','webhook_logs','ai_thread_controls'\]/);
+ assert.match(client,/\['inbox_messages','automations','contacts','webhook_events','webhook_logs','ai_thread_controls','workspace_notices'\]/);
  assert.match(client,/document\.addEventListener\('visibilitychange'/);
  assert.match(client,/document\.hidden/);
 });
