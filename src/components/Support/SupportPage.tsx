@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import {
   ArrowLeft, ArrowRight, BadgeCheck, CreditCard, ExternalLink, HelpCircle,
   Instagram, LifeBuoy, MessageCircleQuestion, ReceiptText, ShieldCheck,
-  Sparkles, WalletCards, XCircle
+  Sparkles, WalletCards, XCircle, Search
 } from 'lucide-react';
 import { BusinessContact } from './BusinessContact';
 import { SupportDesk } from './SupportDesk';
 import { useApp } from '../../context/AppContext';
+import './support-workspace.css';
 
 type Page='help'|'faq'|'billing-help'|'privacy'|'terms'|'contact'|'refunds';
 
@@ -41,8 +42,9 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
   const connect=()=>firebaseUser?setIsConnectModalOpen(true):window.location.assign('/login');
   const upgrade=()=>firebaseUser?setIsRenewModalOpen(true):window.location.assign('/login');
 
+  const workspaceDesign=['help','faq','billing-help'].includes(page);
   const shell=(title:string,eyebrow:string,desc:string,body:React.ReactNode)=>(
-    <div className="support-page support-about-look">
+    <div className={"support-page support-about-look"+(workspaceDesign?" support-workspace-layout":"")} data-support-page={page}>
       <header className="support-hero">
         <div className="support-container">
           <button onClick={()=>go('home')} className="support-back"><ArrowLeft/>{firebaseUser?'Back to dashboard':'Back to home'}</button>
@@ -88,7 +90,7 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
           <PathStep number="03" title="Verify" text="Check Inbox, Activity and Usage after a real test message."/>
         </div>
       </section>
-      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-7" aria-labelledby="help-diagnostics-heading">
+      <section className="support-diagnostics mt-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-7" aria-labelledby="help-diagnostics-heading">
         <p className="support-eyebrow">Troubleshoot safely</p>
         <h2 id="help-diagnostics-heading" className="mt-2 text-xl font-bold text-slate-900">Not receiving Instagram replies?</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">Start with your connection and automation status. If you have a logged-in workspace, check the latest Activity errors before reconnecting or recreating anything.</p>
@@ -108,22 +110,21 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
     'Help Center',
     'Fast answers to the questions customers are most likely to have while using Auto Replies.',
     <div className="support-faq-layout">
-      <aside className="support-faq-aside">
-        <HelpCircle/>
-        <h2>Find the right answer</h2>
-        <p>Search by topic or keyword. Choose a category to narrow the answers without scrolling through everything.</p>
-        <button onClick={()=>go('billing-help')}>Need billing help?<ArrowRight/></button>
-      </aside>
-      <div className="support-faq-list">
-        <label className="mb-4 block text-sm font-semibold text-slate-700">Search help articles<input type="search" value={faqQuery} onChange={e=>setFaqQuery(e.target.value)} placeholder="Search payments, Instagram, automations…" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm"/></label>
+      <section className="support-faq-toolbar" aria-labelledby="faq-search-heading">
+        <div className="support-faq-toolbar-heading"><span className="support-search-icon"><HelpCircle aria-hidden="true"/></span><div><h2 id="faq-search-heading">Find the right answer</h2><p>Search a question or choose a topic below.</p></div></div>
+        <label htmlFor="support-faq-query" className="support-search-label">Search help articles</label>
+        <div className="support-faq-search"><Search aria-hidden="true"/><input id="support-faq-query" type="search" value={faqQuery} onChange={e=>setFaqQuery(e.target.value)} placeholder="Search payments, Instagram, automations…"/></div>
         <div className="support-faq-categories" role="group" aria-label="Filter questions by category">{faqCategories.map(category=><button key={category} type="button" aria-pressed={faqCategory===category} onClick={()=>setFaqCategory(category)}>{category}</button>)}</div>
-        <p className="support-faq-count" role="status">{shownFaqs.length} {shownFaqs.length===1?'question':'questions'} found</p>
+      </section>
+      <div className="support-faq-list">
+        <div className="support-faq-results-heading"><p className="support-faq-count" role="status">{shownFaqs.length} {shownFaqs.length===1?'question':'questions'} found</p><button className="support-billing-link" onClick={()=>go('billing-help')}>Need billing help?<ArrowRight aria-hidden="true"/></button></div>
         {shownFaqs.length===0&&<div className="support-faq-empty"><HelpCircle aria-hidden="true"/><h3>No matching questions</h3><p>Try another keyword or select All. You can also send a private support request.</p><button onClick={()=>{setFaqCategory('All');setFaqQuery('');}}>Clear filters</button></div>}
-        {shownFaqs.map(([category,q,a])=><details key={q} className="support-faq-item">
-          <summary><span><small>{category}</small>{q}</span><span className="support-faq-plus">+</span></summary>
+        <div className="support-faq-grid">{shownFaqs.map(([category,q,a])=><details key={q} className="support-faq-item">
+          <summary><span><small>{category}</small>{q}</span><span className="support-faq-plus" aria-hidden="true">+</span></summary>
           <p>{a}</p>
-        </details>)}
+        </details>)}</div>
       </div>
+      <section className="support-answer-cta"><span><LifeBuoy aria-hidden="true"/></span><div><h2>Still need a hand?</h2><p>Send your question and track replies in a private support ticket.</p></div><button onClick={()=>firebaseUser?setActiveTab('contact'):window.location.assign('/login')}>Contact support<ArrowRight aria-hidden="true"/></button></section>
     </div>
   );
 
@@ -156,15 +157,19 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
     ['Your rights','This policy does not limit any non-excludable rights or remedies available under applicable law.'],
   ]}/>);
 
-  if(page==='billing-help')return shell('Billing & Payment Help','Billing support','Choose your plan, pay securely and track activation in one place.',<div className="support-billing-layout"><div className="support-billing-main">
-    <GuideBlock icon={CreditCard} title="Buy or renew a plan" badge="Secure checkout">
-      <GuideStep number="1" title="Choose your plan">Select a plan in Billing & Usage. Review the amount in INR, 30-day access period, limits and paid plan terms.</GuideStep>
-      <GuideStep number="2" title="Complete payment">Enter your billing name, email and mobile number. Cashfree checkout shows the supported payment methods, including available UPI and QR options.</GuideStep>
-      <GuideStep number="3" title="Wait for verified activation">Return to the confirmation page. The server checks payment and activates the correct plan. You can reopen the order through Billing History if you close the browser.</GuideStep>
+  if(page==='billing-help')return shell('Billing & Payment Help','Billing support','Understand checkout, payment status and your plan. Everything you need, in one place.',<div className="support-billing-layout"><div className="support-billing-main">
+    <GuideBlock icon={CreditCard} title="Buy or renew a plan" badge="Secure checkout" className="support-checkout-guide">
+      <div className="support-checkout-steps">
+        <GuideStep number="1" title="Choose your plan">Select a plan in Billing & Usage. Review the INR amount, 30-day access period, limits and paid plan terms.</GuideStep>
+        <GuideStep number="2" title="Complete payment">Enter your billing name, email and mobile number. Cashfree shows the supported methods, including available UPI and QR options.</GuideStep>
+        <GuideStep number="3" title="Wait for verified activation">Return to the confirmation page for payment verification and activation. Reopen the same order from Billing History if you close the browser.</GuideStep>
+      </div>
     </GuideBlock>
-    <GuideBlock icon={ReceiptText} title="Pending payments and receipts"><p className="support-guide-copy">If your bank shows a debit but confirmation is pending, check the existing order before paying again. Your payment history keeps the order, amount, payment status and activation details. Test payments are clearly marked and never grant live paid access.</p></GuideBlock>
-    <GuideBlock icon={XCircle} title="Renewal, cancellation and refunds"><p className="support-guide-copy">This is a one-time purchase without automatic renewal. Stop renewing whenever you want. Read the <a href="/refunds">Refund & Cancellation Policy</a> for payment issues and refund requests.</p></GuideBlock>
-    </div><aside className="support-plan-panel"><div className="support-plan-icon"><BadgeCheck/></div><h2>Manage your plan</h2><p>Review limits, expiry and payment history.</p><button onClick={()=>go('billing')} className="support-primary-button">Open Billing & Usage<ArrowRight/></button></aside></div>);
+    <div className="support-billing-details-grid">
+      <GuideBlock icon={ReceiptText} title="Pending payments and receipts"><p className="support-guide-copy">If your bank shows a debit but confirmation is pending, check the existing order before paying again. Billing History keeps the order, amount, payment status and activation details. Test payments are marked and never grant live paid access.</p><button className="support-inline-action" onClick={()=>go('billing')}>View payment history<ArrowRight aria-hidden="true"/></button></GuideBlock>
+      <GuideBlock icon={XCircle} title="Renewal, cancellation and refunds"><p className="support-guide-copy">This is a one-time purchase without automatic renewal. Stop renewing whenever you want. Read the Refund & Cancellation Policy for payment issues and refund requests.</p><a className="support-inline-action" href="/refunds">Read refund policy<ArrowRight aria-hidden="true"/></a></GuideBlock>
+    </div>
+    </div><aside className="support-plan-panel support-plan-strip"><div className="support-plan-info"><div className="support-plan-icon"><BadgeCheck aria-hidden="true"/></div><div><h2>Manage your plan</h2><p>Review limits, expiry and payment history.</p></div></div><button onClick={()=>go('billing')} className="support-primary-button">Open Billing & Usage<ArrowRight aria-hidden="true"/></button></aside></div>);
 
   if(page==='privacy')return shell('Privacy Policy','Legal','How Auto Replies processes information to provide your account, automation and payment features.',<Legal sections={[
     ['Account and workspace information','We process your account identity, connected Instagram account details, automation settings, contacts, conversation content and usage records to provide the service.'],
@@ -201,8 +206,8 @@ const PathStep=({number,title,text}:{number:string;title:string;text:string})=>(
   <div className="support-path-step"><span>{number}</span><div><strong>{title}</strong><p>{text}</p></div></div>
 );
 
-const GuideBlock=({icon:Icon,title,badge,children}:{icon:any;title:string;badge?:string;children:React.ReactNode})=>(
-  <section className="support-guide-block">
+const GuideBlock=({icon:Icon,title,badge,children,className=''}:{icon:any;title:string;badge?:string;children:React.ReactNode;className?:string})=>(
+  <section className={"support-guide-block "+className}>
     <div className="support-guide-heading"><span><Icon/></span><div><h2>{title}</h2>{badge&&<small>{badge}</small>}</div></div>
     <div className="support-guide-body">{children}</div>
   </section>
