@@ -6,7 +6,7 @@ import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform(source + '\nglobalThis.helpers = { extractAutomationEvents, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog };', { loader: 'ts', format: 'esm' });
+const compiled = await transform(source + '\nglobalThis.helpers = { extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
@@ -14,6 +14,9 @@ const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, sta
 
 function fixture(automations = [ai], options = {}) {
   const writes = [], apiCalls = [], aiInputs = [], rpcCalls = [], claims = new Set(), history = new Map(), tasks = [], deliveryKeys = new Set();
+  const inbox=new Map((options.initialInbox||[]).map(row=>[row.id,row]));
+  const threadRows=sender=>[...inbox.values()].filter(r=>r.data.from_ig_id===sender).sort((a,b)=>Date.parse(a.data.timestamp)-Date.parse(b.data.timestamp)||a.id.localeCompare(b.id));
+  const outboundVersion=sender=>JSON.stringify(threadRows(sender).filter(r=>r.data.direction==='out').map(r=>[r.id,r.data.message_text]));
   let standardUsed=options.quotaUsed||0, aiUsedCount=options.aiUsed||0;
   const account = { ig_user_id: 'business', username: 'business_handle', access_token: 'test-token', own_sender_ids: options.ownSenderIds || [] };
   const admin = {
@@ -31,6 +34,7 @@ function fixture(automations = [ai], options = {}) {
         if (mutation) {
           writes.push({ table, ...mutation, ...(mutation.deleted ? filters : {}) });
           if (table === 'autoreply_dm_history') history.set(mutation.sender_id, mutation.messages);
+          if(table==='autoreply_documents'&&mutation.collection==='inbox_messages')inbox.set(mutation.id,mutation);
           return { data: null, error: null };
         }
         if (table === 'autoreply_plans') {
@@ -58,6 +62,13 @@ function fixture(automations = [ai], options = {}) {
     },
     async rpc(name, args) {
       rpcCalls.push({name,args});
+      if(name==='autoreply_record_instagram_outbound'){
+        if(options.outboundStoreFails)return {error:{message:'Store unavailable'}};
+        if(args.p_business_id!=='business'||args.p_recipient_id==='business'||(!args.p_is_echo&&args.p_sender_id!=='business'&&!account.own_sender_ids.includes(args.p_sender_id)))return {data:{recorded:false}};
+        const duplicate=inbox.has(args.p_message_id);
+        if(!duplicate){const row={user_id:'workspace',collection:'inbox_messages',id:args.p_message_id,data:{from_ig_id:args.p_recipient_id,direction:'out',is_automated:false,message_text:args.p_text,timestamp:args.p_timestamp}};inbox.set(row.id,row);writes.push({table:'autoreply_documents',...row});}
+        return {data:{recorded:true,duplicate}};
+      }
       if(name==='autoreply_request_human_handoff'){
         if(options.handoffStoreFails)return {error:{message:'Database unavailable'}};
         if(options.controlChanged)return {data:{ok:true,superseded:true}};
@@ -72,7 +83,8 @@ function fixture(automations = [ai], options = {}) {
         return { data: { total_messages: options.quotaUsed || 0, ai_replies: 0 } };
       }
       if(name === 'autoreply_increment_automation_stats') {options.onStats?.(args);return {data:null,error:null};}
-      if(name === 'autoreply_reserve_automation_delivery'||name === 'autoreply_reserve_thread_delivery') {
+      if(name === 'autoreply_reserve_automation_delivery'||name === 'autoreply_reserve_thread_delivery'||name === 'autoreply_reserve_context_delivery') {
+        if(name==='autoreply_reserve_context_delivery'&&(options.contextChanged||args.p_context_version!==outboundVersion(args.p_sender_id)))return {data:{allowed:false,reason:'conversation_context_changed'}};
         if(options.disconnected)return {data:{allowed:false,reason:'instagram_disconnected'}};
         if(options.automationPaused)return {data:{allowed:false,reason:'automation_paused_or_deleted'}};
         if(options.handoffPaused)return {data:{allowed:false,reason:'conversation_ai_paused'}};
@@ -94,9 +106,12 @@ function fixture(automations = [ai], options = {}) {
         if (options.quotaError) return { data: null, error: { code: 'database' } };
         const duplicate = claims.has(args.p_message_id);
         claims.add(args.p_message_id);
+        const saved=threadRows(args.p_sender_id).filter(r=>r.id!==args.p_message_id);
         return { data: { user_id: 'workspace', account, automation: ai,
           automations:automations.map(a=>({...a})), campaign_automation:options.campaignAutomation||null, thread_ai_paused:options.threadPausedAtPrepare===true||options.handoffPaused===true,thread_human_handoff:options.handoffPaused===true,thread_control_version:"", quota: { normalUsed: options.quotaUsed || 0, normalLimit: options.unlimited?null:1500, unlimited:options.unlimited===true, totalUsed: options.quotaUsed || 0, totalLimit:1500, aiUsed: options.aiUsed || 0, aiLimit: options.unlimited?null:1500 },
-          history: history.get(args.p_sender_id) || [], message_state: duplicate ? 'duplicate' : 'new' } };
+          history: saved.length?saved.slice(-12).map(r=>({id:r.id,role:r.data.direction==='out'?'assistant':'user',content:r.data.message_text,at:Date.parse(r.data.timestamp)})):history.get(args.p_sender_id)||[],
+          manual_context:saved.filter(r=>r.data.direction==='out'&&r.data.is_automated===false).map(r=>({id:r.id,role:'assistant',content:r.data.message_text,at:Date.parse(r.data.timestamp)})).at(-1)||null,
+          thread_outbound_version:outboundVersion(args.p_sender_id), message_state: duplicate ? 'duplicate' : 'new' } };
       }
       return { data: {}, error: null };
     },
@@ -159,6 +174,62 @@ const comment = (media = 'post1', text = 'price') => ({ object: 'instagram', ent
   { field: 'comments', value: { id: 'comment1', text, from: { id: 'customer' }, media: { id: media } } },
 ] }] });
 
+const outgoing=(id='manual-intro',text='Our automation demo includes setup help.',recipient='customer')=>({object:'instagram',entry:[{id:'business',messaging:[{sender:{id:'business'},recipient:{id:recipient},timestamp:Date.now(),message:{mid:id,text,is_echo:true}}]}]});
+test('signed native Instagram message is saved as context, never an AI trigger, then the reply sees it and the business prompt',async()=>{
+ const f=fixture();const intro='Our demo includes setup help. '+'Important business details. '.repeat(60)+'The trial lasts five days.';
+ assert.equal((await f.direct(outgoing('manual-intro',intro))).body.outgoingSaved,1);
+ assert.equal(f.aiInputs.length,0);assert.equal(f.apiCalls.length,0);
+ assert.equal(f.writes.filter(w=>w.collection==='ai_thread_controls').length,0);
+ assert.equal((await f.post(dm('customer-reply','Yes, how do I set it up?'))).body.sent,1);
+ const input=f.aiInputs[0];assert.ok(input[0].content.includes('Sell watches'));
+ assert.equal(input.filter(m=>m.role==='assistant'&&m.content===intro).length,1);
+ assert.equal(input.at(-1).content,'Yes, how do I set it up?');
+});
+test('native outgoing messages remain available across handler reloads without enabling a paused conversation',async()=>{
+ const first=fixture();await first.post(outgoing());
+ const saved=first.writes.filter(w=>w.collection==='inbox_messages');
+ const restarted=fixture([ai],{initialInbox:saved});await restarted.post(dm('after-restart'));
+ assert.ok(restarted.aiInputs[0].some(m=>m.content.includes('Our automation demo includes setup help')));
+ const paused=fixture([ai],{initialInbox:saved,handoffPaused:true});await paused.post(outgoing('manual-takeover','I am helping you manually.'));
+ assert.equal((await paused.post(dm('still-paused'))).body.sent,0);assert.equal(paused.aiInputs.length,0);
+ assert.equal(paused.writes.some(w=>w.collection==='ai_thread_controls'),false);
+});
+test('duplicate echoes do not duplicate context and another customer cannot see the manual intro',async()=>{
+ const f=fixture();const event=outgoing();event.entry[0].changes=[{field:'messages',value:event.entry[0].messaging[0]}];
+ await f.post(event);await f.post(event);
+ assert.equal(f.writes.filter(w=>w.id==='manual-intro').length,1);
+ const other=dm('unrelated','What is this?');other.entry[0].messaging[0].sender.id='another-customer';await f.post(other);
+ assert.ok(!f.aiInputs[0].some(m=>m.content.includes('Our automation demo includes setup help')));
+});
+test('outgoing echoes in both Meta payload shapes are stored before a customer reply in the same batch',async()=>{
+ const f=fixture();const event=dm('mixed-reply','How does your demo work?');
+ event.entry[0].changes=[{field:'message_echoes',value:outgoing().entry[0].messaging[0]}];
+ assert.equal((await f.post(event)).body.sent,1);
+ assert.ok(f.aiInputs[0].some(m=>m.role==='assistant'&&m.content.includes('Our automation demo')));
+});
+test('an unflagged business outgoing is context; invalid signatures and failed storage never cause AI or a send',async()=>{
+ const f=fixture();const event=outgoing();delete event.entry[0].messaging[0].message.is_echo;
+ assert.equal((await f.direct(event,'invalid')).status,403);assert.equal(f.writes.length,0);
+ assert.equal((await f.post(event)).body.outgoingSaved,1);assert.equal(f.apiCalls.length,0);
+ const failed=fixture([ai],{outboundStoreFails:true});assert.equal((await failed.post(event)).status,503);assert.equal(failed.apiCalls.length,0);
+ const retry=fixture();await retry.post(event);assert.equal(retry.aiInputs.length,0);
+});
+test('a new business message during generation blocks the stale AI answer before dispatch',async()=>{
+ const options={onAIStart:()=>{options.contextChanged=true;}};const f=fixture([ai],options);
+ const r=await f.post(dm('context-race'));assert.equal(r.body.sent,0);assert.equal(r.body.results[0].reason,'conversation_context_changed');
+ assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
+ assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_reserve_context_delivery'&&typeof c.args.p_context_version==='string'));
+});
+test('manual context remains complete beyond twelve recent turns and is kept in chronological order within the window',()=>{
+ const f=fixture();const anchor={id:'intro',role:'assistant',content:'x'.repeat(5000)};
+ const recent=Array.from({length:12},(_,i)=>({id:'turn-'+i,role:i%2?'assistant':'user',content:'Turn '+i}));
+ const old=f.helpers.conversationHistory({history:recent,manual_context:anchor});assert.equal(old[0].content,anchor.content);assert.equal(old.length,13);
+ const current=f.helpers.conversationHistory({history:[recent[0],anchor,recent[1]],manual_context:anchor});
+ assert.deepEqual(Array.from(current,m=>m.id),['turn-0','intro','turn-1']);
+ const huge=f.helpers.conversationHistory({history:recent.map(m=>({...m,content:'y'.repeat(6000)})),manual_context:anchor});
+ assert.ok(huge.reduce((n,m)=>n+m.content.length,0)<=24000);assert.equal(huge[0].content.length,5000);
+});
+
 test('first AI DM generates and sends a confirmed reply against real schema', async () => {
   const f = fixture(); const r = await f.post(dm());
   assert.equal(r.status, 200); assert.equal(r.body.sent, 1); assert.equal(f.aiInputs.length, 1);
@@ -169,7 +240,7 @@ test('first AI DM generates and sends a confirmed reply against real schema', as
 test('unlimited administrator continues AI replies beyond all plan quotas',async()=>{
  const f=fixture([ai],{unlimited:true,aiUsed:200000,quotaUsed:200000});const r=await f.post(dm());
  assert.equal(r.body.sent,1);assert.equal(f.aiInputs.length,1);
- assert.ok(f.rpcCalls.some(c=>['autoreply_reserve_automation_delivery','autoreply_reserve_thread_delivery'].includes(c.name)&&c.args.p_is_ai===true));
+ assert.ok(f.rpcCalls.some(c=>['autoreply_reserve_automation_delivery','autoreply_reserve_thread_delivery','autoreply_reserve_context_delivery'].includes(c.name)&&c.args.p_is_ai===true));
  const duplicate=await f.post(dm());assert.equal(duplicate.body.sent,0);
 });
 test('unlimited administrator continues standard replies without bypassing a paused automation',async()=>{
@@ -498,7 +569,7 @@ test('normal DM sends one swipeable carousel with product photos and counts one 
  const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,1);
  const payload=sent[0].body.message.attachment.payload;assert.equal(payload.template_type,'generic');assert.equal(payload.elements.length,2);
  assert.equal(payload.elements[0].title,'Silver watch');assert.equal(payload.elements[0].buttons[0].url,'https://shop.example/watch');
- assert.ok(f.writes.some(w=>w.collection==='inbox_messages'&&w.data.catalog_id==='watches'));assert.equal(f.aiInputs.length,0);assert.equal(f.rpcCalls.filter(c=>['autoreply_reserve_automation_delivery','autoreply_reserve_thread_delivery'].includes(c.name)).length,1);
+ assert.ok(f.writes.some(w=>w.collection==='inbox_messages'&&w.data.catalog_id==='watches'));assert.equal(f.aiInputs.length,0);assert.equal(f.rpcCalls.filter(c=>['autoreply_reserve_automation_delivery','autoreply_reserve_thread_delivery','autoreply_reserve_context_delivery'].includes(c.name)).length,1);
 });
 test('AI can select an approved catalog without a second AI request; normal questions remain text',async()=>{
  const rule={...ai,actions:[{type:'ai_chatbot',ai_system_instruction:'Sell watches',catalog_id:'watches'}]};
