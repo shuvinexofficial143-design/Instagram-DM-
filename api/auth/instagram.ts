@@ -116,15 +116,21 @@ export default async function handler(req: any, res: any) {
       return res.status(401).json({ ok: false, code: "SESSION_EXPIRED", error: "Your login session expired. Sign in again before connecting Instagram." });
     }
     if (isConfiguredAdmin(verifiedUser)) await synchronizeAdminPolicy();
+    const intent = String(req.query?.intent || 'connect');
+    if (!['connect','add','reconnect'].includes(intent)) {
+      return res.status(400).json({ok:false,code:'INVALID_CONNECTION_INTENT',error:'Choose Connect Instagram or Reconnect for a saved account.'});
+    }
     let workspaceId = authenticatedUid || getOrCreateWorkspaceId(req,res);
-    if (authenticatedUid && req.query?.intent === 'add') workspaceId = randomUUID();
+    // A generic Connect must never inherit a disconnected account's cookie or
+    // workspace. Registration reuses the owner's existing account if chosen.
+    if (authenticatedUid && intent !== 'reconnect') workspaceId = randomUUID();
     else if (authenticatedUid && (req.headers?.['x-autoreply-workspace'] || String(req.headers?.cookie || '').includes('autoreply_active_workspace=')))
       workspaceId = (await authenticatedWorkspace(req))?.id || authenticatedUid;
 
     // Read the retained membership through this user's RLS session. Disconnect
     // removes credentials, not the identity whose history we are reconnecting.
     let target: InstagramReconnectTarget | undefined;
-    if (authenticatedUid && req.query?.intent !== 'add') {
+    if (authenticatedUid && intent === 'reconnect') {
       const response = await upstreamFetch(`${SUPABASE_URL}/rest/v1/autoreply_instagram_memberships?workspace_id=eq.${encodeURIComponent(workspaceId)}&owner_user_id=eq.${encodeURIComponent(authenticatedUid)}&select=ig_user_id,profile`, {
         headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: String(req.headers.authorization) },
       }, 'Instagram reconnect identity');
@@ -138,6 +144,7 @@ export default async function handler(req: any, res: any) {
         if (!ids.length || !/^[a-zA-Z0-9._]{1,30}$/.test(username)) throw new Error('The saved Instagram identity could not be verified. Please contact support.');
         target = { ids, username };
       }
+      if (!target) return res.status(409).json({ok:false,code:'RECONNECT_ACCOUNT_NOT_FOUND',error:'This saved account could not be found. Choose Connect Instagram to select an account.'});
     }
     const redirectUri = getRedirectUri(req);
     const state = createInstagramOAuthState(workspaceId, authenticatedUid, stateSecret, target);

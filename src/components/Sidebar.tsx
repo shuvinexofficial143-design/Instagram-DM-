@@ -7,7 +7,7 @@ import { UserAvatar } from './Common/UserAvatar';
 import { workspaceNavigation } from './WorkspaceNavigation';
 
 export const Sidebar = () => {
-  const {activeTab,setActiveTab,user,firebaseUser,logout,instagramAccount,instagramAccounts,workspaceId,accountSwitching,switchInstagramAccount,inboxMessages,setIsConnectModalOpen,isAdmin} = useApp();
+  const {activeTab,setActiveTab,user,firebaseUser,logout,instagramAccount,instagramAccounts,workspaceId,accountSwitching,switchInstagramAccount,inboxMessages,startInstagramConnection,isAdmin} = useApp();
   const usage = useWorkspaceUsage();
   const [collapsed,setCollapsed] = useState(()=>{try{return localStorage.getItem('sidebar_collapsed')==='true';}catch{return false;}});
   const toggle = () => setCollapsed(old=>{const next=!old;try{localStorage.setItem('sidebar_collapsed',String(next));}catch{}return next;});
@@ -17,7 +17,7 @@ export const Sidebar = () => {
   return <aside className={'workspace-sidebar '+(collapsed?'is-collapsed':'')} aria-label="Workspace navigation">
     <div className="sidebar-brand"><span className="brand-logo-circle" aria-hidden="true" style={{width:38,height:38,minWidth:38,minHeight:38,overflow:"hidden",borderRadius:6,display:"inline-flex",alignItems:"center",justifyContent:"center",background:"#000"}}><img src="/auto-replys-brand.svg" alt="" style={{width:32,height:32,maxWidth:"100%",maxHeight:"100%",objectFit:"contain",borderRadius:4}} onError={(e)=>{e.currentTarget.style.display="none";}} /></span><span>Auto Replys</span></div>
     <button onClick={toggle} className="sidebar-collapse" aria-label={collapsed?'Expand navigation':'Collapse navigation'}>{collapsed?<ChevronRight/>:<ChevronLeft/>}</button>
-    <button className={'sidebar-account '+(instagramAccount?'has-instagram':'')} onClick={()=>instagramAccount?setActiveTab('settings'):setIsConnectModalOpen(true)} aria-label={instagramAccount?'Manage Instagram account':'Connect Instagram'} title={instagramAccount?.username || 'Connect Instagram'}>
+    <button className={'sidebar-account '+(instagramAccount?'has-instagram':'')} onClick={()=>instagramAccount?setActiveTab('settings'):startInstagramConnection('connect')} aria-label={instagramAccount?'Manage Instagram account':'Connect Instagram'} title={instagramAccount?.username || 'Connect Instagram'}>
       {instagramAccount
         ? <span className="sidebar-instagram-avatar-ring"><UserAvatar src={instagramAccount.profile_pic_url} username={instagramAccount.username} size="sm"/></span>
         : <span className="sidebar-instagram-icon"><Instagram/></span>}

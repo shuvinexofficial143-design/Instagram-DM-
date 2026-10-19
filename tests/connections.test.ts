@@ -51,7 +51,8 @@ test('Instagram recovers transient auth failure and signs the verified user', as
   const res = response(); await instagram(request(''), res);
   assert.equal(res.statusCode, 200);
   const url = new URL(res.body.url);
-  assert.equal(JSON.parse(url.searchParams.get('state')!).workspaceId, uid);
+  const state=JSON.parse(url.searchParams.get('state')!);
+  assert.equal(state.ownerId,uid);assert.notEqual(state.workspaceId,uid);assert.equal(state.target,undefined);
   assert.equal(url.searchParams.get('redirect_uri'), 'https://autoreplys.vercel.app/api/auth/instagram/callback');
 });
 test('Sheets network failures return actionable JSON with 503', async () => {

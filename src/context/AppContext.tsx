@@ -80,8 +80,9 @@ interface AppContextType {
   accountError: string;
   refreshInstagramAccounts: (followCookie?:boolean) => Promise<void>;
   switchInstagramAccount: (id:string) => Promise<void>;
-  startInstagramConnection: (mode?:'add'|'reconnect') => void;
-  instagramConnectMode: 'add'|'reconnect';
+  startInstagramConnection: (mode?:'connect'|'add'|'reconnect', targetWorkspaceId?:string) => void;
+  instagramConnectMode: 'connect'|'add'|'reconnect';
+  instagramReconnectWorkspaceId: string | null;
   automations: Automation[];
   contacts: Contact[];
   inboxMessages: InboxMessage[];
@@ -249,7 +250,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [instagramAccounts, setInstagramAccounts] = useState<{workspaceId:string;account:InstagramAccount}[]>([]);
   const [accountSwitching,setAccountSwitching] = useState(false);
   const [accountError,setAccountError] = useState('');
-  const [instagramConnectMode,setInstagramConnectMode] = useState<'add'|'reconnect'>('reconnect');
+  const [instagramConnectMode,setInstagramConnectMode] = useState<'connect'|'add'|'reconnect'>('connect');
+  const [instagramReconnectWorkspaceId,setInstagramReconnectWorkspaceId] = useState<string|null>(null);
   const accountRequestVersion = useRef(0);
   const accountMutation = useRef(false);
   const [instagramAccount, setInstagramAccountState] = useState<InstagramAccount | null>(null);
@@ -818,7 +820,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const selected=(payload.accounts||[]).find((a:any)=>a.workspaceId===target)?.account;
       if(selected?.username) setInstagramAccount(connectedInstagramAccount(selected));
       else setInstagramAccount(null);
-      setWorkspaceId(target); setIsConnectModalOpen(false); setInstagramConnectMode('reconnect');
+      setWorkspaceId(target); setIsConnectModalOpen(false); setInstagramConnectMode('connect');setInstagramReconnectWorkspaceId(null);
       setAccountError('');
       setWorkspaceHydrating(false);
     } catch(error:any) {
@@ -842,7 +844,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch(error:any) {setAccountError(error?.message || 'Could not switch Instagram account.');}
     finally {accountMutation.current=false;setAccountSwitching(false);}
   };
-  const startInstagramConnection = (mode:'add'|'reconnect'='reconnect') => {setInstagramConnectMode(mode);setIsConnectModalOpen(true);};
+  const startInstagramConnection = (mode:'connect'|'add'|'reconnect'='connect',targetWorkspaceId?:string) => {
+    setInstagramConnectMode(mode);
+    setInstagramReconnectWorkspaceId(mode==='reconnect'?(targetWorkspaceId||workspaceId||firebaseUser?.uid||null):null);
+    setIsConnectModalOpen(true);
+  };
   useEffect(()=>{
     ++accountRequestVersion.current;
     setWorkspaceId('');setInstagramAccounts([]);
@@ -857,7 +863,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return ()=>{++accountRequestVersion.current;window.removeEventListener('message',onConnected);};
   },[firebaseUser?.uid]);
 
-  useEffect(()=>{if (!isConnectModalOpen) setInstagramConnectMode('reconnect');},[isConnectModalOpen]);
+  useEffect(()=>{if (!isConnectModalOpen){setInstagramConnectMode('connect');setInstagramReconnectWorkspaceId(null);}},[isConnectModalOpen]);
   useEffect(()=>{
     if (!firebaseUser?.uid || workspaceId || !accountError) return;
     const timer=window.setInterval(()=>void refreshInstagramAccounts(),15000);
@@ -1564,7 +1570,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const reauthorizeChannel = () => {
-    startInstagramConnection('reconnect');
+    startInstagramConnection(instagramAccounts.some(item=>item.workspaceId===workspaceId)?'reconnect':'connect');
   };
 
   const disconnectChannel = async () => {
@@ -1630,7 +1636,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         instagramAccount,
         instagramAccounts, workspaceId:workspaceId || firebaseUser?.uid || '', accountSwitching, accountError,
-        refreshInstagramAccounts, switchInstagramAccount, startInstagramConnection, instagramConnectMode,
+        refreshInstagramAccounts, switchInstagramAccount, startInstagramConnection, instagramConnectMode,instagramReconnectWorkspaceId,
         automations,
         contacts: enrichedContacts,
         inboxMessages,

@@ -79,6 +79,30 @@ test('adding a different account requests fresh Instagram login without pinning 
   assert.notEqual(state?.workspaceId, workspace); assert.equal(state?.ownerId, owner); assert.equal(state?.target, undefined);
   assert.equal(url.searchParams.get('force_reauth'), 'true');
 });
+test('generic Connect ignores the disconnected account selection and starts an unbound fresh login',async()=>{
+ for(const intent of [undefined,'connect','add']){
+  let reads=0;globalThis.fetch=async(url:any)=>{assert.ok(String(url).includes('/auth/'),'Generic connect must not read the retained reconnect identity');reads++;return json({id:owner});};
+  const res=response();await start({method:'GET',query:intent?{intent}:{},headers:{authorization:'Bearer verified-session','x-autoreply-workspace':workspace,cookie:'autoreply_active_workspace='+workspace}},res);
+  assert.equal(res.statusCode,200);assert.equal(reads,1);
+  const state=verify(new URL(res.body.url).searchParams.get('state'),secret);
+  assert.equal(state?.ownerId,owner);assert.notEqual(state?.workspaceId,owner);assert.notEqual(state?.workspaceId,workspace);assert.equal(state?.target,undefined);
+ }
+});
+test('an explicit reconnect with a missing retained identity explains Connect instead of replacing a workspace',async()=>{
+ globalThis.fetch=async(url:any)=>String(url).includes('/auth/')?json({id:owner}):json([]);
+ const res=response();await start({method:'GET',query:{intent:'reconnect'},headers:{authorization:'Bearer verified-session'}},res);
+ assert.equal(res.statusCode,409);assert.equal(res.body.code,'RECONNECT_ACCOUNT_NOT_FOUND');assert.equal(res.body.url,undefined);
+});
+test('unrecognized connection modes are rejected before Instagram authorization',async()=>{
+ globalThis.fetch=async()=>json({id:owner});const res=response();
+ await start({method:'GET',query:{intent:'replace-any-account'},headers:{authorization:'Bearer verified-session'}},res);
+ assert.equal(res.statusCode,400);assert.equal(res.body.url,undefined);
+});
+test('generic Connect allows a different verified Instagram identity without the selected-account mismatch error',async()=>{
+ const f=oauthFixture({id:'28888888888888888',user_id:'17841477777777777',username:'different_account'});
+ const res=response();await callback(req(sign('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',owner,secret)),res);
+ assert.equal(res.statusCode,200);assert.equal(f.writes.length,1);assert.equal(f.writes[0].ownerId,owner);assert.match(res.body,/ig_connected/);
+});
 test('correct account reconnect saves to its retained workspace and subscribes before reporting success', async () => {
   const f = oauthFixture(); const res = response(); await callback(req(sign(workspace, owner, secret, target)), res);
   assert.equal(res.statusCode, 200); assert.equal(f.writes.length, 1);

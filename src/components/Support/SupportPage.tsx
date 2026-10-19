@@ -28,7 +28,7 @@ const faqs=[
 ];
 
 export const SupportPage:React.FC<{page:Page}>=({page})=>{
-  const{setActiveTab,setIsConnectModalOpen,setIsRenewModalOpen,firebaseUser}=useApp();
+  const{setActiveTab,startInstagramConnection,setIsRenewModalOpen,firebaseUser}=useApp();
   const [faqQuery,setFaqQuery]=useState('');
   const [faqCategory,setFaqCategory]=useState('All');
   const faqCategories=['All',...new Set(faqs.map(([category])=>category))];
@@ -39,7 +39,7 @@ export const SupportPage:React.FC<{page:Page}>=({page})=>{
     const paths={home:'/',automations:'/login',faq:'/help/faq','billing-help':'/help/billing',billing:'/login'};
     window.location.href=paths[tab];
   };
-  const connect=()=>firebaseUser?setIsConnectModalOpen(true):window.location.assign('/login');
+  const connect=()=>firebaseUser?startInstagramConnection('connect'):window.location.assign('/login');
   const upgrade=()=>firebaseUser?setIsRenewModalOpen(true):window.location.assign('/login');
 
   const workspaceDesign=['help','faq','billing-help'].includes(page);

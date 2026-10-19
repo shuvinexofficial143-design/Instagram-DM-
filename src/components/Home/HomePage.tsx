@@ -13,7 +13,7 @@ type Period = 'today' | '7d' | '30d' | 'all';
 export const HomePage: React.FC = () => {
   const {
     user, instagramAccount, automations, inboxMessages, contacts, workspaceDataLoading, workspaceDataError,
-    setActiveTab, setIsConnectModalOpen, setIsBuilderOpen,
+    setActiveTab, startInstagramConnection, setIsBuilderOpen,
   } = useApp();
   // Default to verified lifetime totals; otherwise earlier successful AI replies
   // disappear whenever Today is selected or their inbox automation_id is absent.
@@ -155,7 +155,7 @@ export const HomePage: React.FC = () => {
                   <div className="mt-2 hidden flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate-500 sm:flex"><span>✓ Auto reply to DMs</span><span>✓ Reply to comments</span><span>✓ Capture leads</span><span>✓ 24/7 automation</span></div>
                 </div>
               </div>
-              <button onClick={() => setIsConnectModalOpen(true)} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 self-start rounded-xl px-4 text-xs font-bold text-white shadow-md transition hover:-translate-y-px hover:brightness-105 sm:self-auto" style={{backgroundImage:'linear-gradient(100deg,#FA7E1E 0%,#D62976 48%,#962FBF 100%)'}}><Instagram className="h-4 w-4" />Connect Instagram <ArrowRight className="h-3.5 w-3.5" /></button>
+              <button onClick={() => startInstagramConnection('connect')} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 self-start rounded-xl px-4 text-xs font-bold text-white shadow-md transition hover:-translate-y-px hover:brightness-105 sm:self-auto" style={{backgroundImage:'linear-gradient(100deg,#FA7E1E 0%,#D62976 48%,#962FBF 100%)'}}><Instagram className="h-4 w-4" />Connect Instagram <ArrowRight className="h-3.5 w-3.5" /></button>
             </div>
           )}
           </div>

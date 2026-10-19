@@ -16,7 +16,7 @@ const noop = () => {};
 const empty = {
   user:{id:'test-workspace',name:'Sample owner',email:'owner@example.test',plan:'free',created_at:'2026-10-01',trial_expires_at:'2026-11-01'},
   firebaseUser:null,authLoading:false,workspaceHydrating:false,workspaceDataLoading:false,workspaceDataError:false,isAdmin:false,isGuestMode:false,activeTab:'home',
-  instagramAccount:null,instagramAccounts:[],workspaceId:'test-workspace',accountSwitching:false,accountError:'',instagramConnectMode:'reconnect',automations:[],contacts:[],inboxMessages:[],webhookLogs:[],pausedAiUsers:[],
+  instagramAccount:null,instagramAccounts:[],workspaceId:'test-workspace',accountSwitching:false,accountError:'',instagramConnectMode:'connect',instagramReconnectWorkspaceId:null,automations:[],contacts:[],inboxMessages:[],webhookLogs:[],pausedAiUsers:[],
   isBuilderOpen:false,isConnectModalOpen:false,isRenewModalOpen:false,editingAutomation:null,
   isAiPausedForUser:()=>false,
 };
@@ -59,6 +59,7 @@ try {
       export {AutomationReviewPhone} from './src/components/Automations/AutomationReviewPhone';
       export {CustomerBadges,CustomerInsightPanel} from './src/components/Common/CustomerInsight';
       export {InstagramAccounts} from './src/components/Common/InstagramAccounts';
+      export {ConnectChannelModal} from './src/components/Common/ConnectChannelModal';
       export {ActivityLogsPage} from './src/components/Activity/ActivityLogsPage';
       export {CatalogPreview} from './src/components/Catalog/CatalogPicker';
       export {workspaceNavigation,WorkspaceTabs} from './src/components/WorkspaceNavigation';
@@ -190,6 +191,15 @@ try {
   assert.ok(html.includes('Permission denied'));assert.ok(html.includes('120 ms'));checks++;
   globalThis.__uiFixture=fixture({workspaceId:'account-b',instagramAccounts:[{workspaceId:'account-a',account:{username:'first_business',status:'connected'}},{workspaceId:'account-b',account:{username:'second_business',status:'connected'}}]});
   html=renderToStaticMarkup(React.createElement(ui.InstagramAccounts));for(const label of ['first_business','second_business','Current account','Add Instagram account','Switch account'])assert.ok(html.includes(label));checks++;
+  assert.ok(html.includes('Reconnect @first_business'));assert.ok(html.includes('Reconnect @second_business'));checks++;
+  const retained=[{workspaceId:'account-a',account:{username:'old_business',status:'disconnected'}},{workspaceId:'account-b',account:{username:'another_business',status:'connected'}}];
+  globalThis.__uiFixture=fixture({workspaceId:'account-a',isConnectModalOpen:true,instagramAccounts:retained,instagramConnectMode:'connect'});
+  html=renderToStaticMarkup(React.createElement(ui.ConnectChannelModal));assert.ok(html.includes('Connect your Instagram'));assert.ok(html.includes('Choose a new or previously connected Instagram account'));assert.ok(!html.includes('Reconnect @old_business'));checks++;
+  globalThis.__uiFixture=fixture({workspaceId:'account-a',isConnectModalOpen:true,instagramAccounts:retained,instagramConnectMode:'reconnect',instagramReconnectWorkspaceId:'account-b'});
+  html=renderToStaticMarkup(React.createElement(ui.ConnectChannelModal));assert.ok(html.includes('Reconnect @another_business'));assert.ok(html.includes('Connect a different account'));assert.ok(!html.includes('Reconnect @old_business'));assert.ok(!html.includes('>Disconnect</button>'));checks++;
+  globalThis.__uiFixture=fixture({workspaceId:'account-a',isConnectModalOpen:true,instagramAccounts:retained,instagramConnectMode:'add'});
+  html=renderToStaticMarkup(React.createElement(ui.ConnectChannelModal));assert.ok(html.includes('Add another Instagram account'));assert.ok(!html.includes('Reconnect @old_business'));checks++;
+  globalThis.__uiFixture=fixture({workspaceId:'account-b',instagramAccounts:retained});
   html=renderToStaticMarkup(React.createElement(ui.Sidebar));assert.ok(html.includes('sidebar-account-switch'));assert.ok(html.includes('value="account-b" selected=""'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.CustomerInsightPanel,{contact:{id:'canonical',ig_username:'customer',customer_insight:{stage:'support',priority:'high',source:'manual',reason:'Delivery complaint',summary:'Customer needs help',next_step:'Resolve delivery'}}}));
   for(const text of ['Needs support','High priority','Delivery complaint','Manual','Customer status','Customer priority','Resume automatic assessment'])assert.ok(html.includes(text));checks++;

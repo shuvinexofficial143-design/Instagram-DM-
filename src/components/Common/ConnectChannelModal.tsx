@@ -14,18 +14,19 @@ import { UserAvatar } from './UserAvatar';
 export const ConnectChannelModal: React.FC = () => {
   const {
     isConnectModalOpen,
-    setIsConnectModalOpen, instagramConnectMode, workspaceId,
-    instagramAccount, instagramAccounts, user,
+    setIsConnectModalOpen, instagramConnectMode, workspaceId,instagramReconnectWorkspaceId,startInstagramConnection,
+    instagramAccounts, user,
     disconnectChannel,
   } = useApp();
 
   const [isLaunching, setIsLaunching] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const oauthPopup = useRef<Window | null>(null);
-  const reconnectTarget = instagramConnectMode === 'add' ? null : instagramAccounts.find(item => item.workspaceId === workspaceId)?.account;
-  const connectedAccount = instagramConnectMode === 'add' ? null : instagramAccount;
+  const connectionWorkspaceId = instagramReconnectWorkspaceId || workspaceId;
+  const reconnectTarget = instagramConnectMode === 'reconnect' ? instagramAccounts.find(item => item.workspaceId === connectionWorkspaceId)?.account : null;
+  const connectedAccount = reconnectTarget?.status==='connected' ? reconnectTarget : null;
 
-  useEffect(() => { setFeedback(null); }, [isConnectModalOpen, workspaceId, instagramConnectMode]);
+  useEffect(() => { setFeedback(null); }, [isConnectModalOpen, connectionWorkspaceId, instagramConnectMode]);
   useEffect(() => {
     const onFailed = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || !oauthPopup.current || event.source !== oauthPopup.current || event.data?.type !== 'ig_connection_failed') return;
@@ -80,17 +81,18 @@ export const ConnectChannelModal: React.FC = () => {
     oauthPopup.current = popup;
 
     try {
+      if(instagramConnectMode==='reconnect'&&!reconnectTarget)throw new Error('This saved account is unavailable. Choose Connect a different account.');
       // This same-origin fetch is automatically decorated with the active Supabase
       // access token by App.tsx. The server then signs the OAuth state for this UID.
       const token = await (await import('../../lib/supabase')).auth.currentUser?.getIdToken();
       if (!token) throw new Error('Your login session is missing. Please sign in with Google again.');
 
-      const response = await fetch('/api/auth/instagram?intent=' + (instagramConnectMode || 'reconnect'), {
+      const response = await fetch('/api/auth/instagram?intent=' + (instagramConnectMode || 'connect'), {
         method: 'GET',
         credentials: 'same-origin',
         headers: {
           Accept: 'application/json',
-          Authorization: `Bearer ${token}`, 'X-Autoreply-Workspace':workspaceId,
+          Authorization: `Bearer ${token}`, ...(instagramConnectMode==='reconnect'?{'X-Autoreply-Workspace':connectionWorkspaceId}:{}),
         },
       });
       const payload = await response.json().catch(() => null);
@@ -160,11 +162,12 @@ export const ConnectChannelModal: React.FC = () => {
               {reconnectTarget ? `Reconnect @${reconnectTarget.username}` : instagramConnectMode === 'add' ? 'Add another Instagram account' : 'Connect your Instagram'}
             </h2>
             <p className="mx-auto mt-1.5 max-w-sm text-[13px] font-medium leading-5 text-slate-500 sm:text-[14px]">
-              {reconnectTarget ? `Choose @${reconnectTarget.username} on the Instagram login screen to restore this connection.` : 'Start automating your DMs and comments with AI.'}
+              {reconnectTarget ? `Choose @${reconnectTarget.username} on Instagram to restore this account.` : 'Choose a new or previously connected Instagram account. Saved accounts keep their conversations and automations.'}
             </p>
           </div>
 
           {user.email && <p className="mt-3 break-all text-center text-xs text-slate-500">Auto Replys login: {user.email}</p>}
+          {instagramConnectMode==='reconnect'&&<button type="button" disabled={isLaunching} onClick={()=>startInstagramConnection('connect')} className="mx-auto mt-3 block rounded-lg px-3 py-2 text-sm font-semibold text-indigo-700 underline underline-offset-4 disabled:opacity-50">Connect a different account</button>}
 
           {connectedAccount ? (
             <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3.5">
@@ -175,7 +178,7 @@ export const ConnectChannelModal: React.FC = () => {
                   <p className="mt-0.5 text-xs font-medium text-slate-600">{connectedAccount.followers_count?.toLocaleString() || 0} followers · Connected</p>
                 </div>
               </div>
-              <button onClick={handleDisconnect} className="shrink-0 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50">Disconnect</button>
+              {connectionWorkspaceId===workspaceId&&<button onClick={handleDisconnect} className="shrink-0 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-50">Disconnect</button>}
             </div>
           ) : (
             <>

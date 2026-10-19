@@ -262,7 +262,7 @@ export const SettingsPage: React.FC = () => {
                 className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-bold text-indigo-700 hover:bg-indigo-100 sm:w-auto"
               >
                 <RefreshCw className="h-4 w-4" />
-                Switch / reconnect
+                Reconnect this account
               </button>
             </div>
           </div>
@@ -276,7 +276,7 @@ export const SettingsPage: React.FC = () => {
               <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">Connect the Instagram business or creator profile that should receive and automate customer messages.</p>
               <button
                 type="button"
-                onClick={() => startInstagramConnection('reconnect')}
+                onClick={() => startInstagramConnection('connect')}
                 className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white hover:bg-indigo-700"
               >
                 <Instagram className="h-4 w-4" />

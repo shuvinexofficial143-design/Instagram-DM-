@@ -167,3 +167,18 @@ test('disconnected accounts remain protected from registration under a different
  assert.equal(result.status,409);assert.equal(f.tables.autoreply_instagram_tokens.length,0);
  assert.equal(f.tables.autoreply_instagram_memberships[0].owner_user_id,owner);
 });
+test('disconnect then Connect a new account leaves the old one disconnected until it is explicitly selected again',async()=>{
+ const f=fixture(null);await f.save();
+ f.tables.autoreply_documents.push({user_id:owner,collection:'automations',id:'old-rule',data:{status:'paused'}});
+ await f.post({action:'delete',workspaceId:owner},{Authorization:'Bearer session'});
+ f.setBusiness('business-b');const second=await f.save('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+ assert.equal(second.status,200);assert.notEqual(second.body.workspaceId,owner);
+ const listed=await f.post({action:'list_accounts'},{Authorization:'Bearer session'});
+ assert.equal(listed.body.accounts.find(row=>row.workspaceId===owner).account.status,'disconnected');
+ assert.equal(listed.body.accounts.find(row=>row.workspaceId===second.body.workspaceId).account.status,'connected');
+ assert.equal(f.tables.autoreply_instagram_tokens.some(row=>row.user_id===owner),false);
+ f.setBusiness('business-a');const restored=await f.save('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+ assert.equal(restored.status,200);assert.equal(restored.body.workspaceId,owner);
+ assert.equal(f.tables.autoreply_instagram_tokens.length,2);assert.equal(f.tables.autoreply_instagram_memberships.length,2);
+ assert.equal(f.tables.autoreply_documents.find(row=>row.id==='old-rule').data.status,'paused');
+});

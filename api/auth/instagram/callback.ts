@@ -46,7 +46,7 @@ function renderError(res: any, message: string, status = 400) {
     <p style="color:#475569;line-height:1.6;font-size:14px">${escapeHtml(message)}</p>
     <a href="/settings" style="display:inline-block;background:#2563eb;color:white;border-radius:10px;padding:11px 18px;font-weight:700;text-decoration:none">Back to settings</a>
     <button onclick="window.close()" style="border:0;background:#2563eb;color:white;border-radius:10px;padding:11px 18px;font-weight:700">Close</button>
-    <p style="color:#64748b;line-height:1.5;font-size:12px">Choose Reconnect in Settings to start a fresh Instagram login. If Instagram shows another account, switch to the account you want to reconnect.</p>
+    <p style="color:#64748b;line-height:1.5;font-size:12px">Use Connect Instagram or Add Instagram account to choose an account. Use a saved account's Reconnect button only to restore that same account.</p>
   </div>
   <script>try { if(window.opener && !window.opener.closed) window.opener.postMessage({type:'ig_connection_failed',message:${safeMessage}},window.location.origin); } catch(e) {}</script>
 </body>
