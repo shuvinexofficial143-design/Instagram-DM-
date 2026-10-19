@@ -29,12 +29,13 @@ export default async function adminHandler(req: any, res: any) {
     }
     if (!isAdmin) return res.status(403).json({ok:false,error:'Administrator access required.'});
     await synchronizeAdminPolicy();
-    if (adminOperationMethods[action]) return res.status(200).json(await runAdminOperation(req,user));
+    if (adminOperationMethods[action] && action!=='admin-handoff-reply') return res.status(200).json(await runAdminOperation(req,user));
+    if(action==='admin-handoff-reply'&&(!/^[a-f0-9-]{36}$/i.test(req.body?.id||'')||typeof req.body?.messageText!=='string'||!req.body.messageText.trim()||req.body.messageText.length>1000))return res.status(400).json({ok:false,error:'Enter a handoff and a message of 1–1000 characters.'});
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-    const edgeAction = action === 'admin-overview' ? 'admin_overview' : 'admin_update_plan';
+    const edgeAction = action === 'admin-handoff-reply' ? 'admin_handoff_reply' : action === 'admin-overview' ? 'admin_overview' : 'admin_update_plan';
     const response = await upstreamFetch(`${SUPABASE_URL}/functions/v1/instagram-account-store`, {
       method:'POST', headers:{'Content-Type':'application/json', Authorization:`Bearer ${token}`, ...adminRelayHeaders(edgeAction, token)},
-      body:JSON.stringify({action:edgeAction, ...(edgeAction === 'admin_update_plan' ? {plan:req.body?.plan} : {})}),
+      body:JSON.stringify({action:edgeAction, ...(edgeAction === 'admin_update_plan' ? {plan:req.body?.plan} : edgeAction==='admin_handoff_reply'?{handoffId:req.body.id,messageText:req.body.messageText.trim()}:{})}),
     }, 'Administrator service', 20000);
     const payload = await response.json();
     return res.status(response.status).json(payload);

@@ -573,13 +573,21 @@ async function syncAiLeadToGoogleSheet(admin:any, workspaceId:string, senderId:s
 
 // Atomic, durable reservation BEFORE delivery. Never permit parallel sends to
 // overrun a customer's purchased standard or AI allowance.
-async function reserveDeliveryQuota(admin:any, workspaceId:string, deliveryKey:string, isAi:boolean, automationId:string, senderId:string):Promise<{allowed:boolean;reason?:string}> {
-  const { data, error } = await admin.rpc("autoreply_reserve_automation_delivery", {
-    p_workspace_id: workspaceId, p_delivery_key: deliveryKey, p_is_ai: isAi, p_automation_id:automationId, p_sender_id:senderId
+async function reserveDeliveryQuota(admin:any, workspaceId:string, deliveryKey:string, isAi:boolean, automationId:string, senderId:string, controlVersion?:string):Promise<{allowed:boolean;reason?:string}> {
+  const { data, error } = await admin.rpc(controlVersion===undefined?"autoreply_reserve_automation_delivery":"autoreply_reserve_thread_delivery", {
+    p_workspace_id: workspaceId, p_delivery_key: deliveryKey, p_is_ai: isAi, p_automation_id:automationId, p_sender_id:senderId,...(controlVersion===undefined?{}:{p_control_version:controlVersion})
   });
   if(error || !data) throw new Error("Delivery quota could not be verified");
   return data;
 }
+async function requestHumanHandoff(admin:any,workspaceId:string,item:any,automation:any,handoff:{reason:string;summary:string},expectedVersion?:string):Promise<string>{
+  // Idempotent database transaction: pause and notification commit together.
+  for(let attempt=0;attempt<2;attempt++){
+    try{const {data,error}=await admin.rpc("autoreply_request_human_handoff",{p_workspace:workspaceId,p_sender:item.senderId,p_automation_id:String(automation.id||""),p_automation_name:String(automation.name||""),p_reason:handoff.reason,p_summary:handoff.summary,p_message_id:item.messageId,p_expected_version:expectedVersion??null});if(!error&&data?.ok)return data.superseded?"conversation_control_changed":"human_handoff";}catch{}
+  }
+  console.error("[HUMAN_HANDOFF_STORE_FAILED]",{workspaceId,messageId:item.messageId});return "human_handoff_store_failed";
+}
+
 async function finishDeliveryQuota(admin:any, workspaceId:string, deliveryKey:string, sent:boolean) {
   const {error} = await admin.rpc("autoreply_finish_delivery_quota", {
     p_workspace_id: workspaceId, p_delivery_key: deliveryKey, p_sent: sent
@@ -1077,7 +1085,7 @@ async function generateReply(
       },
       body: JSON.stringify({
         model: model || "gpt-4o-mini",
-        ...(catalogOffer ? {tools:[{type:"function",function:{name:"send_catalog",description:"Send the approved product photo catalog when the customer asks to see products, photos or the catalog. Do not send for greetings or repeat unless requested.",strict:true,parameters:{type:"object",properties:{},required:[],additionalProperties:false}}}],tool_choice:"auto",parallel_tool_calls:false} : {}),
+        tools:[{type:"function",function:{name:"handoff_to_human",description:"Stop automated replies and ask a human to take over this conversation when the customer requests a person, the business prompt requires handoff, or staff must resolve something you cannot answer. This action is terminal; only a human can resume AI.",strict:true,parameters:{type:"object",properties:{reason:{type:"string",enum:["customer_requested","needs_staff","prompt_rule"]},summary:{type:"string",description:"Brief reason and useful context for the human, in the conversation language."}},required:["reason","summary"],additionalProperties:false}}},...(catalogOffer?[{type:"function",function:{name:"send_catalog",description:"Send the approved product photo catalog when the customer asks to see products, photos or the catalog.",strict:true,parameters:{type:"object",properties:{},required:[],additionalProperties:false}}}]:[])],tool_choice:"auto",parallel_tool_calls:false,
         messages: [
           {
             role: "system",
@@ -1094,7 +1102,7 @@ async function generateReply(
           { role: "user", content: incomingText },
         ],
         temperature: varyNaturally ? 0.75 : 0.4,
-        max_tokens: 72,
+        max_tokens: 128,
       }),
       signal: controller.signal,
     });
@@ -1107,6 +1115,11 @@ async function generateReply(
     }
 
     const message=payload?.choices?.[0]?.message;
+    const handoffCall=message?.tool_calls?.find((call:any)=>call?.function?.name==="handoff_to_human");
+    if(handoffCall){
+      let args:any={};try{args=JSON.parse(handoffCall.function.arguments||"{}");}catch{}
+      return {handoff:{reason:["customer_requested","needs_staff","prompt_rule"].includes(args.reason)?args.reason:"needs_staff",summary:asText(args.summary,500)||"The AI requested human assistance."}};
+    }
     if(catalogOffer && message?.tool_calls?.some((call:any)=>call?.function?.name === "send_catalog")) {
       catalogOffer.onSelect();
       return `[Catalog: ${catalogOffer.name}]`;
@@ -1704,7 +1717,7 @@ Deno.serve(async (req: Request) => {
     // network reads stand between the durable claim and starting typing/AI.
     const eligibilityMs = 0, rulesMs = 0, quotaMs = 0;
     let automation = item.triggerType === "dm" && context.campaign_automation?.status === "active" ? context.campaign_automation : matchAutomation(context.automations || [], item);
-    if (context.thread_ai_paused === true && automation?.trigger_type === "dm_ai_conversation") automation = null;
+    if (context.thread_human_handoff === true || context.thread_ai_paused === true) automation = null;
     context.automation = automation;
     if(automation)runInBackground((async()=>{if(await inboundSaved)await captureCustomerData(admin,workspaceId,automation,item,openaiKey,account);})());
 
@@ -1752,6 +1765,7 @@ Deno.serve(async (req: Request) => {
       continue;
     }
     if (quota.unlimited !== true && automation.trigger_type === "dm_ai_conversation" && quota.aiUsed >= quota.aiLimit) {
+      await requestHumanHandoff(admin,workspaceId,item,automation,{reason:"ai_limit_reached",summary:"AI reply allowance reached. A human must continue this conversation."},context.thread_control_version);
       runInBackground(logEvent(admin, workspaceId, item.messageId, {status:"ignored", reason:"monthly_ai_limit_reached", sender_id:item.senderId, incoming_text:item.text, trigger_type:item.triggerType}));
       results.push({ messageId:item.messageId, ok:true, ignored:true, reason:"monthly_ai_limit_reached" });
       continue;
@@ -1805,7 +1819,9 @@ Instagram DM style rules:
 - Use emojis generously and naturally in short replies, usually 2-4 suitable emojis, but avoid spammy emoji walls.
 - Keep greetings and straightforward answers concise: usually 1-2 short sentences and at most one relevant question.
 - Avoid repeating the customer's message, unnecessary introductions and extra sales questions. Give longer detail only when requested.
-- Match the customer's language/style when possible.`,
+- Match the customer's language/style when possible.
+- Call handoff_to_human when a person is requested, the business handoff rule is met, or staff must handle a question you cannot answer from the supplied business information. Never claim a handoff happened without calling the tool.
+- Automatic replies already sent in this conversation: ${Number(context.thread_automated_reply_count||0)}. Follow any conversation-reply handoff threshold in the business instructions.`,
       12000
     );
     const model = "gpt-4o-mini";
@@ -1813,6 +1829,7 @@ Instagram DM style rules:
     let selectedCatalog:any=null;
     let sendCatalog=false;
     let responseText = "";
+    let humanHandoff:{reason:string;summary:string}|null=null;
     let aiError = "";
     let aiMs = 0;
     const history: any[] = Array.isArray(context?.history)
@@ -1842,7 +1859,7 @@ Instagram DM style rules:
 
       try {
         if(aiAction?.catalog_id)selectedCatalog=await loadSendableCatalog(admin,workspaceId,String(aiAction.catalog_id));
-        responseText = await generateReply(
+        const generated = await generateReply(
           openaiKey,
           model,
           systemPrompt,
@@ -1851,6 +1868,7 @@ Instagram DM style rules:
           isGreeting,
           selectedCatalog ? {...selectedCatalog,onSelect:()=>{sendCatalog=true;}} : undefined
         );
+        if(typeof generated === "string") responseText=generated;else humanHandoff=generated.handoff;
       } catch (err) {
         aiError = err instanceof Error ? err.message : String(err);
         console.error("[LIVE_DM_OPENAI_FAILED]", aiError);
@@ -1875,6 +1893,15 @@ Instagram DM style rules:
           )
         );
       }
+    }
+
+    if (humanHandoff) {
+      stopTyping();
+      await inboundSaved;
+      const handoffReason=await requestHumanHandoff(admin,workspaceId,item,automation,humanHandoff,context.thread_control_version);
+      runInBackground(logEvent(admin,workspaceId,item.messageId,{status:handoffReason==="human_handoff_store_failed"?"failed":"ignored",reason:handoffReason,sender_id:item.senderId,automation_id:automation.id,incoming_text:item.text}));
+      results.push({messageId:item.messageId,ok:handoffReason!=="human_handoff_store_failed",ignored:true,reason:handoffReason});
+      continue;
     }
 
     if (!await inboundSaved) {
@@ -1917,9 +1944,10 @@ Instagram DM style rules:
     try {
       // Separate AI allowance, reserved under an owner-level database lock.
       const aiDeliveryKey=`ai:${item.messageId||item.senderId}:${automation.id}`;
-      const slot=await reserveDeliveryQuota(admin,workspaceId,aiDeliveryKey,true,String(automation.id),item.senderId);
+      const slot=await reserveDeliveryQuota(admin,workspaceId,aiDeliveryKey,true,String(automation.id),item.senderId,context.thread_control_version);
       if(slot.allowed) unresolvedAiKey=aiDeliveryKey;
       if(!slot.allowed) {
+        if(slot.reason==="ai_limit_reached")await requestHumanHandoff(admin,workspaceId,item,automation,{reason:"ai_limit_reached",summary:"AI reply allowance reached. A human must continue this conversation."},context.thread_control_version);
         stopTyping();
         results.push({messageId:item.messageId,ok:true,ignored:true,reason:slot.reason||"monthly_ai_limit_reached"});
         continue;

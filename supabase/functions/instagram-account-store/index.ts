@@ -395,11 +395,22 @@ Deno.serve(async (req: Request) => {
   const action = String(payload?.action || "");
   let workspaceId = payload?.workspaceId;
 
+  let handoffAdmin:any=null;
+  if(action === "admin_handoff_reply"){
+    const jwt=String(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"").trim();
+    const service=getAdminClient();const {data:identity,error}=await service.auth.getUser(jwt);
+    if(error||!identity?.user?.email_confirmed_at||identity.user.is_anonymous||!await verifyAdminRelay(req,action,jwt))return reply(403,{ok:false,error:"Administrator access required"});
+    const {data:handoff,error:readError}=await service.from("autoreply_human_handoffs").select("id,workspace_id,sender_id,status").eq("id",String(payload.handoffId||"")).maybeSingle();
+    if(readError||!handoff)return reply(404,{ok:false,error:"Handoff not found"});
+    if(handoff.status==="resumed")return reply(409,{ok:false,error:"This conversation has already resumed AI. Take over from Inbox before replying manually."});
+    workspaceId=handoff.workspace_id;payload.recipientUsername=handoff.sender_id;handoffAdmin=identity.user;
+  }
+
   // Guest workspaces are bearer-cookie capabilities, not Supabase JWT users.
   // Browser clients must go through the Vercel API, which validates the
   // HttpOnly guest cookie and authenticates to this Edge service privately.
   // Otherwise a leaked guest workspace ID could be used directly here.
-  if (String(workspaceId || "").startsWith("guest_") && action !== "save") {
+  if (String(workspaceId || "").startsWith("guest_") && action !== "save" && action !== "admin_handoff_reply") {
     const supplied = String(req.headers.get("x-autoreply-guest-secret") || "");
     const expected = String(Deno.env.get("INSTAGRAM_APP_SECRET") || "").trim();
     if (!expected || supplied.length !== expected.length) {
@@ -858,7 +869,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (action === "send_dm") {
+    if (action === "send_dm" || action === "admin_handoff_reply") {
       const username = String(payload?.recipientUsername || "").replace(/^@/, "").trim().toLowerCase();
       const text = String(payload?.messageText || "").trim();
       if (!username || !text || text.length > 1000) return reply(400, {ok:false, sent:false, error:"A recipient and message of 1–1000 characters are required"});
@@ -877,10 +888,9 @@ Deno.serve(async (req: Request) => {
       if (recipients.length !== 1) return reply(409,{ok:false,sent:false,error:"No unique Instagram conversation found for this contact. Ask them to send a new DM first."});
       const recipientId = String(recipients[0]);
       // A manual reply is a durable human takeover, even after a reload.
-      const {error:pauseError}=await admin.from("autoreply_documents").upsert({user_id:workspaceId,
-        collection:"ai_thread_controls",id:recipientId,
-        data:{sender_id:recipientId,username,paused:true,updated_at:new Date().toISOString()}},{onConflict:"user_id,collection,id"});
+      const {error:pauseError}=await admin.rpc("autoreply_set_thread_control",{p_workspace:workspaceId,p_sender:recipientId,p_paused:true,p_username:username,p_handoff_id:action==="admin_handoff_reply"?payload.handoffId:null});
       if(pauseError) return reply(503,{ok:false,sent:false,error:"Could not pause AI replies for this conversation. Please retry."});
+      if(handoffAdmin){const {error:auditError}=await admin.from("autoreply_admin_audit_logs").insert({admin_user_id:handoffAdmin.id,admin_email:handoffAdmin.email,action:"handoff_manual_reply",entity_type:"human_handoff",entity_id:payload.handoffId});if(auditError)return reply(503,{ok:false,sent:false,error:"Could not record administrator action"});}
       let response: Response;
       try {
         // Never retry an ambiguous message write: Meta may already have accepted it.

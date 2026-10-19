@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import {transform} from 'esbuild';
+import {createHmac} from 'node:crypto';
 const source = (await fs.readFile('supabase/functions/instagram-account-store/index.ts','utf8')).replace(/^import .*;\n/gm,'');
 const compiled = (await transform(source,{loader:'ts',format:'esm'})).code;
 const owner='12345678-1234-4234-8234-123456789012';
@@ -11,6 +12,8 @@ function fixture(options={}) {
   let handler;
   const calls=[];
   const tables={
+    autoreply_human_handoffs:options.handoff?[{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',workspace_id:owner,sender_id:customer,status:options.resumed?'resumed':'waiting'}]:[],
+    autoreply_admin_audit_logs:[],
     autoreply_instagram_tokens:[{user_id:owner,account:{ig_user_id:scoped,username:'business',access_token:'private-token'}}],
     autoreply_instagram_memberships:[{workspace_id:owner,owner_user_id:owner,ig_user_id:scoped}],
     autoreply_documents:[{user_id:owner,collection:'contacts',id:customer,data:{ig_user_id:customer,ig_username:'customer'}}],
@@ -18,11 +21,20 @@ function fixture(options={}) {
   if(options.noContacts) tables.autoreply_documents=[];
   if(options.foreignContact) tables.autoreply_documents[0].user_id='another-workspace';
   const admin={
-    auth:{getUser:async token=>token==='session'?{data:{user:{id:owner}}}:{data:null,error:{message:'Unauthorized'}}},
-    rpc:async()=>({data:{accounts:5},error:null}),
+    auth:{getUser:async token=>token==='session'?{data:{user:{id:owner,...(options.adminSession?{email:'admin@example.test',email_confirmed_at:'2026-10-19'}:{})}}}:{data:null,error:{message:'Unauthorized'}}},
+    rpc:async(name,args)=>{
+      if(name==='autoreply_set_thread_control'){
+        if(options.pauseFails)return {error:{message:'Pause unavailable'}};
+        const existing=tables.autoreply_documents.find(r=>r.collection==='ai_thread_controls'&&r.id===args.p_sender);
+        const data={...(existing?.data||{}),sender_id:args.p_sender,username:args.p_username,paused:args.p_paused};
+        if(existing)existing.data=data;else tables.autoreply_documents.push({user_id:args.p_workspace,collection:'ai_thread_controls',id:args.p_sender,data});
+        return {data,error:null};
+      }
+      return {data:{accounts:5},error:null};
+    },
     from(table){let filters={},sets={},mutation,update;
       const q={select(){return q;},eq(k,v){filters[k]=v;return q;},in(k,v){sets[k]=v;return q;},
-        upsert(value){mutation=value;return q;},update(value){update=value;return q;},
+        insert(value){mutation=value;return q;},upsert(value){mutation=value;return q;},update(value){update=value;return q;},
         maybeSingle(){return Promise.resolve(result(true));},then(resolve,reject){return Promise.resolve(result(false)).then(resolve,reject);}};
       function result(single){const rows=tables[table]||[];
         const matches=rows.filter(row=>Object.entries(filters).every(([k,v])=>row[k]===v)&&Object.entries(sets).every(([k,v])=>v.includes(row[k])));
@@ -36,7 +48,7 @@ function fixture(options={}) {
       }return q;
     }
   };
-  const context=vm.createContext({Request,Response,URLSearchParams,AbortSignal,crypto:globalThis.crypto,console:{log(){},warn(){},error(){}},
+  const context=vm.createContext({Request,Response,URLSearchParams,AbortSignal,TextEncoder,Uint8Array,crypto:globalThis.crypto,console:{log(){},warn(){},error(){}},
     createClient:()=>admin,
     fetch:async(url,init)=>{calls.push({url:String(url),init});
       if(String(url).includes('/me?'))return Response.json({id:scoped,user_id:professional,username:'business'});
@@ -127,4 +139,22 @@ test('manual replies durably pause AI by Instagram sender ID before sending',asy
 });
 test('manual reply stops if the AI takeover cannot be persisted',async()=>{
  const f=fixture({pauseFails:true});const r=await f.post(send);assert.equal(r.status,503);assert.equal(f.calls.length,0);
+});
+
+const adminHandoffReply={action:'admin_handoff_reply',handoffId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',messageText:'A human reply',workspaceId:'forged',recipientUsername:'forged'};
+function adminHeaders(action='admin_handoff_reply'){
+ const timestamp=String(Date.now());return {Authorization:'Bearer session','x-autoreply-admin-time':timestamp,'x-autoreply-admin-signature':createHmac('sha256','oauth-secret').update(`${action}\nsession\n${timestamp}`).digest('hex')};
+}
+test('handoff replies need a verified signed admin relay and cannot select a forged target',async()=>{
+ const f=fixture({adminSession:true,handoff:true});assert.equal((await f.post(adminHandoffReply)).status,403);assert.equal(f.calls.length,0);
+ assert.equal((await f.post(adminHandoffReply,adminHeaders('admin_overview'))).status,403);
+ const sent=await f.post(adminHandoffReply,adminHeaders());assert.equal(sent.status,200);assert.equal(sent.body.sent,true);
+ assert.equal(JSON.parse(f.calls[0].init.body).recipient.id,customer);
+ assert.equal(f.tables.autoreply_admin_audit_logs.length,1);
+ assert.ok(!JSON.stringify(sent.body).includes('private-token'));
+});
+test('closed handoffs and unverified users cannot send an admin reply',async()=>{
+ for(const options of [{adminSession:true,handoff:true,resumed:true},{handoff:true}]){
+  const f=fixture(options);const r=await f.post(adminHandoffReply,adminHeaders());assert.ok([403,409].includes(r.status));assert.equal(f.calls.length,0);
+ }
 });

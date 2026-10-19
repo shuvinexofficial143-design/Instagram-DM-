@@ -71,6 +71,7 @@ export const AiAssistantSetup = (p: AiAssistantSetupProps) => {
         <div className="ai-setup-primary">
           <section className="ai-setup-card" aria-labelledby="prompt-heading">
             <h3 id="prompt-heading">System prompt</h3>
+            <p className="mb-3 text-xs leading-5 text-slate-500">Describe when a human should take over. AI can hand off the conversation, notify an administrator and remain paused until Resume AI is selected.</p>
             <label htmlFor="ai-system-prompt">
               Instructions for your assistant{" "}
               <span className="text-slate-500">(required)</span>

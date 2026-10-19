@@ -22,7 +22,7 @@
     "test:lifecycle": "node --import tsx --test tests/customer-lifecycle.test.ts",
     "test:dashboard": "node --test tests/dashboard-truth.test.mjs",
     "test:visual": "node --test tests/visual-audit.test.mjs",
-    "test:admin": "node --import tsx --test tests/admin-access.test.ts tests/admin-unlimited.test.ts tests/admin-tools.test.ts tests/automation-pause.test.ts tests/campaign-worker.test.mjs"
+    "test:admin": "node --import tsx --test tests/admin-access.test.ts tests/admin-unlimited.test.ts tests/human-handoff.test.ts tests/admin-tools.test.ts tests/automation-pause.test.ts tests/campaign-worker.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

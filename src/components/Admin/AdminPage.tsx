@@ -1,4 +1,5 @@
 import {AdminWorkspaceManager} from './AdminWorkspaceManager';
+import {AdminHandoffCenter,handoffRequest} from './AdminHandoffCenter';
 import {AdminCampaignCenter} from './AdminCampaignCenter';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -77,7 +78,10 @@ export const AdminPage: React.FC = () => {
 
   // Selected User Detail Modal
   const [selectedUser, setSelectedUser] = useState<AdminUserOverviewItem | null>(null);
-  const [adminSection, setAdminSection] = useState<'dashboard' | 'users' | 'instagram' | 'automations' | 'plans' | 'payments' | 'support' | 'ai' | 'health' | 'activity' | 'settings' | 'campaigns'>('dashboard');
+  const [adminSection, setAdminSection] = useState<'dashboard' | 'users' | 'instagram' | 'automations' | 'plans' | 'payments' | 'support' | 'ai' | 'health' | 'activity' | 'settings' | 'campaigns' | 'handoffs'>('dashboard');
+  const [handoffCount,setHandoffCount]=useState(0),[handoffError,setHandoffError]=useState(false);
+  const refreshHandoffs=async()=>{try{const result=await handoffRequest('admin-handoffs',undefined,'&summary=1');setHandoffCount(result.openCount);setHandoffError(false);}catch{setHandoffError(true);}};
+  useEffect(()=>{if(!isAdminAuthenticated)return;void refreshHandoffs();const timer=setInterval(()=>{if(!document.hidden)void refreshHandoffs();},10000);return()=>clearInterval(timer);},[firebaseUser?.uid]);
   const [platformData, setPlatformData] = useState<any>(null);
   const [planDrafts, setPlanDrafts] = useState<Record<string, any>>({});
   const [savingPlan, setSavingPlan] = useState<string>('');
@@ -500,6 +504,7 @@ export const AdminPage: React.FC = () => {
             ['instagram', 'Instagram Accounts', Instagram],
             ['automations', 'Automation Manager', Zap],
             ['campaigns', 'Campaign Center', Send],
+            ['handoffs', 'Human handoffs', UserCheck],
             ['plans', 'Plans', CreditCard],
             ['payments', 'Payments', ReceiptText],
             ['support', 'Customer Support', MessageSquare],
@@ -509,15 +514,18 @@ export const AdminPage: React.FC = () => {
             ['settings', 'Settings', Settings],
           ].map(([id, label, Icon]: any) => (
             <button key={id} onClick={() => setAdminSection(id)} className={`flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all ${adminSection === id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
-              <Icon className="h-4 w-4" /><span>{label}</span>
+              <Icon className="h-4 w-4" /><span>{label}</span>{id==='handoffs'&&handoffCount>0&&<span className="rounded-full bg-rose-100 px-2 text-rose-700">{handoffCount}</span>}
             </button>
           ))}
         </div>
       </div>
 
-      {adminSection === 'automations' && <AdminWorkspaceManager/>}
+      {handoffCount>0&&<div role="status" aria-live="polite" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-950">{handoffCount} conversation{handoffCount===1?'':'s'} handed over · AI is paused</p><button className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-amber-900" onClick={()=>setAdminSection('handoffs')}>Review handoffs</button></div>}
+      {handoffError&&<p role="alert" className="text-sm text-rose-700">Handoff notifications are temporarily unavailable. <button className="underline" onClick={()=>void refreshHandoffs()}>Retry</button></p>}
+      {adminSection === 'handoffs' && <AdminHandoffCenter onChanged={()=>void refreshHandoffs()}/>}
+      {adminSection === 'automations'  && <AdminWorkspaceManager/>}
       {adminSection === 'campaigns' && <AdminCampaignCenter/>}
-      {adminSection !== 'dashboard' && adminSection !== 'users' && adminSection !== 'automations' && adminSection !== 'campaigns' && (
+      {adminSection !== 'dashboard' && adminSection !== 'users' && adminSection !== 'automations' && adminSection !== 'campaigns' && adminSection !== 'handoffs' && (
         <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 md:p-8">
           <div className="flex items-start justify-between gap-4">
             <div>

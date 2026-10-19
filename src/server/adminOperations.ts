@@ -1,5 +1,6 @@
 import {cleanEnvironment,SUPABASE_URL,upstreamFetch} from './supabaseConfig.js';
 export const adminOperationMethods:Record<string,string>={
+ 'admin-handoffs':'GET','admin-handoff-detail':'GET','admin-handoff-action':'POST','admin-handoff-reply':'POST',
  'admin-workspaces':'GET','admin-workspace':'GET','admin-automation-save':'POST','admin-automation-status':'POST','admin-automation-delete':'POST','admin-automation-restore':'POST',
  'admin-campaign-preview':'POST','admin-campaign-create':'POST','admin-campaign-list':'GET','admin-campaign-detail':'GET','admin-campaign-action':'POST','admin-campaign-update':'POST',
 };
@@ -41,6 +42,29 @@ async function workspaceExists(id:string){if(!ws.test(id))throw new AdminOperati
 async function ownCampaign(id:string,actor:string){if(!uuid.test(id))throw new AdminOperationError('Invalid campaign.');const rows=await adminDb('autoreply_campaigns?id=eq.'+id+'&created_by=eq.'+actor+'&limit=1');if(!rows[0])throw new AdminOperationError('Campaign not found.',404);return rows[0];}
 export async function runAdminOperation(req:any,user:{id:string;email?:string}){
  const action=String(req.query.action),b=req.body||{},workspace=String(b.workspaceId||req.query.workspaceId||'');
+ if(action==='admin-handoffs'){
+  if(req.query.summary==='1')return {ok:true,...await adminDb('rpc/autoreply_handoff_summary','POST',{})};
+  const scope=req.query.status==='resumed'?'eq.resumed':'neq.resumed';
+  const offset=Math.max(0,Math.min(100000,Number(req.query.offset)||0));
+  const rows=await adminDb('autoreply_human_handoffs?status='+scope+'&order=created_at.desc&limit=51&offset='+offset);
+  const ids=[...new Set(rows.map((r:any)=>r.workspace_id))];
+  const members=ids.length?await adminDb('autoreply_instagram_memberships?select=workspace_id,profile&workspace_id=in.('+ids.map(enc).join(',')+')'):[];
+  return {ok:true,hasMore:rows.length>50,handoffs:rows.slice(0,50).map((r:any)=>({...r,accountUsername:members.find((m:any)=>m.workspace_id===r.workspace_id)?.profile?.username||'Instagram account'}))};
+ }
+ if(action==='admin-handoff-detail'||action==='admin-handoff-action'){
+  const id=String(req.query.id||b.id||'');if(!uuid.test(id))throw new AdminOperationError('Choose a handoff.');
+  const rows=await adminDb('autoreply_human_handoffs?id=eq.'+id);const handoff=rows[0];if(!handoff)throw new AdminOperationError('Handoff not found.',404);
+  if(action==='admin-handoff-action'){
+   if(!['takeover','resume'].includes(b.operation))throw new AdminOperationError('Choose Take over or Resume AI.');
+   if(handoff.status==='resumed')throw new AdminOperationError('This handoff has already been resumed.',409);
+   const control=await adminDb('rpc/autoreply_set_thread_control','POST',{p_workspace:handoff.workspace_id,p_sender:handoff.sender_id,p_paused:b.operation!=='resume',p_username:handoff.username,p_handoff_id:handoff.id});
+   await adminDb('autoreply_admin_audit_logs','POST',{admin_user_id:user.id,admin_email:user.email,action:'handoff_'+b.operation,entity_type:'human_handoff',entity_id:id});
+   return {ok:true,control};
+  }
+  const records=await adminDb('autoreply_documents?user_id=eq.'+enc(handoff.workspace_id)+'&collection=eq.inbox_messages&data->>from_ig_id=eq.'+enc(handoff.sender_id)+'&order=created_at.desc&limit=50');
+  const messages=records.map((r:any)=>({id:r.id,message_text:String(r.data?.message_text||''),direction:r.data?.direction,timestamp:r.data?.timestamp,is_automated:r.data?.is_automated===true})).reverse();
+  return {ok:true,handoff,messages};
+ }
  if(action==='admin-workspaces')return adminDb('rpc/autoreply_admin_workspace_directory','POST',{p_query:String(req.query.search||''),p_offset:Math.max(0,Math.min(100000,Number(req.query.offset)||0))});
  if(action==='admin-workspace'){
   const membership=await workspaceExists(workspace);

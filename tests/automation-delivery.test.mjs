@@ -58,15 +58,25 @@ function fixture(automations = [ai], options = {}) {
     },
     async rpc(name, args) {
       rpcCalls.push({name,args});
+      if(name==='autoreply_request_human_handoff'){
+        if(options.handoffStoreFails)return {error:{message:'Database unavailable'}};
+        if(options.controlChanged)return {data:{ok:true,superseded:true}};
+        options.handoffPaused=true;
+        writes.push({collection:'ai_thread_controls',id:args.p_sender,data:{paused:true,human_handoff:true}});
+        writes.push({collection:'workspace_notices',data:{type:'human_handoff'}});
+        return {data:{ok:true,created:true,id:'handoff-fixture'}};
+      }
       if (name === 'autoreply_get_usage') {
         options.onUsageStart?.();
         if (options.usageGate) await options.usageGate;
         return { data: { total_messages: options.quotaUsed || 0, ai_replies: 0 } };
       }
       if(name === 'autoreply_increment_automation_stats') {options.onStats?.(args);return {data:null,error:null};}
-      if(name === 'autoreply_reserve_automation_delivery') {
+      if(name === 'autoreply_reserve_automation_delivery'||name === 'autoreply_reserve_thread_delivery') {
         if(options.disconnected)return {data:{allowed:false,reason:'instagram_disconnected'}};
         if(options.automationPaused)return {data:{allowed:false,reason:'automation_paused_or_deleted'}};
+        if(options.handoffPaused)return {data:{allowed:false,reason:'conversation_ai_paused'}};
+        if(options.controlChanged)return {data:{allowed:false,reason:'conversation_control_changed'}};
         if(options.threadPaused)return {data:{allowed:false,reason:'conversation_ai_paused'}};
         if(options.quotaError) return {data:null,error:{code:'quota_unavailable'}};
         const isAi=args.p_is_ai,used=isAi?aiUsedCount:standardUsed,limit=1500;
@@ -85,7 +95,7 @@ function fixture(automations = [ai], options = {}) {
         const duplicate = claims.has(args.p_message_id);
         claims.add(args.p_message_id);
         return { data: { user_id: 'workspace', account, automation: ai,
-          automations:automations.map(a=>({...a})), campaign_automation:options.campaignAutomation||null, thread_ai_paused:options.threadPausedAtPrepare===true, quota: { normalUsed: options.quotaUsed || 0, normalLimit: options.unlimited?null:1500, unlimited:options.unlimited===true, totalUsed: options.quotaUsed || 0, totalLimit:1500, aiUsed: options.aiUsed || 0, aiLimit: options.unlimited?null:1500 },
+          automations:automations.map(a=>({...a})), campaign_automation:options.campaignAutomation||null, thread_ai_paused:options.threadPausedAtPrepare===true||options.handoffPaused===true,thread_human_handoff:options.handoffPaused===true,thread_control_version:"", quota: { normalUsed: options.quotaUsed || 0, normalLimit: options.unlimited?null:1500, unlimited:options.unlimited===true, totalUsed: options.quotaUsed || 0, totalLimit:1500, aiUsed: options.aiUsed || 0, aiLimit: options.unlimited?null:1500 },
           history: history.get(args.p_sender_id) || [], message_state: duplicate ? 'duplicate' : 'new' } };
       }
       return { data: {}, error: null };
@@ -102,6 +112,7 @@ function fixture(automations = [ai], options = {}) {
       if (String(url).includes('api.openai.com')) {
         if(body.response_format?.type==='json_object')return Response.json({choices:[{message:{content:'{}'}}]});
         aiInputs.push(body.messages);
+        if(options.handoff)return Response.json({choices:[{message:{tool_calls:[{function:{name:'handoff_to_human',arguments:options.malformedHandoff?'{bad-json':JSON.stringify({reason:'customer_requested',summary:'Customer wants a human',workspaceId:'forged-target'})}}]}}]});
         options.onAIStart?.(body);
         if (options.aiFails) return Response.json({ error: { message: 'AI outage' } }, { status: 503 });
         return Response.json({ choices: [{ message: options.chooseCatalog ? {tool_calls:[{function:{name:'send_catalog',arguments:'{}'}}]} : { content: 'AI: ' + body.messages.at(-1).content } }] });
@@ -158,7 +169,7 @@ test('first AI DM generates and sends a confirmed reply against real schema', as
 test('unlimited administrator continues AI replies beyond all plan quotas',async()=>{
  const f=fixture([ai],{unlimited:true,aiUsed:200000,quotaUsed:200000});const r=await f.post(dm());
  assert.equal(r.body.sent,1);assert.equal(f.aiInputs.length,1);
- assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_reserve_automation_delivery'&&c.args.p_is_ai===true));
+ assert.ok(f.rpcCalls.some(c=>['autoreply_reserve_automation_delivery','autoreply_reserve_thread_delivery'].includes(c.name)&&c.args.p_is_ai===true));
  const duplicate=await f.post(dm());assert.equal(duplicate.body.sent,0);
 });
 test('unlimited administrator continues standard replies without bypassing a paused automation',async()=>{
@@ -487,12 +498,12 @@ test('normal DM sends one swipeable carousel with product photos and counts one 
  const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,1);
  const payload=sent[0].body.message.attachment.payload;assert.equal(payload.template_type,'generic');assert.equal(payload.elements.length,2);
  assert.equal(payload.elements[0].title,'Silver watch');assert.equal(payload.elements[0].buttons[0].url,'https://shop.example/watch');
- assert.ok(f.writes.some(w=>w.collection==='inbox_messages'&&w.data.catalog_id==='watches'));assert.equal(f.aiInputs.length,0);assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_reserve_automation_delivery').length,1);
+ assert.ok(f.writes.some(w=>w.collection==='inbox_messages'&&w.data.catalog_id==='watches'));assert.equal(f.aiInputs.length,0);assert.equal(f.rpcCalls.filter(c=>['autoreply_reserve_automation_delivery','autoreply_reserve_thread_delivery'].includes(c.name)).length,1);
 });
 test('AI can select an approved catalog without a second AI request; normal questions remain text',async()=>{
  const rule={...ai,actions:[{type:'ai_chatbot',ai_system_instruction:'Sell watches',catalog_id:'watches'}]};
  for(const chooseCatalog of [true,false]){
- const f=fixture([rule],{catalogs:photoCatalog,products:photoProducts,chooseCatalog,onAIStart:body=>assert.equal(body.tools[0].function.name,'send_catalog')});await f.post(dm('ai-catalog-'+chooseCatalog,'show product photos'));
+ const f=fixture([rule],{catalogs:photoCatalog,products:photoProducts,chooseCatalog,onAIStart:body=>assert.ok(body.tools.some(t=>t.function.name==='send_catalog'))});await f.post(dm('ai-catalog-'+chooseCatalog,'show product photos'));
  const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,1);assert.equal(f.aiInputs.length,1);
  assert.equal(Boolean(sent[0].body.message.attachment),chooseCatalog);assert.ok(f.apiCalls.some(c=>c.body.sender_action==='typing_off'));
  }
@@ -560,4 +571,41 @@ test('campaign follow-up respects human takeover and stops before dispatch if di
  const takeover=fixture([{...ai,status:'paused'}],{campaignAutomation:campaignRule,threadPausedAtPrepare:true});await takeover.post(dm('campaign-takeover'));assert.equal(takeover.apiCalls.filter(c=>c.body.message).length,0);
  const stopped=fixture([{...ai,status:'paused'}],{campaignAutomation:campaignRule,automationPaused:true});await stopped.post(dm('campaign-stopped'));assert.equal(stopped.apiCalls.filter(c=>c.body.message).length,0);
  const off=fixture([{...ai,status:'paused'}]);await off.post(dm('campaign-off'));assert.equal(off.aiInputs.length,0);
+});
+
+test('AI tool handoff atomically pauses its own thread and sends no text or catalog',async()=>{
+ const options={handoff:true};const f=fixture([ai],options);const r=await f.post(dm('handoff-first','I want a human'));
+ assert.equal(r.body.sent,0);assert.equal(r.body.results[0].reason,'human_handoff');
+ assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
+ const request=f.rpcCalls.find(c=>c.name==='autoreply_request_human_handoff').args;
+ assert.equal(request.p_workspace,'workspace');assert.equal(request.p_sender,'customer');assert.equal(request.p_reason,'customer_requested');assert.equal(request.p_expected_version,'');
+ assert.ok(!JSON.stringify(request).includes('forged-target'));
+ assert.equal(f.writes.filter(w=>w.collection==='workspace_notices').length,1);
+ await f.post(dm('handoff-next','Are you there?'));assert.equal(f.aiInputs.length,1);assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
+ options.handoffPaused=false;options.handoff=false;assert.equal((await f.post(dm('human-resumed','Continue please'))).body.sent,1);
+});
+test('handoff remains terminal with malformed tool arguments or storage failure',async()=>{
+ for(const options of [{handoff:true,malformedHandoff:true},{handoff:true,handoffStoreFails:true}]){
+  const f=fixture([ai],options);const result=await f.post(dm());assert.equal(result.body.sent,0);assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
+  assert.equal(result.body.results[0].reason,options.handoffStoreFails?'human_handoff_store_failed':'human_handoff');
+  assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_request_human_handoff').length,options.handoffStoreFails?2:1);
+ }
+});
+test('quota exhaustion hands off once while later incoming messages still reach Inbox',async()=>{
+ const f=fixture([ai],{aiUsed:1500});await f.post(dm('quota-handoff'));assert.equal(f.aiInputs.length,0);
+ assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_request_human_handoff').length,1);
+ await f.post(dm('quota-next'));assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_request_human_handoff').length,1);
+ assert.ok(f.writes.some(w=>w.collection==='inbox_messages'&&w.id==='quota-next'));
+});
+test('campaign and keyword automation cannot interrupt a handed-over conversation',async()=>{
+ const campaign={...ai,id:'campaign_example',name:'Campaign'};
+ for(const rules of [[ai],[staticRule('dm')]]){
+  const f=fixture(rules,{handoffPaused:true,campaignAutomation:campaign});const r=await f.post(dm());assert.equal(r.body.sent,0);assert.equal(f.aiInputs.length,0);
+ }
+});
+test('a manual pause and resume during generation invalidates the old AI answer and handoff decision',async()=>{
+ const options={onAIStart:()=>{options.controlChanged=true;}};const f=fixture([ai],options);
+ assert.equal((await f.post(dm())).body.results[0].reason,'conversation_control_changed');assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
+ const stale={handoff:true,controlChanged:true};const h=fixture([ai],stale);assert.equal((await h.post(dm())).body.results[0].reason,'conversation_control_changed');
+ assert.equal(h.writes.filter(w=>w.collection==='workspace_notices').length,0);
 });

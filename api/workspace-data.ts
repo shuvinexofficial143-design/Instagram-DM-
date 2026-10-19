@@ -1,5 +1,6 @@
 import { typedFetch as httpFetch } from '../src/server/typedFetch.js';
 import adminHandler from '../src/server/adminAccess.js';
+import threadControl from '../src/server/threadControl.js';
 import supportHandler from '../src/server/support.js';
 import lifecycleHandler from '../src/server/customerLifecycle.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
@@ -40,6 +41,7 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000)
 }
 
 export default async function handler(req: any, res: any) {
+  if(req.query?.action==='thread-control')return threadControl(req,res);
   if (String(req.query?.action || '').startsWith('admin-')) return adminHandler(req,res);
 
   // Route authenticated support actions through an existing Vercel function.

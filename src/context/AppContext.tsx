@@ -774,8 +774,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if(!uid || !senderId)throw new Error('This conversation is still loading. Please try again.');
     const key=uid+':'+senderId,version=(threadPauseVersions.current.get(key)||0)+1;
     threadPauseVersions.current.set(key,version);
-    const control={id:senderId,sender_id:senderId,username:clean,paused,updated_at:new Date().toISOString()};
-    await saveUserDocument(uid,'ai_thread_controls',control);
+    const token=await auth.currentUser?.getIdToken();
+    const response=await fetch('/api/workspace-data?action=thread-control',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json','X-Autoreply-Workspace':uid},body:JSON.stringify({senderId,paused})});
+    const payload=await response.json();if(!response.ok||!payload.ok||!payload.control)throw new Error(payload.error||'Could not save AI conversation control.');
+    const control={...payload.control,id:senderId,sender_id:senderId,username:clean};
     if(workspaceScope.current!==uid || threadPauseVersions.current.get(key)!==version)return;
     threadControlRecords.current.set(senderId,control);
     setPausedAiUsers(previous=>{const rest=previous.filter(value=>value!==clean&&value!==senderId.toLowerCase());return paused?[...rest,clean,senderId.toLowerCase()]:rest;});

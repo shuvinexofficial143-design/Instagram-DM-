@@ -300,6 +300,7 @@ export const InboxPage: React.FC = () => {
                   </div>
                 </div>
 
+                {aiPaused&&<p role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Human control is active. AI replies remain paused until you select Resume AI. You can continue replying manually.</p>}
                 {aiControlError && <p role="alert" className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{aiControlError}</p>}
                 {selectedMeta.snooze_until && new Date(selectedMeta.snooze_until).getTime() > Date.now() && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800">Snoozed until {new Date(selectedMeta.snooze_until).toLocaleString()} · <button onClick={() => void saveMeta({ snooze_until: undefined, status: 'open' })} className="underline">Unsnooze</button></div>}
 
