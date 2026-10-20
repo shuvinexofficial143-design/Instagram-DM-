@@ -1,7 +1,7 @@
 import { typedFetch as httpFetch } from '../../src/server/typedFetch.js';
 import { guestStoreHeaders } from '../../src/server/guestStoreAuth.js';
 import manualDmHandler from '../../src/server/manualDm.js';
-import { authenticatedUser } from '../../src/server/supabaseConfig.js';
+import { authenticatedUser, authenticatedWorkspace } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
@@ -81,12 +81,14 @@ export default async function handler(req: any, res: any) {
       });
       const payload = await response.json();
       if (!response.ok || !payload?.ok) return res.status(response.status).json(payload);
-      const accounts = payload.accounts || [];
+      const accounts = (payload.accounts || []).filter((item:any)=>item.account?.status !== "disconnected");
       res.setHeader('Cache-Control','private, no-store');
       const explicit = String(req.headers?.['x-autoreply-workspace'] || '');
-      const selected = explicit || getRequestCookie(req,'autoreply_active_workspace');
-      if (explicit && explicit !== owner.id && !accounts.some((item:any)=>item.workspaceId===explicit)) return res.status(403).json({ok:false,error:'This Instagram account does not belong to your login.'});
-      const current = accounts.find((item:any)=>item.workspaceId===selected)?.workspaceId || owner.id;
+      const selected = (req.method === 'POST' && req.body?.account === null ? getRequestCookie(req,'autoreply_active_workspace') : explicit || getRequestCookie(req,'autoreply_active_workspace'));
+      // A stale selection on reads falls back to a remaining connected account.
+      // Writes still verify an explicit workspace, including idempotent unlink retries.
+      if (req.method !== 'GET' && explicit && explicit !== owner.id && !accounts.some((item:any)=>item.workspaceId===explicit)) await authenticatedWorkspace(req);
+      const current = accounts.find((item:any)=>item.workspaceId===selected)?.workspaceId || accounts[0]?.workspaceId || owner.id;
       if (req.method === 'POST' && req.body?.workspaceId) {
         const target = String(req.body.workspaceId);
         if (!accounts.some((item:any)=>item.workspaceId===target)) return res.status(403).json({ok:false,error:'This Instagram account does not belong to your login.'});
@@ -96,9 +98,14 @@ export default async function handler(req: any, res: any) {
       if (req.method === 'POST' && req.body?.account === null) {
         const result = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/instagram-account-store`, {
           method:'POST',headers:{'Content-Type':'application/json',Authorization:String(req.headers.authorization)},
-          body:JSON.stringify({action:'delete',workspaceId:current})
+          body:JSON.stringify({action:'delete',workspaceId:explicit || owner.id})
         });
-        const data = await result.json(); return res.status(result.status).json(data);
+        const data = await result.json();
+        if (!result.ok || !data?.ok) return res.status(result.status).json(data);
+        const remaining = accounts.filter((item:any)=>item.workspaceId !== (explicit || owner.id));
+        const activeWorkspaceId = remaining.some((item:any)=>item.workspaceId === selected) ? selected : remaining[0]?.workspaceId || owner.id;
+        res.setHeader('Set-Cookie', `autoreply_active_workspace=${remaining.length ? encodeURIComponent(activeWorkspaceId) : ''}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${remaining.length ? 31536000 : 0}`);
+        return res.status(200).json({ok:true,success:true,account:null,accounts:remaining,activeWorkspaceId});
       }
       if (req.method !== 'GET') return res.status(405).json({ok:false,error:'Method Not Allowed'});
       res.setHeader('Cache-Control','private, no-store');
@@ -126,6 +133,7 @@ export default async function handler(req: any, res: any) {
 
       if (req.body && 'account' in req.body && req.body.account === null) {
         await callStore('delete', workspaceId);
+        res.setHeader('Set-Cookie', `${GUEST_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
         return res.status(200).json({ success: true, account: null });
       }
 

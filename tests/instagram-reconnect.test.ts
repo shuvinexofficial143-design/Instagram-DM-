@@ -52,17 +52,18 @@ test('legacy OAuth states remain valid but unsigned reconnect fields are ignored
   const state = verify(JSON.stringify({ workspaceId: workspace, ownerId: owner, ts, sig, target }), secret);
   assert.equal(state?.ownerId, owner); assert.equal(state?.target, undefined);
 });
-test('OAuth start reads the selected disconnected identity through the verified owner RLS session', async () => {
+test('OAuth start reads the selected linked identity through the verified owner RLS session', async () => {
   const queries: URL[] = [];
   globalThis.fetch = async (url: any, init?: any) => {
     const value = String(url); if (value.includes('/auth/')) return json({ id: owner });
     assert.equal(init.headers.Authorization, 'Bearer verified-session'); queries.push(new URL(value));
-    return json([{ workspace_id: workspace, ig_user_id: target.ids[0], profile: { username: target.username, ig_scoped_id: target.ids[1], status: 'disconnected' } }]);
+    return json([{ workspace_id: workspace, ig_user_id: target.ids[0], profile: { username: target.username, ig_scoped_id: target.ids[1], status: 'connected' } }]);
   };
   const res = response(); await start({ method: 'GET', query: { intent: 'reconnect' }, headers: { authorization: 'Bearer verified-session', 'x-autoreply-workspace': workspace } }, res);
   assert.equal(res.statusCode, 200); const url = new URL(res.body.url);
   assert.equal(url.searchParams.get('force_reauth'), 'true');
   assert.equal(url.searchParams.get('force_authentication'), null);
+  assert.ok(queries.filter(q=>q.searchParams.get('select')==='ig_user_id,profile').every(q=>q.searchParams.get('connection_archived')==='eq.false'));
   const state = verify(url.searchParams.get('state'), secret);
   assert.equal(state?.workspaceId, workspace); assert.equal(state?.ownerId, owner); assert.deepEqual(state?.target, target);
   assert.ok(queries.every(q => q.searchParams.get('owner_user_id') === `eq.${owner}`));
@@ -107,6 +108,7 @@ test('correct account reconnect saves to its retained workspace and subscribes b
   const f = oauthFixture(); const res = response(); await callback(req(sign(workspace, owner, secret, target)), res);
   assert.equal(res.statusCode, 200); assert.equal(f.writes.length, 1);
   assert.equal(f.writes[0].workspaceId, workspace); assert.equal(f.writes[0].ownerId, owner);
+  assert.equal(f.writes[0].reconnect,true);assert.ok(Date.parse(f.writes[0].connectionStartedAt)>Date.now()-10000);
   assert.equal(f.writes[0].accessToken, 'private-long-token'); assert.ok(f.subscriptions > 0);
   assert.match(res.headers['Set-Cookie'], new RegExp(`autoreply_active_workspace=${workspace}`));
   assert.match(res.body, /ig_connected/); assert.ok(!res.body.includes('private-long-token'));
@@ -138,9 +140,9 @@ test('forged reconnect target is rejected before Meta or storage is contacted', 
   const res = response(); await callback(req(JSON.stringify(parsed)), res);
   assert.equal(res.statusCode, 400); assert.equal(f.metaCalls, 0); assert.equal(f.writes.length, 0);
 });
-test('another website login cannot take an existing Instagram account after disconnect', async () => {
+test('a still-connected account conflict preserves the server explanation', async () => {
   const f = oauthFixture(undefined, 409); const res = response(); await callback(req(sign(workspace, owner, secret)), res);
-  assert.equal(res.statusCode, 409); assert.match(res.body, /Google account originally used/);
+  assert.equal(res.statusCode, 409); assert.match(res.body, /already connected to another login/);
   assert.equal(res.headers['Set-Cookie'], undefined); assert.equal(f.subscriptions, 0);
 });
 test('Meta cancellation is escaped in the page and in popup feedback', async () => {

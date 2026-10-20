@@ -133,7 +133,7 @@ export const ConnectChannelModal: React.FC = () => {
   const handleDisconnect = async () => {
     setFeedback(null);
     try {
-      await disconnectChannel();
+      await disconnectChannel(connectionWorkspaceId);
       setFeedback({ type: 'success', message: 'Instagram account disconnected.' });
     } catch (err: any) {
       setFeedback({ type: 'error', message: err?.message || 'Could not disconnect the Instagram account.' });

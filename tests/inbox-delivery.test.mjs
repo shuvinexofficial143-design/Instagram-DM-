@@ -23,6 +23,13 @@ function fixture(options={}) {
   const admin={
     auth:{getUser:async token=>token==='session'?{data:{user:{id:owner,...(options.adminSession?{email:'admin@example.test',email_confirmed_at:'2026-10-19'}:{})}}}:{data:null,error:{message:'Unauthorized'}}},
     rpc:async(name,args)=>{
+      if(name==='autoreply_connect_instagram_account'){
+        assert.equal(args.p_owner_id,owner);assert.equal(args.p_account.ig_user_id,professional);assert.equal(args.p_account.ig_scoped_id,scoped);
+        const account=args.p_account, safe={...account};delete safe.access_token;
+        tables.autoreply_instagram_tokens[0].account=account;
+        Object.assign(tables.autoreply_instagram_memberships[0],{ig_user_id:account.ig_user_id,profile:safe});
+        return {data:{ok:true,workspaceId:owner,account:safe},error:null};
+      }
       if(name==='autoreply_set_thread_control'){
         if(options.pauseFails)return {error:{message:'Pause unavailable'}};
         const existing=tables.autoreply_documents.find(r=>r.collection==='ai_thread_controls'&&r.id===args.p_sender);

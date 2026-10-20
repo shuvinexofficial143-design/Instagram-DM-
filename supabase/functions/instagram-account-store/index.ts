@@ -431,14 +431,15 @@ Deno.serve(async (req: Request) => {
     const { data: identity, error: authError } = await admin.auth.getUser(jwt);
     if (authError || !identity?.user) return reply(401, {ok:false,error:"Authentication required"});
     const { data: memberships, error } = await admin.from("autoreply_instagram_memberships")
-      .select("workspace_id,profile,created_at").eq("owner_user_id",identity.user.id).order("created_at");
+      .select("workspace_id,profile,created_at").eq("owner_user_id",identity.user.id).eq("connection_archived",false).order("created_at");
     if (error) throw error;
     const ids = (memberships || []).map((row:any)=>row.workspace_id);
     const {data:tokens,error:tokenError} = ids.length ? await admin.from("autoreply_instagram_tokens").select("user_id,account").in("user_id",ids) : {data:[],error:null};
     if (tokenError) throw tokenError;
-    return reply(200,{ok:true,accounts:(memberships||[]).map((row:any)=>{
+    return reply(200,{ok:true,accounts:(memberships||[]).flatMap((row:any)=>{
       const token = (tokens||[]).find((item:any)=>item.user_id===row.workspace_id);
-      return {workspaceId:row.workspace_id,account:{...safeAccount(token?.account || row.profile),status:token?.account?.access_token ? "connected" : "disconnected"}};
+      if (!token?.account?.access_token) return [];
+      return [{workspaceId:row.workspace_id,account:{...safeAccount(token.account),status:token.account.status || "connected"}}];
     })});
   }
   if (["send_dm","load","delete","list_media","list_workspace_data","list_automations","set_automation_status","save_automation","delete_automation","refresh_contact_profiles","create_catalog_upload"].includes(action) && (action === "create_catalog_upload" || !String(workspaceId || "").startsWith("guest_"))) {
@@ -950,28 +951,13 @@ Deno.serve(async (req: Request) => {
         const secret = String(Deno.env.get("INSTAGRAM_APP_SECRET") || "").trim();
         if (!secret || req.headers.get("x-autoreply-oauth-secret") !== secret || !isWorkspaceId(ownerId))
           return reply(401,{ok:false,error:"Invalid account registration authorization"});
-        const {data:existing,error:lookupError} = await admin.from("autoreply_instagram_memberships")
-          .select("workspace_id,owner_user_id").in("ig_user_id",[account.ig_user_id, account.ig_scoped_id]).maybeSingle();
-        if (lookupError) throw lookupError;
-        if (existing && existing.owner_user_id !== ownerId) return reply(409,{ok:false,error:"This Instagram account is already connected to another login."});
-        if (!existing) {
-          const {data:limits,error:limitsError}=await admin.rpc("autoreply_billing_entitlement",{p_workspace_id:ownerId});
-          if(limitsError || !limits) return reply(503,{ok:false,error:"Unable to verify account allowance"});
-          const {count,error:countError}=await admin.from("autoreply_instagram_memberships")
-            .select("workspace_id",{count:"exact",head:true}).eq("owner_user_id",ownerId);
-          if(countError) return reply(503,{ok:false,error:"Unable to verify connected accounts"});
-          if(limits.unlimited!==true && (count||0)>=Number(limits.accounts||0)) return reply(403,{ok:false,code:"INSTAGRAM_ACCOUNT_LIMIT_REACHED",error:"Your plan's Instagram account limit is reached. Upgrade to connect more accounts."});
-        }
-        if (existing) workspaceId = existing.workspace_id;
-        else {
-          const {data:occupied,error} = await admin.from("autoreply_instagram_memberships").select("workspace_id,owner_user_id").eq("workspace_id",workspaceId).maybeSingle();
-          if (error) throw error;
-          if (occupied) workspaceId = crypto.randomUUID();
-        }
-        const {error:registerError} = await admin.from("autoreply_instagram_memberships").upsert({
-          workspace_id:workspaceId,owner_user_id:ownerId,ig_user_id:account.ig_user_id,profile:safeAccount(account)
-        },{onConflict:"workspace_id"});
-        if (registerError) throw registerError;
+        const {data:registered,error:registrationError} = await admin.rpc("autoreply_connect_instagram_account", {
+          p_owner_id:ownerId,p_workspace_id:workspaceId,p_account:account,
+          p_started_at:payload.connectionStartedAt,p_reconnect:payload.reconnect === true,
+        });
+        if (registrationError) throw registrationError;
+        if (!registered?.ok) return reply(Number(registered?.status || 500), registered || {ok:false,error:"Instagram connection could not be saved"});
+        return reply(200, registered);
       }
       // Preserve verified business sender scopes only for this exact account.
       // These aliases prevent unflagged self echoes from becoming customers.
@@ -1077,15 +1063,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "delete") {
-      // Credentials are the authority. Keep the membership, conversations and
-      // customer tables so reconnecting restores the same workspace.
-      const tokenResult = await admin.from("autoreply_instagram_tokens").delete().eq("user_id", workspaceId);
-      if (tokenResult.error) return reply(500, {ok:false,error:"Instagram account disconnect failed. Please try again."});
-      const docResult = await admin.from("autoreply_documents").delete()
-        .eq("user_id", workspaceId).eq("collection", "instagram_account");
-      if (docResult.error) return reply(500, {ok:false,error:"Instagram credentials were removed, but profile cleanup failed. Please retry disconnect."});
-
-      return reply(200, { ok: true, account: null });
+      const {data:removed,error} = await admin.rpc("autoreply_disconnect_instagram_connection", {p_workspace_id:workspaceId});
+      if (error || !removed?.ok) return reply(500,{ok:false,error:"Instagram disconnect could not be saved. Please try again."});
+      return reply(200, {ok:true,account:null});
     }
 
     return reply(400, { ok: false, error: "Unsupported action" });

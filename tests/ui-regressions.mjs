@@ -200,7 +200,7 @@ try {
   globalThis.__uiFixture=fixture({workspaceId:'account-a',isConnectModalOpen:true,instagramAccounts:retained,instagramConnectMode:'add'});
   html=renderToStaticMarkup(React.createElement(ui.ConnectChannelModal));assert.ok(html.includes('Add another Instagram account'));assert.ok(!html.includes('Reconnect @old_business'));checks++;
   globalThis.__uiFixture=fixture({workspaceId:'account-b',instagramAccounts:retained});
-  html=renderToStaticMarkup(React.createElement(ui.Sidebar));assert.ok(html.includes('sidebar-account-switch'));assert.ok(html.includes('value="account-b" selected=""'));checks++;
+  html=renderToStaticMarkup(React.createElement(ui.InstagramAccounts));assert.ok(!html.includes('old_business'));assert.ok(html.includes('Disconnect @another_business'));assert.ok(html.includes('Reconnect @another_business'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.CustomerInsightPanel,{contact:{id:'canonical',ig_username:'customer',customer_insight:{stage:'support',priority:'high',source:'manual',reason:'Delivery complaint',summary:'Customer needs help',next_step:'Resolve delivery'}}}));
   for(const text of ['Needs support','High priority','Delivery complaint','Manual','Customer status','Customer priority','Resume automatic assessment'])assert.ok(html.includes(text));checks++;
   html=renderToStaticMarkup(React.createElement(ui.CustomerBadges,{insight:{stage:'ready',priority:'high',source:'automatic',reason:'Asked for payment'}}));assert.ok(html.includes('Ready to buy'));assert.ok(html.includes('bg-orange-100'));checks++;

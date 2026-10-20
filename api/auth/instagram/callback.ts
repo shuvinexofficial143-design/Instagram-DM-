@@ -102,7 +102,9 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = 15000)
 async function persistInstagramAccount(
   workspaceId: string,
   account: StoredInstagramAccount,
-  ownerId = ''
+  ownerId = '',
+  connectionStartedAt?: string,
+  reconnect = false
 ): Promise<string> {
   const response = await fetchWithTimeout(
     `${SUPABASE_URL}/functions/v1/instagram-account-store`,
@@ -113,6 +115,8 @@ async function persistInstagramAccount(
         action: 'save',
         ownerId,
         workspaceId,
+        connectionStartedAt,
+        reconnect,
         accessToken: account.access_token,
       }),
     },
@@ -128,8 +132,7 @@ async function persistInstagramAccount(
       payload?.detail || ''
     );
     throw Object.assign(new Error(
-      response.status === 409 ? 'This Instagram account belongs to a different Auto Replys login. Sign in with the Google account originally used for this Instagram account, or choose another Instagram account.' :
-      payload?.detail || payload?.error || `Instagram account storage failed (HTTP ${response.status})`
+      payload?.error || payload?.detail || `Instagram account storage failed (HTTP ${response.status})`
     ), { status: response.status });
   }
   return String(payload.workspaceId || workspaceId);
@@ -346,7 +349,7 @@ export default async function handler(req: any, res: any) {
     };
 
     try {
-      const savedWorkspace = await persistInstagramAccount(workspaceId, account, verifiedState.ownerId);
+      const savedWorkspace = await persistInstagramAccount(workspaceId, account, verifiedState.ownerId, new Date(verifiedState.ts).toISOString(), Boolean(verifiedState.target));
       if (verifiedState.ownerId) res.setHeader('Set-Cookie',`autoreply_active_workspace=${encodeURIComponent(savedWorkspace)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`);
     } catch (err: any) {
       console.error('[INSTAGRAM_PERSIST_FAILED]', err);
@@ -354,7 +357,7 @@ export default async function handler(req: any, res: any) {
         res,
         'Instagram login worked, but the account could not be saved securely: ' +
           (err?.message || 'unknown storage error'),
-        err?.status === 409 ? 409 : 500
+        [400,401,403,409,503].includes(err?.status) ? err.status : 500
       );
     }
 

@@ -127,11 +127,10 @@ export default async function handler(req: any, res: any) {
     else if (authenticatedUid && (req.headers?.['x-autoreply-workspace'] || String(req.headers?.cookie || '').includes('autoreply_active_workspace=')))
       workspaceId = (await authenticatedWorkspace(req))?.id || authenticatedUid;
 
-    // Read the retained membership through this user's RLS session. Disconnect
-    // removes credentials, not the identity whose history we are reconnecting.
+    // Reconnect is restricted to an account still linked to this login.
     let target: InstagramReconnectTarget | undefined;
     if (authenticatedUid && intent === 'reconnect') {
-      const response = await upstreamFetch(`${SUPABASE_URL}/rest/v1/autoreply_instagram_memberships?workspace_id=eq.${encodeURIComponent(workspaceId)}&owner_user_id=eq.${encodeURIComponent(authenticatedUid)}&select=ig_user_id,profile`, {
+      const response = await upstreamFetch(`${SUPABASE_URL}/rest/v1/autoreply_instagram_memberships?workspace_id=eq.${encodeURIComponent(workspaceId)}&owner_user_id=eq.${encodeURIComponent(authenticatedUid)}&connection_archived=eq.false&select=ig_user_id,profile`, {
         headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: String(req.headers.authorization) },
       }, 'Instagram reconnect identity');
       if (!response.ok) throw new UpstreamError('Instagram reconnect identity');

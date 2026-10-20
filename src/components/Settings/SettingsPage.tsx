@@ -378,7 +378,7 @@ export const SettingsPage: React.FC = () => {
           <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
             <div>
               <h3 className="text-base font-bold text-slate-900">Disconnect Instagram</h3>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Remove @{instagramAccount.username} from this workspace. You can reconnect an account later.</p>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Remove @{instagramAccount.username} from Auto Replys. Use Connect Instagram to connect it or another account again.</p>
             </div>
             <button
               type="button"

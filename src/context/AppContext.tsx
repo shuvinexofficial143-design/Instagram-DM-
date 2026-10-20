@@ -132,7 +132,7 @@ interface AppContextType {
 
   // Channel & Config Actions
   reauthorizeChannel: () => void;
-  disconnectChannel: () => Promise<void>;
+  disconnectChannel: (targetWorkspaceId?:string) => Promise<void>;
   connectChannel: (account: Partial<InstagramAccount> | string) => Promise<void>;
   renewPlan: (plan?: 'free' | 'starter' | 'pro' | 'business') => void;
 }
@@ -845,6 +845,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     finally {accountMutation.current=false;setAccountSwitching(false);}
   };
   const startInstagramConnection = (mode:'connect'|'add'|'reconnect'='connect',targetWorkspaceId?:string) => {
+    if (accountMutation.current || accountSwitching) return;
     setInstagramConnectMode(mode);
     setInstagramReconnectWorkspaceId(mode==='reconnect'?(targetWorkspaceId||workspaceId||firebaseUser?.uid||null):null);
     setIsConnectModalOpen(true);
@@ -1573,9 +1574,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     startInstagramConnection(instagramAccounts.some(item=>item.workspaceId===workspaceId)?'reconnect':'connect');
   };
 
-  const disconnectChannel = async () => {
+  const disconnectChannel = async (targetWorkspaceId?:string) => {
     if (accountMutation.current) throw new Error('Please wait for the current account change to finish.');
-    const uid = workspaceId || firebaseUser?.uid || '';
+    const uid = targetWorkspaceId || workspaceId || firebaseUser?.uid || '';
     const ownerId = firebaseUser?.uid;
     accountMutation.current = true;
     ++accountRequestVersion.current;
@@ -1583,14 +1584,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Delete credentials on the server before showing a successful disconnect.
       const response = await fetch('/api/instagram/account', {
         method:'POST', credentials:'same-origin',
-        headers:{'Content-Type':'application/json', ...(await automationAuthHeaders())},
+        headers:{'Content-Type':'application/json', ...(await automationAuthHeaders()), 'X-Autoreply-Workspace':uid},
         body:JSON.stringify({account:null}), signal:AbortSignal.timeout(20000),
       });
       const result = await response.json();
       if (!response.ok || !(result.ok || result.success)) throw new Error(result.error || 'Could not disconnect Instagram. Please try again.');
       if (auth.currentUser?.uid !== ownerId) return;
-      setInstagramAccount(null);
-      setInstagramAccounts(accounts=>accounts.map(item=>item.workspaceId===uid?{...item,account:{...item.account,status:'disconnected'}}:item));
+      const remaining = (result.accounts || instagramAccounts.filter(item=>item.workspaceId!==uid)).filter((item:any)=>item.account?.status!=='disconnected');
+      setInstagramAccounts(remaining);
+      try {localStorage.removeItem(`autoreply_connected_instagram_account_${uid}`);localStorage.removeItem('autoreply_connected_instagram_account');} catch {}
+      if (uid === (workspaceId || ownerId)) {
+        const next = result.activeWorkspaceId || remaining[0]?.workspaceId || ownerId || '';
+        setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);setCustomerInsights([]);setPausedAiUsers([]);setEditingAutomation(null);setIsBuilderOpen(false);
+        setInstagramAccountState(connectedInstagramAccount(remaining.find((item:any)=>item.workspaceId===next)?.account));
+        setWorkspaceId(next);
+      }
+      setIsConnectModalOpen(false);setInstagramConnectMode('connect');setInstagramReconnectWorkspaceId(null);
       setAccountError('');
     } finally { accountMutation.current = false; }
   };
