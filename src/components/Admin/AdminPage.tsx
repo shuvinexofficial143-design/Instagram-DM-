@@ -1,3 +1,4 @@
+import { AdminEmailPreferences } from './AdminEmailPreferences';
 import {AdminWorkspaceManager} from './AdminWorkspaceManager';
 import {AdminHandoffCenter,handoffRequest} from './AdminHandoffCenter';
 import {AdminCampaignCenter} from './AdminCampaignCenter';
@@ -552,7 +553,7 @@ export const AdminPage: React.FC = () => {
               <table className="mt-4 w-full min-w-[690px] text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="p-3">Date</th><th className="p-3">Plan</th><th className="p-3">Amount</th><th className="p-3">Order status</th><th className="p-3">Activation</th><th className="p-3">Order reference</th></tr></thead><tbody>{(platformData?.billingOrders||[]).map((o:any)=><tr key={o.order_id} className="border-t border-slate-100"><td className="p-3">{formatDateTime(o.created_at)}</td><td className="p-3 font-semibold">{o.plan_id}</td><td className="p-3">₹{Number(o.amount_inr).toLocaleString('en-IN')}</td><td className="p-3">{o.status}</td><td className="p-3">{o.activation_status}</td><td className="p-3 font-mono text-[11px]">{o.order_id}</td></tr>)}</tbody></table>
               {!(platformData?.billingOrders||[]).length&&<p className="py-8 text-center text-sm text-slate-500">No payment orders yet.</p>}
             </div>}
-            {adminSection === 'settings' && <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">Platform settings will appear here when backed by stored settings.</div>}
+            {adminSection === 'settings' && <div className="sm:col-span-2 lg:col-span-4"><AdminEmailPreferences/></div>}
           </div>
         </div>
       )}

@@ -109,11 +109,11 @@ function fixture({ failAI = false, failSave = false, purchase = null } = {}) {
     trigger_type: "dm_ai_conversation",
     trigger_config: { data_fields: ["Name", "Phone", "Email"] },
   };
-  const capture = (text, cfg = {}) =>
+  const capture = (text, cfg = {}, triggerType = "dm_ai_conversation") =>
     ctx.customerHelpers.captureCustomerData(
       admin,
       "workspace",
-      { ...rule, trigger_config: { ...rule.trigger_config, ...cfg } },
+      { ...rule, trigger_type:triggerType, trigger_config: { ...rule.trigger_config, ...cfg } },
       { senderId: "old", text, messageId: "m1", timestamp: Date.now() },
       "key",
       { username: "our_shop", ig_user_id: "business-id" },
@@ -215,4 +215,11 @@ test("purchase detection requires an explicit customer report with exact evidenc
     "मैंने अभी नहीं खरीदा",
   ])
     assert.equal(f.purchaseReport(text), false, text);
+});
+
+test('comment, story and fixed DM replies never extract customer data even with old enabled flags',async()=>{
+ for(const type of ['comment','story_reply','dm']){
+  const f=fixture();await f.capture('My phone is 9876543210, email asha@example.test',{data_capture_enabled:true},type);
+  assert.equal(f.requests.length,0,type);assert.equal(f.calls.length,0,type);assert.equal(f.saves,0,type);
+ }
 });

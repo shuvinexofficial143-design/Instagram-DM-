@@ -68,6 +68,6 @@ test('workspace polish is scoped and cannot change excluded pages',()=>{
  const dashboard=read('src/components/Home/HomePage.tsx');
  assert.match(dashboard,/dashboard-premium/);
  const settings=read('src/components/Settings/SettingsPage.tsx');
- assert.match(settings,/#settings-notifications/);
+ assert.doesNotMatch(settings,/#settings-notifications/);
  assert.match(settings,/usage\.plan\.id==='free'/);
 });

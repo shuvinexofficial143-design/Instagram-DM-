@@ -19,7 +19,7 @@
     "test:automations": "node --test tests/automation-delivery.test.mjs tests/instagram-subscription.test.mjs tests/instagram-accounts.test.mjs tests/customer-sheets.test.mjs tests/inbox-delivery.test.mjs",
     "test:billing": "node --import tsx --test tests/billing.test.ts",
     "test:invoices": "node --import tsx --test tests/invoice.test.ts",
-    "test:lifecycle": "node --import tsx --test tests/customer-lifecycle.test.ts",
+    "test:lifecycle": "node --import tsx --test tests/customer-lifecycle.test.ts tests/mail-preferences.test.ts",
     "test:dashboard": "node --test tests/dashboard-truth.test.mjs",
     "test:visual": "node --test tests/visual-audit.test.mjs",
     "test:admin": "node --import tsx --test tests/admin-access.test.ts tests/admin-unlimited.test.ts tests/human-handoff.test.ts tests/admin-tools.test.ts tests/automation-pause.test.ts tests/campaign-worker.test.mjs"

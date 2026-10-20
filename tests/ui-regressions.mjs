@@ -40,6 +40,7 @@ try {
       export {Sidebar} from './src/components/Sidebar';
       export {BillingUsagePage} from './src/components/Billing/BillingUsagePage';
       export {SettingsPage} from './src/components/Settings/SettingsPage';
+      export {AdminEmailPreferences} from './src/components/Admin/AdminEmailPreferences';
       export {CheckoutPage} from './src/components/Billing/CheckoutPage';
       export {paymentLabel} from './src/components/Billing/BillingHistory';
       export {PaymentMethods,PaymentMethodPicker} from './src/components/Billing/PaymentMethods';
@@ -147,6 +148,12 @@ try {
   assert.ok(html.includes('System prompt'));assert.ok(html.includes('id="ai-system-prompt"'));assert.ok(html.includes('for="ai-system-prompt"'));assert.ok(html.includes('Coming Soon'));assert.ok(!html.includes('Connect Google Sheets')); assert.ok(html.includes('Test messages stay inside this preview'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.AiAssistantSetup,{...setupProps,testMessage:'Question',testError:'Could not test',sheetsConnected:true,sheetsEmail:'test@example.test'}));
   assert.ok(html.includes('role="alert"'));assert.ok(html.includes('Could not test'));assert.ok(!html.includes('Test reply received'));assert.ok(html.includes('Coming Soon'));assert.ok(!html.includes('test@example.test'));checks++;
+  globalThis.__uiFixture=fixture();
+  html=renderToStaticMarkup(React.createElement(ui.SettingsPage));assert.ok(!html.includes('Email notifications'));assert.ok(!html.includes('Email preferences'));checks++;
+  html=renderToStaticMarkup(React.createElement(ui.AdminEmailPreferences));assert.equal(html,'');checks++;
+  globalThis.__uiFixture=fixture({isAdmin:true,firebaseUser:{uid:'admin',email:'admin@example.test'}});
+  html=renderToStaticMarkup(React.createElement(ui.AdminEmailPreferences));assert.ok(html.includes('Email notifications'));assert.ok(html.includes('Send me helpful tips'));checks++;
+  globalThis.__uiFixture=fixture();
   html=renderToStaticMarkup(React.createElement(ui.DataCaptureSetup,{enabled:true,onEnabledChange:noop,fields:['Name','Phone','Consent'],onFieldsChange:noop}));
   assert.ok(html.includes('aria-checked="true"'));assert.ok(html.includes('Consent'));assert.ok(html.includes('Existing customer details'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.DataCaptureSetup,{enabled:false,onEnabledChange:noop,fields:['Name','Phone'],onFieldsChange:noop}));

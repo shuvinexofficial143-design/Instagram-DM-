@@ -457,7 +457,7 @@ function isCustomerPurchaseReport(text:string):boolean {
 }
 async function captureCustomerData(admin:any,workspaceId:string,automation:any,item:any,openaiKey:string,sourceAccount:any={}) {
  const cfg=automation?.trigger_config||{};
- if(cfg.data_capture_enabled===false || (cfg.data_capture_enabled!==true&&automation?.trigger_type!=='dm_ai_conversation'))return;
+ if(automation?.trigger_type!=='dm_ai_conversation' || cfg.data_capture_enabled===false)return;
  const fields=customerDataFields(automation);
  if(!fields.length || !item.text)return;
  const facts:Record<string,string>={};

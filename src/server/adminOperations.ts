@@ -34,7 +34,11 @@ export function validateAdminAutomation(value:any){
  if(value.trigger_config?.all_or_keywords==='keywords'&&(!Array.isArray(value.trigger_config.keywords)||!value.trigger_config.keywords.length||value.trigger_config.keywords.some((s:any)=>typeof s!=='string'||!s.trim()||s.length>120)))throw new AdminOperationError('Enter at least one valid keyword.');
  if((value.trigger_config?.media_scope==='specific_media'||value.trigger_config?.story_scope==='specific_story'||value.trigger_config?.post_scope==='specific_post')&&!/^\d+$/.test(value.trigger_config?.selected_media_id||''))throw new AdminOperationError('Enter the selected post or story media ID.');
  if(value.trigger_type==='dm_ai_conversation'&&!value.actions.some((a:any)=>a.type==='ai_chatbot'))throw new AdminOperationError('AI automation requires AI instructions.');
- if(value.trigger_config?.data_fields&&(!Array.isArray(value.trigger_config.data_fields)||value.trigger_config.data_fields.length>30||value.trigger_config.data_fields.some((s:any)=>typeof s!=='string'||s.length>80)))throw new AdminOperationError('Use up to 30 customer-data fields.');
+ if(value.trigger_type==='dm_ai_conversation'&&value.trigger_config?.data_fields&&(!Array.isArray(value.trigger_config.data_fields)||value.trigger_config.data_fields.length>30||value.trigger_config.data_fields.some((s:any)=>typeof s!=='string'||s.length>80)))throw new AdminOperationError('Use up to 30 customer-data fields.');
+ if(value.trigger_type!=='dm_ai_conversation'){
+  const {data_capture_enabled:_enabled,data_fields:_fields,sheet_fields:_sheetFields,...config}=value.trigger_config||{};
+  return {...value,trigger_config:{...config,data_capture_enabled:false}};
+ }
  return value;
 }
 const enc=encodeURIComponent;

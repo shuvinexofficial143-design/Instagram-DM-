@@ -19,7 +19,6 @@ import {
 import { useApp } from '../../context/AppContext';
 import { useWorkspaceUsage } from '../../hooks/useWorkspaceUsage';
 import { UserAvatar } from '../Common/UserAvatar';
-import { auth } from '../../lib/supabase';
 
 const LANGUAGE_KEY = 'autoreply_default_ai_language';
 const TONE_KEY = 'autoreply_default_ai_tone';
@@ -54,40 +53,6 @@ export const SettingsPage: React.FC = () => {
   const [defaultLanguage, setDefaultLanguage] = useState(() => readPreference(LANGUAGE_KEY, 'Auto detect'));
   const [defaultTone, setDefaultTone] = useState(() => readPreference(TONE_KEY, 'Friendly'));
   const [savedPreference, setSavedPreference] = useState('');
-  const [mailOptIn, setMailOptIn] = useState(false);
-  const [mailLoading, setMailLoading] = useState(true);
-  const [mailSaving, setMailSaving] = useState(false);
-  const [mailError, setMailError] = useState('');
-  useEffect(() => {
-    if (!firebaseUser?.uid) return;
-    let alive=true;
-    auth.currentUser?.getIdToken().then(token=>fetch('/api/workspace-data?action=mail-preferences',{
-      headers:{Authorization:'Bearer '+token},cache:'no-store'
-    })).then(res=>res.json()).then(data=>{
-      if(!alive)return;
-      if(!data.ok)throw new Error(data.error||'Unable to load email preferences.');
-      setMailOptIn(Boolean(data.marketingOptIn));
-      setMailError('');
-    }).catch((err)=>{if(alive)setMailError(err.message||'Email preferences unavailable.');}).finally(()=>{if(alive)setMailLoading(false);});
-    return()=>{alive=false;};
-  },[firebaseUser?.uid]);
-  async function changeMailPreference(checked:boolean){
-    setMailSaving(true);setMailError('');
-    try{
-      const token=await auth.currentUser?.getIdToken();
-      if(!token)throw new Error('Sign in to update email preferences.');
-      const result=await fetch('/api/workspace-data?action=mail-preferences',{
-        method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
-        body:JSON.stringify({marketingOptIn:checked}),signal:AbortSignal.timeout(13000)
-      });
-      const data=await result.json().catch(()=>null);
-      if(!result.ok||!data?.ok)throw new Error(data?.error||'Failed to save.');
-      setMailOptIn(Boolean(data.marketingOptIn));
-      flashSaved(data.marketingOptIn?'Email tips enabled':'Email tips disabled');
-    }catch(e:any){setMailError(e.message||'Could not update preference.');}
-    finally{setMailSaving(false);}
-  }
-
 
   useEffect(() => {
     try {
@@ -157,7 +122,6 @@ export const SettingsPage: React.FC = () => {
           <nav aria-label="Settings quick links" className="settings-about-quicklinks">
             <a href="#settings-account"><ShieldCheck className="h-4 w-4"/> My account</a>
             <a href="#settings-ai"><SlidersHorizontal className="h-4 w-4"/> AI preferences</a>
-            <a href="#settings-notifications"><Mail className="h-4 w-4"/> Email preferences</a>
             <a href="#settings-privacy"><Download className="h-4 w-4"/> Data & privacy</a>
             <a href="/contact"><Mail className="h-4 w-4"/> Support</a>
           </nav>
@@ -331,21 +295,6 @@ export const SettingsPage: React.FC = () => {
         </div>
       </section>
 
-      <section id="settings-notifications" className="rounded-2xl border border-orange-100 bg-white shadow-sm">
-        <div className="border-b border-orange-100 p-5 sm:p-6">
-          <div className="flex items-center gap-2"><Mail className="h-5 w-5 text-orange-700"/><h2 className="text-lg font-bold text-slate-950">Email notifications</h2></div>
-          <p className="mt-2 text-sm leading-6 text-slate-600">A welcome email is sent when your account first signs in. Payment invoices and important service emails are separate from optional product tips.</p>
-        </div>
-        <div className="p-5 sm:p-6">
-          <label className="flex cursor-pointer items-start gap-3">
-            <input type="checkbox" checked={mailOptIn} disabled={mailLoading||mailSaving||!firebaseUser?.email} onChange={e=>void changeMailPreference(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-orange-700"/>
-            <span className="min-w-0"><strong className="block text-base font-bold text-slate-900">Send me helpful tips if I haven't visited</strong><span className="mt-1 block text-sm leading-6 text-slate-600">Optional onboarding emails, up to four reminders after approximately 3, 6, 9 and 12 days without visiting. Stop automatically when you return. You can turn these emails off anytime, or use the one-click Unsubscribe link.</span></span>
-          </label>
-          {mailLoading&&<p className="mt-3 text-sm text-slate-500">Loading preferences…</p>}
-          {mailError&&<p role="alert" className="mt-3 text-sm text-rose-700">{mailError}</p>}
-          <p className="mt-4 text-xs text-slate-500">These promotional learning reminders are OFF unless you actively check this box. Transactional purchase receipts still arrive if our email provider is configured.</p>
-        </div>
-      </section>
       <section id="settings-privacy" className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5 sm:p-6">
           <h2 className="text-lg font-bold text-slate-950">Data & privacy</h2>

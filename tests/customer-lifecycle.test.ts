@@ -54,13 +54,16 @@ test('four onboarding reminders require opt-in and inactivity, with retry and de
  assert.match(logic,/Idempotency-Key/);
  assert.match(logic,/last_seen_at/);
 });
-test('subscription reminders include real plan and expiry; settings offer consent control',()=>{
+test('subscription reminders include real plan and expiry; email controls are in Admin Settings only',()=>{
  const logic=read('src/server/customerLifecycle.ts');
  const settings=read('src/components/Settings/SettingsPage.tsx');
+ const admin=read('src/components/Admin/AdminEmailPreferences.tsx');
  const app=read('src/context/AppContext.tsx');
  assert.match(logic,/autoreply_billing_subscriptions\?select=plan_id,expires_at/);
- assert.match(settings,/Send me helpful tips if I haven't visited/);
- assert.match(settings,/marketingOptIn:checked/);
+ assert.doesNotMatch(settings,/Email notifications|mail-preferences|settings-notifications/);
+ assert.match(admin,/Send me helpful tips if I haven't visited/);
+ assert.match(admin,/marketingOptIn: checked/);
+ assert.match(read('src/components/Admin/AdminPage.tsx'),/adminSection === 'settings'.*AdminEmailPreferences/);
  assert.match(app,/action=mail-activity/);
  assert.match(read('api/workspace-data.ts'),/startsWith\('mail-'\)/);
 });

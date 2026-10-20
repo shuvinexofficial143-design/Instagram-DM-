@@ -1,6 +1,7 @@
 import { typedFetch as httpFetch } from './typedFetch.js';
 import {timingSafeEqual} from 'node:crypto';
 import {authenticatedUser,cleanEnvironment} from './supabaseConfig.js';
+import {isConfiguredAdmin} from './adminPolicy.js';
 import {billingDb,businessDetails} from './cashfree.js';
 
 const validEmail=(email:string)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)&&email.length<200;
@@ -24,8 +25,8 @@ async function sendWelcome(row:any){
  const lock=await billingDb('rpc/autoreply_claim_welcome_email','POST',{p_user_id:row.user_id});
  if(lock!==true)return;
  const name=htmlEscape(trimmed(row.display_name,80)||'there');
- const body=`Hi ${name},\n\nWelcome to Auto Replies! Your account is ready. Connect your Instagram account, create an automation, and test how your replies work.\n\nYour plan and active limits are always visible under Billing & Usage.\n\nGet started: https://autoreplys.vercel.app/\nHelp: https://autoreplys.vercel.app/help\n\nYou will not receive inactivity tips unless you turn them on in Settings.`;
- const html=`<div style="font:16px/1.7 Arial,sans-serif;max-width:620px;margin:auto;background:#fff7ed;padding:28px;border-radius:20px"><p style="color:#c2410c;font-weight:700;letter-spacing:2px">AUTO REPLIES</p><h1 style="color:#0f172a;font-size:28px">Welcome, ${name}!</h1><p>Your account is ready. Set up Instagram automations in three quick steps.</p><ol><li>Connect your Instagram business account.</li><li>Create your first reply automation.</li><li>Test it and review your Inbox.</li></ol><a style="display:inline-block;background:#c2410c;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none" href="https://autoreplys.vercel.app/">Open your dashboard</a><p style="color:#475569">See your current plan and limits under <strong>Billing &amp; Usage</strong>. Need help? <a href="https://autoreplys.vercel.app/help">Contact support</a>.</p><p style="font-size:13px;color:#64748b">Optional learning reminders are off until you enable them in Settings.</p></div>`;
+ const body=`Hi ${name},\n\nWelcome to Auto Replies! Your account is ready. Connect your Instagram account, create an automation, and test how your replies work.\n\nYour plan and active limits are always visible under Billing & Usage.\n\nGet started: https://autoreplys.vercel.app/\nHelp: https://autoreplys.vercel.app/help\n\nOptional learning reminders are off unless you have explicitly opted in. You can unsubscribe from any reminder.`;
+ const html=`<div style="font:16px/1.7 Arial,sans-serif;max-width:620px;margin:auto;background:#fff7ed;padding:28px;border-radius:20px"><p style="color:#c2410c;font-weight:700;letter-spacing:2px">AUTO REPLIES</p><h1 style="color:#0f172a;font-size:28px">Welcome, ${name}!</h1><p>Your account is ready. Set up Instagram automations in three quick steps.</p><ol><li>Connect your Instagram business account.</li><li>Create your first reply automation.</li><li>Test it and review your Inbox.</li></ol><a style="display:inline-block;background:#c2410c;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none" href="https://autoreplys.vercel.app/">Open your dashboard</a><p style="color:#475569">See your current plan and limits under <strong>Billing &amp; Usage</strong>. Need help? <a href="https://autoreplys.vercel.app/help">Contact support</a>.</p><p style="font-size:13px;color:#64748b">Optional learning reminders require explicit opt-in. Every reminder includes an unsubscribe link.</p></div>`;
  try{const id=await sendProvider(row.email,'Welcome to Auto Replies — start your first automation',body,html,'autoreply-welcome/'+row.user_id);
    if(id)await billingDb('autoreply_customer_email_lifecycle?user_id=eq.'+encodeURIComponent(row.user_id),'PATCH',{welcome_sent_at:new Date().toISOString(),welcome_claimed_at:null});
  }catch(e:any){console.warn('[WELCOME_MAIL_UNAVAILABLE]',{kind:e?.name||'network'})}
@@ -112,6 +113,7 @@ export default async function lifecycleHandler(req:any,res:any){
     return res.status(200).json({ok:true,marketingOptIn:row.marketing_opt_in,welcomeSent:Boolean(row.welcome_sent_at)});
   }
   if(action==='mail-preferences'){
+    if(!isConfiguredAdmin(user))return res.status(403).json({ok:false,error:'Administrator access required.'});
     if(req.method==='POST'){
       if(typeof req.body?.marketingOptIn!=='boolean')return res.status(400).json({ok:false,error:'Explicit opt-in or opt-out is required.'});
       const record=await billingDb('rpc/autoreply_touch_email_lifecycle','POST',{p_user_id:user.id,p_email:user.email,

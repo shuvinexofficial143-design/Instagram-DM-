@@ -15,8 +15,8 @@ export const CustomerDataCard = () => {
       </div>
       <h2 className="mt-4 text-base font-bold text-slate-900">Customer Data</h2>
       <p className="mt-2 text-sm leading-6 text-slate-500">
-        Capture names, phone numbers and customer-shared details. Separate
-        tables for each automation, preserved even after it is deleted.
+        Capture names, phone numbers and customer-shared details from AI DM
+        conversations. Each AI DM automation has its own saved customer table.
       </p>
       <button
         onClick={() => setActiveTab("customer-data")}
