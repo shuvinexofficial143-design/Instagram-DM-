@@ -306,7 +306,7 @@ export const CustomerDataPage = () => {
       ) : !groups.length ? (
         <Empty
           title="A dedicated space for every automation"
-          text="Enable Customer Data in an automation. Names, phone numbers and other selected details will fill in automatically."
+          text="Enable Customer Data in an AI DM automation. Names, phone numbers and other selected details will fill in automatically."
           action={() => setActiveTab("automations")}
         />
       ) : (

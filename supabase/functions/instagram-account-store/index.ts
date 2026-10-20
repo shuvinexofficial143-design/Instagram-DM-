@@ -687,128 +687,13 @@ Deno.serve(async (req: Request) => {
       const automation = payload?.automation;
       const id = String(automation?.id || "").trim();
       const normalizedName = String(automation?.name || "").trim();
-      const normalizedNameLower = normalizedName.toLocaleLowerCase();
-
-      if (!id || !/^auto_[a-zA-Z0-9_-]{4,}$/.test(id)) {
-        return reply(400, { ok: false, error: "Invalid automation id" });
-      }
-
-      if (!normalizedName || !automation?.trigger_type || !Array.isArray(automation?.actions)) {
-        return reply(400, { ok: false, error: "Automation data is incomplete" });
-      }
-
-      const serialized = JSON.stringify(automation);
-      if (serialized.length > 100000) {
-        return reply(413, { ok: false, error: "Automation is too large" });
-      }
-
-      const { data: existingRows, error: existingError } = await admin
-        .from("autoreply_documents")
-        .select("id,data,updated_at")
-        .eq("user_id", workspaceId)
-        .eq("collection", "automations");
-
-      if (existingError) {
-        console.error("[AUTOMATION_VALIDATION_LOAD_FAILED]", existingError);
-        return reply(500, { ok: false, error: "Automation validation failed" });
-      }
-
-      const duplicateName = (existingRows || []).find((row: any) => {
-        if (String(row?.id || "") === id) return false;
-        return String(row?.data?.name || "").trim().toLocaleLowerCase() === normalizedNameLower;
-      });
-
-      if (duplicateName) {
-        return reply(409, {
-          ok: false,
-          code: "AUTOMATION_NAME_EXISTS",
-          error: "Another automation already uses this name. Choose a different name.",
-        });
-      }
-
-      // The plan's automation count is checked on the trusted server,
-      // never only by the browser.
-      const {data:entitlement,error:quotaError}=await admin.rpc("autoreply_billing_entitlement",{p_workspace_id:workspaceId});
-      if(quotaError || !entitlement) return reply(503,{ok:false,error:"Unable to verify workspace plan"});
-      const maxAutomations=entitlement.automationLimit;
-      if(maxAutomations!==null && !(existingRows||[]).some((row:any)=>row.id===id) &&
-         (existingRows||[]).length>=Number(maxAutomations))
-        return reply(403,{ok:false,code:"AUTOMATION_LIMIT_REACHED",error:"This plan's automation limit has been reached. Upgrade to add more automations."});
-      const pausedAutomationIds: string[] = [];
-
-      // Only one live DM AI Conversation is allowed per workspace.
-      if (
-        automation?.trigger_type === "dm_ai_conversation" &&
-        automation?.status === "active"
-      ) {
-        for (const row of existingRows || []) {
-          const rowId = String(row?.id || "");
-          const rowData = row?.data || {};
-
-          if (
-            rowId !== id &&
-            rowData?.trigger_type === "dm_ai_conversation" &&
-            rowData?.status === "active"
-          ) {
-            const pausedData = {
-              ...rowData,
-              status: "paused",
-              updated_at: new Date().toISOString(),
-            };
-
-            const { error: pauseError } = await admin
-              .from("autoreply_documents")
-              .update({ data: pausedData })
-              .eq("user_id", workspaceId)
-              .eq("collection", "automations")
-              .eq("id", rowId);
-
-            if (pauseError) {
-              console.error("[AUTOMATION_AUTO_PAUSE_FAILED]", rowId, pauseError);
-              return reply(500, {
-                ok: false,
-                error: "Could not pause the previous DM AI Conversation automation.",
-              });
-            }
-
-            pausedAutomationIds.push(rowId);
-          }
-        }
-      }
-
-      const { id: _id, ...automationDataRaw } = automation;
-      const automationData = {
-        ...automationDataRaw,
-        name: normalizedName,
-        updated_at: automation?.updated_at || new Date().toISOString(),
-      };
-
-      const { error } = await admin
-        .from("autoreply_documents")
-        .upsert(
-          {
-            user_id: workspaceId,
-            collection: "automations",
-            id,
-            data: automationData,
-          },
-          { onConflict: "user_id,collection,id" }
-        );
-
-      if (error) {
-        console.error("[AUTOMATION_SAVE_FAILED]", error);
-        return reply(500, {
-          ok: false,
-          error: "Automation could not be saved",
-          detail: error.message,
-        });
-      }
-
-      return reply(200, {
-        ok: true,
-        automation: { id, ...automationData },
-        pausedAutomationIds,
-      });
+      if (!/^auto_[a-zA-Z0-9_-]{4,}$/.test(id) || !normalizedName || !["dm","comment","story_reply","dm_ai_conversation"].includes(automation?.trigger_type) || !["active","paused"].includes(automation?.status) || !Array.isArray(automation?.actions))
+        return reply(400,{ok:false,error:"Automation data is incomplete"});
+      if(JSON.stringify(automation).length>100000)return reply(413,{ok:false,error:"Automation is too large"});
+      const {data,error}=await admin.rpc("autoreply_save_automation",{p_user_id:workspaceId,p_automation:{...automation,id,name:normalizedName}});
+      if(error)return reply(503,{ok:false,error:"Automation could not be saved. Your draft is still available; please retry."});
+      if(!data?.ok)return reply(Number(data?.status||500),data||{ok:false,error:"Automation could not be saved"});
+      return reply(200,data);
     }
 
     if (action === "delete_automation") {

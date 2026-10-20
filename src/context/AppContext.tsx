@@ -1,3 +1,5 @@
+import { dispatchManualReply } from '../lib/manualReply';
+import { requestAutomationMutation } from '../lib/automationMutations';
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, startTransition } from 'react';
 import { reconcileAutomationRecords } from '../lib/automationState';
 import { connectedInstagramAccount } from '../lib/instagramConnection';
@@ -20,7 +22,7 @@ import {
   User,
   subscribeToUserCollection,
   saveUserDocument,
-  removeUserDocument,
+  removeWorkspaceConversations,
   syncUserProfileDocument,
   checkAndMigrateExistingData,
   isSupabaseInitialized,
@@ -109,9 +111,9 @@ interface AppContextType {
   setAiPausedForUser: (username: string, paused: boolean) => Promise<void>;
 
   // Actions
-  createAutomation: (newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'> & {id?:string}) => void;
-  updateAutomation: (id: string, updates: Partial<Automation>) => void;
-  deleteAutomation: (id: string) => void;
+  createAutomation: (newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'> & {id?:string}) => Promise<void>;
+  updateAutomation: (id: string, updates: Partial<Automation>) => Promise<void>;
+  deleteAutomation: (id: string) => Promise<void>;
   toggleAutomationStatus: (id: string) => Promise<void>;
   isAutomationSaving: (id: string) => boolean;
   
@@ -906,209 +908,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return token ? { Authorization: `Bearer ${token}`, 'X-Autoreply-Workspace':workspaceId || firebaseUser?.uid || '' } : {};
   };
 
-  const automationRequest = async (
-    input: { method: 'POST' | 'DELETE'; automation?: Automation; id?: string },
-    attempt = 0
-  ): Promise<any> => {
-    const authHeaders = await automationAuthHeaders();
-    const url =
-      input.method === 'DELETE'
-        ? `/api/automations?id=${encodeURIComponent(input.id || '')}`
-        : '/api/automations';
-
-    try {
-      const response = await fetch(url, {
-        method: input.method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders,
-        },
-        credentials: 'same-origin',
-        body:
-          input.method === 'POST'
-            ? JSON.stringify({ automation: input.automation })
-            : undefined,
-      });
-
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.ok) {
-        const error = new Error(payload?.error || 'Automation request failed.');
-        (error as any).status = response.status;
-        throw error;
-      }
-      return payload;
-    } catch (err: any) {
-      const retryable =
-        attempt < 1 &&
-        (!err?.status || err.status >= 500 || err?.name === 'TypeError');
-      if (retryable) {
-        await new Promise((resolve) => setTimeout(resolve, 450));
-        return automationRequest(input, attempt + 1);
-      }
-      throw err;
-    }
-  };
-
-  const persistAutomationRecord = (automation: Automation) => {
-    automationRequest({ method: 'POST', automation })
-      .then((payload) => {
-        if (
-          Array.isArray(payload?.pausedAutomationIds) &&
-          payload.pausedAutomationIds.length
-        ) {
-          const paused = new Set<string>(payload.pausedAutomationIds);
-          setAutomations((prev) =>
-            prev.map((item) =>
-              paused.has(item.id)
-                ? {
-                    ...item,
-                    status: 'paused',
-                    updated_at: new Date().toISOString(),
-                  }
-                : item
-            )
-          );
-        }
-      })
-      .catch((err) => {
-        console.error('[AUTOMATION_SAVE_FAILED]', err?.message || err);
-        // Optimistic UI state is not proof of persistence. Tell the user
-        // explicitly rather than silently losing the prompt after a reload.
-        window.alert('Automation could not be saved to the server. Your changes may disappear after refresh. Please retry. ' + (err?.message || ''));
-      });
-  };
-
-  const hasDuplicateAutomationName = (name: string, exceptId?: string) =>
-    automations.some(
-      (auto) =>
-        auto.id !== exceptId &&
-        auto.name.trim().toLocaleLowerCase() === name.trim().toLocaleLowerCase()
-    );
-
-  const createAutomation = (
-    newAuto: Omit<Automation, 'id' | 'created_at' | 'updated_at' | 'stats'> & {id?:string}
-  ) => {
-    const now = new Date().toISOString();
-    const cleanName = newAuto.name.trim();
-
-    if (hasDuplicateAutomationName(cleanName)) {
-      console.warn('[AUTOMATION_NAME_DUPLICATE]', cleanName);
-      return;
-    }
-
-    const created: Automation = {
-      ...newAuto,
-      name: cleanName,
-      id: newAuto.id || `auto_${crypto.randomUUID()}`,
-      created_at: now,
-      updated_at: now,
-      stats: {
-        runs: 0,
-        dms_sent: 0,
-        unique_users: 0,
-        open_rate: -1,
-      },
-    };
-
-    const shouldBeOnlyLiveDmAi =
-      created.trigger_type === 'dm_ai_conversation' && created.status === 'active';
-
-    const pausedOthers = shouldBeOnlyLiveDmAi
-      ? automations
-          .filter(
-            (auto) =>
-              auto.id !== created.id &&
-              auto.trigger_type === 'dm_ai_conversation' &&
-              auto.status === 'active'
-          )
-          .map((auto) => ({
-            ...auto,
-            status: 'paused' as const,
-            updated_at: now,
-          }))
-      : [];
-
-    const pausedIds = new Set(pausedOthers.map((auto) => auto.id));
-
-    setAutomations((prev) => [
-      created,
-      ...prev.map((auto) =>
-        pausedIds.has(auto.id)
-          ? { ...auto, status: 'paused' as const, updated_at: now }
-          : auto
-      ),
-    ]);
-
-    for (const paused of pausedOthers) persistAutomationRecord(paused);
-    persistAutomationRecord(created);
-  };
-
-  const updateAutomation = (id: string, updates: Partial<Automation>) => {
-    const current = automations.find((auto) => auto.id === id);
-    if (!current) return;
-
-    const nextName = String(updates.name ?? current.name).trim();
-    if (hasDuplicateAutomationName(nextName, id)) {
-      console.warn('[AUTOMATION_NAME_DUPLICATE]', nextName);
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const updated: Automation = {
-      ...current,
-      ...updates,
-      name: nextName,
-      updated_at: now,
-    };
-
-    const shouldBeOnlyLiveDmAi =
-      updated.trigger_type === 'dm_ai_conversation' && updated.status === 'active';
-
-    const pausedOthers = shouldBeOnlyLiveDmAi
-      ? automations
-          .filter(
-            (auto) =>
-              auto.id !== id &&
-              auto.trigger_type === 'dm_ai_conversation' &&
-              auto.status === 'active'
-          )
-          .map((auto) => ({
-            ...auto,
-            status: 'paused' as const,
-            updated_at: now,
-          }))
-      : [];
-
-    const pausedIds = new Set(pausedOthers.map((auto) => auto.id));
-
-    setAutomations((prev) =>
-      prev.map((auto) => {
-        if (auto.id === id) return updated;
-        if (pausedIds.has(auto.id)) {
-          return { ...auto, status: 'paused', updated_at: now };
-        }
-        return auto;
-      })
-    );
-
-    for (const paused of pausedOthers) persistAutomationRecord(paused);
-    persistAutomationRecord(updated);
-  };
-
-  const deleteAutomation = (id: string) => {
-    const deleted = automations.find((auto) => auto.id === id);
-    setAutomations((prev) => prev.filter((auto) => auto.id !== id));
-
-    automationRequest({ method: 'DELETE', id }).catch((err) => {
-      console.warn('[AUTOMATION_DELETE_WARN]', err?.message || err);
-      if (deleted) {
-        setAutomations((prev) =>
-          prev.some((item) => item.id === deleted.id)
-            ? prev
-            : [deleted, ...prev]
-        );
-      }
+  const automationRequest = (input: {method:'POST'|'DELETE';automation?:Automation;id?:string}) => {
+    const ownerId=auth.currentUser?.uid || '';
+    return requestAutomationMutation(input,{
+      ownerId,workspaceId:workspaceScope.current,currentOwnerId:()=>auth.currentUser?.uid,
+      getToken:async()=>{const token=await auth.currentUser?.getIdToken();if(!token)throw new Error('Sign in again before saving.');return token;},
     });
+  };
+
+  const hasDuplicateAutomationName = (name:string,exceptId?:string) => automations.some(auto=>auto.id!==exceptId&&auto.name.trim().toLocaleLowerCase()===name.trim().toLocaleLowerCase());
+  const persistAutomationRecord = async (automation:Automation) => {
+    const scope=workspaceScope.current, owner=auth.currentUser?.uid;
+    const payload=await automationRequest({method:'POST',automation});
+    if(workspaceScope.current!==scope || auth.currentUser?.uid!==owner) return;
+    const saved=sanitizeAutomationRecord(payload.automation);
+    const paused=new Set<string>(payload.pausedAutomationIds||[]);
+    setAutomations(previous=>reconcileAutomationRecords(previous,[saved,...previous.filter(row=>row.id!==saved.id).map(row=>paused.has(row.id)?{...row,status:'paused' as const,updated_at:saved.updated_at}:row)],pendingAutomationStatuses.current));
+  };
+
+  const createAutomation = async (newAuto:Omit<Automation,'id'|'created_at'|'updated_at'|'stats'> & {id?:string}) => {
+    const cleanName=newAuto.name.trim();
+    if(hasDuplicateAutomationName(cleanName))throw new Error('This automation name is already in use. Choose a different name.');
+    const now=new Date().toISOString();
+    await persistAutomationRecord({...newAuto,name:cleanName,id:newAuto.id||`auto_${crypto.randomUUID()}`,created_at:now,updated_at:now,stats:{runs:0,dms_sent:0,unique_users:0,open_rate:-1}});
+  };
+
+  const updateAutomation = async (id:string,updates:Partial<Automation>) => {
+    const current=automations.find(auto=>auto.id===id);
+    if(!current)throw new Error('This automation no longer exists. Refresh the list and try again.');
+    const name=String(updates.name??current.name).trim();
+    if(hasDuplicateAutomationName(name,id))throw new Error('This automation name is already in use. Choose a different name.');
+    await persistAutomationRecord({...current,...updates,id,name,updated_at:new Date().toISOString()});
+  };
+
+  const deleteAutomation = async (id:string) => {
+    const scope=workspaceScope.current,owner=auth.currentUser?.uid;
+    await automationRequest({method:'DELETE',id});
+    if(workspaceScope.current===scope&&auth.currentUser?.uid===owner)setAutomations(previous=>previous.filter(row=>row.id!==id));
   };
 
   const toggleAutomationStatus = async (id: string) => {
@@ -1348,7 +1184,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const sendManualReply = async (fromUsername: string, text: string) => {
     if (!text.trim()) return;
     const uid = workspaceId || firebaseUser?.uid;
-    if (!uid) return;
+    const owner = auth.currentUser?.uid;
+    if (!uid || !owner) throw new Error('Sign in before sending a message.');
     const cleanUser = fromUsername.replace(/^@/, '').toLowerCase();
     const nowIso = new Date().toISOString();
 
@@ -1372,37 +1209,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Dispatch live Instagram Graph API call to send message to recipient
     try {
-      const token = await auth.currentUser?.getIdToken();
-      const response = await fetch('/api/instagram/send-dm', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          'X-Autoreply-Workspace': uid,
-        },
-        body: JSON.stringify({
-          recipientUsername: cleanUser,
-          messageText: text.trim(),
-          userId: uid,
-        }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || `Instagram send failed (HTTP ${response.status})`);
-      }
-      const payload = await response.json().catch(() => null);
-      if (payload?.ok !== true || payload?.sent !== true || !payload?.message_id || !payload?.message) {
-        throw new Error(payload?.error || 'Instagram did not confirm delivery');
-      }
+      const sent: InboxMessage = await dispatchManualReply({workspaceId:uid,ownerId:owner,username:cleanUser,text:text.trim(),currentOwnerId:()=>auth.currentUser?.uid,getToken:async()=>await auth.currentUser?.getIdToken()||''});
+      if(workspaceScope.current!==uid || auth.currentUser?.uid!==owner)return;
       await setAiPausedForUser(cleanUser, true).catch(()=>{});
-      const sent: InboxMessage = payload.message;
       setInboxMessages((prev) => [sent, ...prev.filter((m) => m.id !== newOutMsg.id && m.id !== sent.id)]);
     } catch (err) {
       console.warn('[SEND_MANUAL_DM_DISPATCH_WARN]', err);
-      window.alert(err instanceof Error ? err.message : 'Instagram message could not be sent.');
       const failed = { ...newOutMsg, delivery_status: 'failed' as const };
-      setInboxMessages((prev) => prev.map((m) => (m.id === failed.id ? failed : m)));
-      saveUserDocument(uid, 'inbox_messages', failed);
+      if(workspaceScope.current===uid && auth.currentUser?.uid===owner){
+        setInboxMessages((prev) => prev.map((m) => (m.id === failed.id ? failed : m)));
+        await saveUserDocument(uid, 'inbox_messages', failed).catch(()=>{});
+      }
+      throw err;
     }
   };
 
@@ -1440,135 +1258,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const markInboxThreadRead = (username: string) => setThreadReadState(username, true);
   const markInboxThreadUnread = (username: string) => setThreadReadState(username, false);
 
-  // Contacts & Inbox Deletion (Scoped strictly by user UID)
-  const deleteContact = async (contactId: string, username?: string) => {
-    if (!contactId && !username) return;
-    const uid = workspaceId || firebaseUser?.uid;
-    if (!uid) return;
-
-    await removeUserDocument(uid, 'contacts', contactId);
-
-    const targetUsername = username || contacts.find((c) => c.id === contactId)?.ig_username;
-    if (targetUsername) {
-      const cleanTarget = targetUsername.toLowerCase();
-      const msgsToDelete = inboxMessages.filter(
-        (m) => m.from_username?.toLowerCase() === cleanTarget
-      );
-      for (const msg of msgsToDelete) {
-        await removeUserDocument(uid, 'inbox_messages', msg.id);
-      }
-      setInboxMessages((prev) =>
-        prev.filter((m) => m.from_username?.toLowerCase() !== cleanTarget)
-      );
-    }
-
-    setContacts((prev) => prev.filter((c) => c.id !== contactId));
-
-    try {
-      await fetch('/api/contacts/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactId, username: targetUsername, userId: uid }),
-      });
-    } catch (e) {
-      console.warn('[DELETE_CONTACT_API_WARN]', e);
-    }
+  // Delete on the server so history beyond the currently loaded page is included.
+  const deleteWorkspaceConversations = async (contactIds: string[], usernames: string[]) => {
+    const uid = workspaceScope.current, owner = auth.currentUser?.uid;
+    if (!uid || !owner) throw new Error('Sign in before deleting conversations.');
+    const result = await removeWorkspaceConversations(uid, contactIds, usernames);
+    if (workspaceScope.current !== uid || auth.currentUser?.uid !== owner) return;
+    const targets = new Set(result.usernames);
+    setContacts(previous => previous.filter(contact => !contactIds.includes(contact.id)));
+    setInboxMessages(previous => previous.filter(message => !targets.has((message.from_username || message.from_ig_id || '').trim().replace(/^@/, '').toLowerCase())));
   };
-
-  const deleteContactsBulk = async (contactIds: string[], usernames: string[] = []) => {
-    if (!contactIds || contactIds.length === 0) return;
-    const uid = workspaceId || firebaseUser?.uid;
-    if (!uid) return;
-
-    for (const cid of contactIds) {
-      await removeUserDocument(uid, 'contacts', cid);
-    }
-
-    const targetUsernames = new Set<string>(usernames.map((u) => u.toLowerCase()));
-    contacts.forEach((c) => {
-      if (contactIds.includes(c.id)) {
-        targetUsernames.add(c.ig_username.toLowerCase());
-      }
-    });
-
-    const msgsToDelete = inboxMessages.filter(
-      (m) => m.from_username && targetUsernames.has(m.from_username.toLowerCase())
-    );
-    for (const msg of msgsToDelete) {
-      await removeUserDocument(uid, 'inbox_messages', msg.id);
-    }
-
-    setContacts((prev) => prev.filter((c) => !contactIds.includes(c.id)));
-    setInboxMessages((prev) =>
-      prev.filter((m) => !m.from_username || !targetUsernames.has(m.from_username.toLowerCase()))
-    );
-
-    try {
-      await fetch('/api/contacts/bulk-delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactIds, usernames: Array.from(targetUsernames), userId: uid }),
-      });
-    } catch (e) {
-      console.warn('[DELETE_CONTACTS_BULK_API_WARN]', e);
-    }
-  };
-
-  const deleteInboxThread = async (username: string) => {
-    if (!username) return;
-    const uid = workspaceId || firebaseUser?.uid;
-    if (!uid) return;
-    const cleanUname = username.toLowerCase();
-
-    const msgsToDelete = inboxMessages.filter(
-      (m) => m.from_username?.toLowerCase() === cleanUname
-    );
-    for (const msg of msgsToDelete) {
-      await removeUserDocument(uid, 'inbox_messages', msg.id);
-    }
-
-    setInboxMessages((prev) =>
-      prev.filter((m) => m.from_username?.toLowerCase() !== cleanUname)
-    );
-
-    try {
-      await fetch('/api/inbox/delete-thread', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, userId: uid }),
-      });
-    } catch (e) {
-      console.warn('[DELETE_INBOX_THREAD_API_WARN]', e);
-    }
-  };
-
-  const deleteInboxThreadsBulk = async (usernames: string[]) => {
-    if (!usernames || usernames.length === 0) return;
-    const uid = workspaceId || firebaseUser?.uid;
-    if (!uid) return;
-    const targets = new Set(usernames.map((u) => u.toLowerCase()));
-
-    const msgsToDelete = inboxMessages.filter(
-      (m) => m.from_username && targets.has(m.from_username.toLowerCase())
-    );
-    for (const msg of msgsToDelete) {
-      await removeUserDocument(uid, 'inbox_messages', msg.id);
-    }
-
-    setInboxMessages((prev) =>
-      prev.filter((m) => !m.from_username || !targets.has(m.from_username.toLowerCase()))
-    );
-
-    try {
-      await fetch('/api/inbox/bulk-delete-threads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usernames, userId: uid }),
-      });
-    } catch (e) {
-      console.warn('[DELETE_INBOX_BULK_API_WARN]', e);
-    }
-  };
+  const deleteContact = (contactId: string, username?: string) => deleteWorkspaceConversations(contactId ? [contactId] : [], username ? [username] : []);
+  const deleteContactsBulk = (contactIds: string[], usernames: string[] = []) => deleteWorkspaceConversations(contactIds, usernames);
+  const deleteInboxThread = (username: string) => deleteWorkspaceConversations([], [username]);
+  const deleteInboxThreadsBulk = (usernames: string[]) => deleteWorkspaceConversations([], usernames);
 
   const reauthorizeChannel = () => {
     startInstagramConnection(instagramAccounts.some(item=>item.workspaceId===workspaceId)?'reconnect':'connect');

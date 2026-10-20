@@ -55,6 +55,8 @@ export const AutomationsPage: React.FC = () => {
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [templateCategory, setTemplateCategory] = useState<'all' | 'comment' | 'dm' | 'story_reply' | 'custom'>('all');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [mutationError,setMutationError]=useState('');
+  const [mutationPending,setMutationPending]=useState(false);
 
   // Filter & Sort Automations
   const filteredAutomations = (automations || [])
@@ -189,20 +191,31 @@ export const AutomationsPage: React.FC = () => {
     }
   };
 
-  const handleDuplicate = (auto: Automation) => {
-    createAutomation({
+  const handleDuplicate = async (auto: Automation) => {
+    if(mutationPending)return;setMutationPending(true);setMutationError('');
+    try{await createAutomation({
       name: uniqueAutomationName(`${auto.name} (Copy)`, automations),
       trigger_type: auto.trigger_type,
       trigger_config: { ...auto.trigger_config },
       actions: [...auto.actions],
       status: 'paused',
     });
-    setOpenMenuId(null);
+    setOpenMenuId(null);}
+    catch(error:any){setMutationError(error?.message||'Could not duplicate automation. Please retry.');}
+    finally{setMutationPending(false);}
+  };
+  const handleDelete=async(id:string)=>{
+    if(mutationPending||!window.confirm('Delete this automation? Saved customer data will be kept.'))return;
+    setMutationPending(true);setMutationError('');
+    try{await deleteAutomation(id);setOpenMenuId(null);}
+    catch(error:any){setMutationError(error?.message||'Could not delete automation. Please retry.');}
+    finally{setMutationPending(false);}
   };
 
   return (
     <div className="automations-readable automations-premium min-h-screen space-y-7 p-4 sm:p-8">
       <AdminChangeNotices/>
+      {mutationError&&<p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{mutationError}</p>}
       <header className="automation-page-heading"><div><p className="automation-page-eyebrow">INSTAGRAM AUTOMATION</p><h1>Automations</h1><p>Build helpful workflows, test your replies, and see real recorded activity.</p></div></header>
       {/* 1. Unified Active Automations & Metrics Banner */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
@@ -455,7 +468,7 @@ export const AutomationsPage: React.FC = () => {
                           </button>
 
                           <button
-                            onClick={() => handleDuplicate(auto)}
+                            disabled={mutationPending} onClick={() => void handleDuplicate(auto)}
                             className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2"
                           >
                             <Copy className="w-3.5 h-3.5 text-slate-500" />
@@ -465,10 +478,7 @@ export const AutomationsPage: React.FC = () => {
                           <div className="border-t border-slate-100 my-1"></div>
 
                           <button
-                            onClick={() => {
-                              deleteAutomation(auto.id);
-                              setOpenMenuId(null);
-                            }}
+                            disabled={mutationPending} onClick={() => void handleDelete(auto.id)}
                             className="w-full text-left px-3.5 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

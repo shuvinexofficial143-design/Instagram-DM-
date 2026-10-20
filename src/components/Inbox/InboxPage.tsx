@@ -69,6 +69,11 @@ export const InboxPage: React.FC = () => {
   const [newReplyTitle, setNewReplyTitle] = useState('');
   const [newReplyText, setNewReplyText] = useState('');
   const [showSavedReplies, setShowSavedReplies] = useState(false);
+  const [actionError,setActionError]=useState('');
+  const [sending,setSending]=useState(false);
+  const [deleting,setDeleting]=useState(false);
+  const sendingRef=React.useRef(false);
+  const runAction=async(action:()=>Promise<unknown>)=>{setActionError('');try{await action();}catch(error:any){setActionError(error?.message||'This change could not be saved. Please retry.');}};
   const [aiControlSaving,setAiControlSaving]=useState(false);
   const [aiControlError,setAiControlError]=useState('');
   const changeAiControl=async(username:string)=>{setAiControlSaving(true);setAiControlError('');try{await toggleAiForUser(username);}catch(error:any){setAiControlError(error.message||'Could not save AI reply setting.');}finally{setAiControlSaving(false);}};
@@ -152,7 +157,7 @@ export const InboxPage: React.FC = () => {
   const aiPaused = selectedUser ? isAiPausedForUser(selectedUser) : false;
 
   useEffect(() => {
-    if (selectedUser) void markInboxThreadRead(selectedUser);
+    if (selectedUser) void runAction(()=>markInboxThreadRead(selectedUser));
   }, [selectedKey]);
 
   const saveMeta = async (updates: Partial<ThreadMeta>) => {
@@ -210,9 +215,15 @@ export const InboxPage: React.FC = () => {
   const handleSend = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedUser || !inputText.trim()) return;
-    await Promise.resolve(sendManualReply(selectedUser, inputText.trim()));
-    setInputText('');
-    if (selectedMeta.status === 'resolved') await saveMeta({ status: 'open' });
+    if(sendingRef.current)return;
+    sendingRef.current=true;setSending(true);setActionError('');
+    try {
+      await sendManualReply(selectedUser,inputText.trim());
+      setInputText('');
+      if(selectedMeta.status==='resolved')await saveMeta({status:'open'});
+    } catch(error:any){setActionError(error?.message||'Message could not be sent. Your reply is still here.');}
+    finally{sendingRef.current=false;setSending(false);}
+
   };
 
   const snoozeFor = async (hours: number) => {
@@ -251,6 +262,7 @@ export const InboxPage: React.FC = () => {
           </div>
         </header>
 
+        {actionError&&<p role="alert" className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{actionError}</p>}
         <div className="inbox-premium-shell flex h-[78vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <aside className={(mobileChatOpen ? 'hidden md:flex' : 'flex') + ' w-full flex-col border-r border-slate-200 md:w-[310px] xl:w-[340px]'}>
             <div className="border-b border-slate-200 p-3">
@@ -292,17 +304,17 @@ export const InboxPage: React.FC = () => {
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button onClick={() => void toggleCustomerPriority()} className={'rounded-lg border p-2 ' + ((selectedContact?.customer_insight?.priority || selectedMeta.priority) === 'high' ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-500')} title="Toggle priority"><Star className="h-4 w-4" /></button>
-                    <button onClick={() => void saveMeta({ assignee: selectedMeta.assignee ? '' : (firebaseUser?.displayName || firebaseUser?.email || 'Me') })} className="rounded-lg border border-slate-200 p-2 text-slate-600" title="Assign to me"><UserCheck className="h-4 w-4" /></button>
-                    <button onClick={() => void snoozeFor(1)} className="rounded-lg border border-slate-200 p-2 text-slate-600" title="Snooze 1 hour"><AlarmClock className="h-4 w-4" /></button>
+                    <button onClick={() => void runAction(()=>saveMeta({ assignee: selectedMeta.assignee ? '' : (firebaseUser?.displayName || firebaseUser?.email || 'Me') }))} className="rounded-lg border border-slate-200 p-2 text-slate-600" title="Assign to me"><UserCheck className="h-4 w-4" /></button>
+                    <button onClick={() => void runAction(()=>snoozeFor(1))} className="rounded-lg border border-slate-200 p-2 text-slate-600" title="Snooze 1 hour"><AlarmClock className="h-4 w-4" /></button>
                     <button disabled={aiControlSaving} aria-busy={aiControlSaving} onClick={() => void changeAiControl(selectedUser)} className={'rounded-lg border p-2 ' + (aiPaused ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700')} aria-label={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'} title={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'}><span className="flex items-center gap-2 text-sm font-semibold">{aiPaused ? <BotOff className="h-4 w-4" /> : <Bot className="h-4 w-4" />}{aiPaused?'Resume AI':'Take over'}</span></button>
-                    <button onClick={() => void saveMeta({ status: selectedMeta.status === 'resolved' ? 'open' : 'resolved', snooze_until: undefined })} className={'rounded-lg px-3 py-2 text-xs font-bold ' + (selectedMeta.status === 'resolved' ? 'bg-slate-100 text-slate-700' : 'bg-emerald-600 text-white')}>{selectedMeta.status === 'resolved' ? 'Reopen' : 'Resolve'}</button>
+                    <button onClick={() => void runAction(()=>saveMeta({ status: selectedMeta.status === 'resolved' ? 'open' : 'resolved', snooze_until: undefined }))} className={'rounded-lg px-3 py-2 text-xs font-bold ' + (selectedMeta.status === 'resolved' ? 'bg-slate-100 text-slate-700' : 'bg-emerald-600 text-white')}>{selectedMeta.status === 'resolved' ? 'Reopen' : 'Resolve'}</button>
                     <button onClick={() => setRightPanelOpen(!rightPanelOpen)} className="rounded-lg border border-slate-200 p-2 text-slate-500"><MoreHorizontal className="h-4 w-4" /></button>
                   </div>
                 </div>
 
                 {aiPaused&&<p role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Human control is active. AI replies remain paused until you select Resume AI. You can continue replying manually.</p>}
                 {aiControlError && <p role="alert" className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{aiControlError}</p>}
-                {selectedMeta.snooze_until && new Date(selectedMeta.snooze_until).getTime() > Date.now() && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800">Snoozed until {new Date(selectedMeta.snooze_until).toLocaleString()} · <button onClick={() => void saveMeta({ snooze_until: undefined, status: 'open' })} className="underline">Unsnooze</button></div>}
+                {selectedMeta.snooze_until && new Date(selectedMeta.snooze_until).getTime() > Date.now() && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800">Snoozed until {new Date(selectedMeta.snooze_until).toLocaleString()} · <button onClick={() => void runAction(()=>saveMeta({ snooze_until: undefined, status: 'open' }))} className="underline">Unsnooze</button></div>}
 
                 <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
                   {currentThread.map((message) => {
@@ -321,14 +333,14 @@ export const InboxPage: React.FC = () => {
                   {showSavedReplies && (
                     <div className="absolute bottom-full left-3 right-3 z-20 mb-2 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
                       <div className="flex items-center justify-between"><p className="text-xs font-bold text-slate-800">Saved replies</p><button onClick={() => setShowSavedReplies(false)}><X className="h-4 w-4 text-slate-400" /></button></div>
-                      <div className="mt-2 space-y-2">{savedReplies.map((reply) => <div key={reply.id} className="flex items-start gap-2 rounded-xl border border-slate-100 p-2"><button onClick={() => { setInputText(reply.text); setShowSavedReplies(false); }} className="min-w-0 flex-1 text-left"><p className="text-xs font-bold text-slate-800">{reply.title}</p><p className="mt-0.5 truncate text-xs text-slate-500">{reply.text}</p></button><button onClick={() => void deleteQuickReply(reply)} className="p-1 text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button></div>)}</div>
-                      <div className="mt-3 border-t border-slate-100 pt-3"><input value={newReplyTitle} onChange={(e) => setNewReplyTitle(e.target.value)} placeholder="Reply title" className="min-h-9 w-full rounded-lg border border-slate-200 px-2.5 text-xs" /><textarea value={newReplyText} onChange={(e) => setNewReplyText(e.target.value)} rows={2} placeholder="Saved reply text" className="mt-2 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs" /><button onClick={() => void saveQuickReply()} className="mt-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">Save reply</button></div>
+                      <div className="mt-2 space-y-2">{savedReplies.map((reply) => <div key={reply.id} className="flex items-start gap-2 rounded-xl border border-slate-100 p-2"><button onClick={() => { setInputText(reply.text); setShowSavedReplies(false); }} className="min-w-0 flex-1 text-left"><p className="text-xs font-bold text-slate-800">{reply.title}</p><p className="mt-0.5 truncate text-xs text-slate-500">{reply.text}</p></button><button onClick={() => void runAction(()=>deleteQuickReply(reply))} className="p-1 text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button></div>)}</div>
+                      <div className="mt-3 border-t border-slate-100 pt-3"><input value={newReplyTitle} onChange={(e) => setNewReplyTitle(e.target.value)} placeholder="Reply title" className="min-h-9 w-full rounded-lg border border-slate-200 px-2.5 text-xs" /><textarea value={newReplyText} onChange={(e) => setNewReplyText(e.target.value)} rows={2} placeholder="Saved reply text" className="mt-2 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs" /><button onClick={() => void runAction(()=>saveQuickReply())} className="mt-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">Save reply</button></div>
                     </div>
                   )}
                   <form onSubmit={handleSend} className="flex items-end gap-2">
                     <button type="button" onClick={() => setShowSavedReplies(!showSavedReplies)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600" title="Saved replies"><MessageSquareText className="h-4 w-4" /></button>
-                    <textarea rows={1} value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (inputText.trim()) void handleSend(e as any); } }} placeholder="Reply to this conversation…" className="max-h-32 min-h-11 flex-1 resize-y rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400" />
-                    <button disabled={!inputText.trim()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white disabled:opacity-40"><Send className="h-4 w-4" /></button>
+                    <textarea disabled={sending} rows={1} value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (inputText.trim()) void handleSend(e as any); } }} placeholder="Reply to this conversation…" className="max-h-32 min-h-11 flex-1 resize-y rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400" />
+                    <button disabled={sending||!inputText.trim()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white disabled:opacity-40"><Send className="h-4 w-4" /></button>
                   </form>
                 </div>
               </>
@@ -345,27 +357,27 @@ export const InboxPage: React.FC = () => {
               <div className="border-b border-slate-200 p-4">
                 <p className="text-xs font-bold text-slate-800">Conversation controls</p>
                 {selectedContact&&<CustomerInsightPanel key={selectedContact.id} contact={selectedContact}/>}
-                <div className="mt-3 grid grid-cols-3 gap-2">{(['open','pending','resolved'] as const).map((status) => <button key={status} onClick={() => void saveMeta({ status, snooze_until: status === 'open' ? undefined : selectedMeta.snooze_until })} className={'rounded-lg px-2 py-2 text-xs font-bold ' + (selectedMeta.status === status ? 'bg-indigo-600 text-white' : 'border border-slate-200 bg-white text-slate-600')}>{status}</button>)}</div>
-                <label className="mt-3 block"><span className="text-xs font-bold text-slate-500">Assignee</span><input value={selectedMeta.assignee} onChange={(e) => void saveMeta({ assignee: e.target.value })} placeholder="Unassigned" className="mt-1 min-h-9 w-full rounded-lg border border-slate-200 px-2.5 text-xs" /></label>
+                <div className="mt-3 grid grid-cols-3 gap-2">{(['open','pending','resolved'] as const).map((status) => <button key={status} onClick={() => void runAction(()=>saveMeta({ status, snooze_until: status === 'open' ? undefined : selectedMeta.snooze_until }))} className={'rounded-lg px-2 py-2 text-xs font-bold ' + (selectedMeta.status === status ? 'bg-indigo-600 text-white' : 'border border-slate-200 bg-white text-slate-600')}>{status}</button>)}</div>
+                <label className="mt-3 block"><span className="text-xs font-bold text-slate-500">Assignee</span><input value={selectedMeta.assignee} onChange={(e) => void runAction(()=>saveMeta({ assignee: e.target.value }))} placeholder="Unassigned" className="mt-1 min-h-9 w-full rounded-lg border border-slate-200 px-2.5 text-xs" /></label>
               </div>
 
               <div className="border-b border-slate-200 p-4">
                 <div className="flex items-center gap-2"><Tag className="h-3.5 w-3.5 text-slate-400" /><p className="text-xs font-bold text-slate-800">Labels</p></div>
-                <div className="mt-2 flex flex-wrap gap-1.5">{(selectedMeta.labels || []).map((label) => <span key={label} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700">{label}<button onClick={() => void removeLabel(label)}><X className="h-3 w-3" /></button></span>)}</div>
-                <div className="mt-2 flex gap-1.5"><input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addLabel(); } }} placeholder="Add label" className="min-h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 text-xs" /><button onClick={() => void addLabel()} className="rounded-lg bg-slate-900 px-2.5 text-white"><Plus className="h-3.5 w-3.5" /></button></div>
+                <div className="mt-2 flex flex-wrap gap-1.5">{(selectedMeta.labels || []).map((label) => <span key={label} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700">{label}<button onClick={() => void runAction(()=>removeLabel(label))}><X className="h-3 w-3" /></button></span>)}</div>
+                <div className="mt-2 flex gap-1.5"><input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void runAction(()=>addLabel()); } }} placeholder="Add label" className="min-h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 text-xs" /><button onClick={() => void runAction(()=>addLabel())} className="rounded-lg bg-slate-900 px-2.5 text-white"><Plus className="h-3.5 w-3.5" /></button></div>
               </div>
 
               <div className="p-4">
                 <p className="text-xs font-bold text-slate-800">Internal notes</p>
                 <p className="mt-1 text-xs text-slate-400">Visible only inside your workspace.</p>
                 <textarea rows={3} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Add context for this lead…" className="mt-3 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs" />
-                <button onClick={() => void addNote()} disabled={!noteText.trim()} className="mt-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Add note</button>
+                <button onClick={() => void runAction(()=>addNote())} disabled={!noteText.trim()} className="mt-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Add note</button>
                 <div className="mt-3 space-y-2">{selectedNotes.map((note) => <div key={note.id} className="rounded-lg bg-slate-50 p-2.5"><p className="whitespace-pre-wrap text-xs leading-5 text-slate-700">{note.text}</p><p className="mt-1 text-xs text-slate-400">{new Date(note.created_at).toLocaleString()}</p></div>)}</div>
               </div>
 
               <div className="border-t border-slate-200 p-4">
-                <button onClick={() => void markInboxThreadUnread(selectedUser)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600">Mark unread</button>
-                <button onClick={async () => { if (window.confirm('Delete this conversation permanently?')) { await deleteInboxThread(selectedUser); setActiveUsername(''); } }} className="mt-2 w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">Delete conversation</button>
+                <button onClick={() => void runAction(()=>markInboxThreadUnread(selectedUser))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600">Mark unread</button>
+                <button disabled={deleting} onClick={() => { if (deleting || !window.confirm('Delete this conversation permanently?'))return;setDeleting(true);void runAction(async()=>{await deleteInboxThread(selectedUser);setActiveUsername('');}).finally(()=>setDeleting(false)); }} className="mt-2 w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">Delete conversation</button>
               </div>
             </aside>
           )}

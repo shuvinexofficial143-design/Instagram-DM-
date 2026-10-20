@@ -389,6 +389,17 @@ export async function removeUserDocument(userId: string, subcollectionName: stri
   if (error) throw error;
 }
 
+/** A single RLS-protected transaction includes messages not loaded in the browser. */
+export async function removeWorkspaceConversations(userId: string, contactIds: string[], usernames: string[]) {
+  ensureOwner(userId);
+  const { data, error } = await supabase.rpc('autoreply_delete_conversations', {
+    p_user_id: userId, p_contact_ids: contactIds, p_usernames: usernames,
+  });
+  if (error) throw error;
+  if (!data?.ok || !Array.isArray(data.usernames)) throw new Error('Conversations could not be deleted. Please retry.');
+  return data as { ok: true; usernames: string[]; messagesDeleted: number; contactsDeleted: number };
+}
+
 export async function getUserDocument<T>(
   userId: string,
   subcollectionName: string,

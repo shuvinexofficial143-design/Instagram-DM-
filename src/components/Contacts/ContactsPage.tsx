@@ -21,6 +21,7 @@ import {
   Send,
   WandSparkles,
 } from 'lucide-react';
+import { auth } from '../../lib/supabase';
 import { useApp } from '../../context/AppContext';
 import {CustomerBadges,CustomerInsightPanel} from '../Common/CustomerInsight';
 import {customerStages} from '../../lib/customerInsights';
@@ -200,9 +201,11 @@ export const ContactsPage: React.FC = () => {
                 try {
                   let finalMessage = bulkMessage.trim();
                   if (bulkMode === 'ai') {
+                    const token=await auth.currentUser?.getIdToken();
+                    if(!token)throw new Error('Sign in again before generating a reply.');
                     const aiRes = await fetch('/api/openai/chat', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: { 'Content-Type': 'application/json',Authorization:`Bearer ${token}`,'X-Autoreply-Workspace':workspaceId },
                       body: JSON.stringify({
                         text: `Recipient Instagram username: @${String(username).replace(/^@/, '')}\nMessage goal/instruction: ${bulkMessage.trim()}\nWrite only the final DM text. Do not explain your answer.`,
                         systemInstruction: 'You write concise, natural Instagram direct messages. Follow the supplied message goal faithfully. Personalize only from facts explicitly provided and never invent personal details. Keep it useful and human, normally 1-3 short sentences. Do not mention AI or platform safeguards.',
