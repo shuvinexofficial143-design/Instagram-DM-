@@ -58,7 +58,7 @@ export default async function handler(req: any, res: any) {
       const plans = await billingDb(
         "autoreply_plans?select=id,name,price_inr,total_messages,ai_replies,instagram_accounts,automations_limit,billing_days,is_active,sort_order&is_active=eq.true&order=sort_order.asc",
       );
-      res.setHeader("Cache-Control", "public, max-age=0, s-maxage=30");
+      res.setHeader("Cache-Control", "no-store");
       return res.status(200).json({ ok: true, plans });
     }
     if (action === "webhook") {

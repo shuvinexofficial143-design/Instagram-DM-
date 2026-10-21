@@ -101,6 +101,14 @@ export const CheckoutPage: React.FC = () => {
     : quote !== undefined
       ? fmt(quote)
       : plan.price;
+  useEffect(() => {
+    if (!order) {
+      setQuote(undefined);
+      setEligible([]);
+      setStage(previous => previous === "methods" ? "confirm" : previous);
+    }
+  }, [plan.price]);
+
   const setupFailed = !paid && !closed &&
     ["rejected", "not_created"].includes(order?.creationStatus || "");
   const blocked = Boolean(
@@ -264,6 +272,17 @@ export const CheckoutPage: React.FC = () => {
             method,
         );
         setStage("pay");
+        return;
+      }
+      // Recheck the latest authoritative price before any new Cashfree order.
+      // Existing provider sessions keep their original amount.
+      const verified = await billingRequest("methods", { planId: requested });
+      const acceptedAmount = quote ?? Number(plan.price.replace(/[^0-9.]/g, ""));
+      if (!available || !Number.isFinite(acceptedAmount) || verified.amount !== acceptedAmount) {
+        setQuote(verified.amount);
+        setEligible(verified.methods);
+        setStage("confirm");
+        setError("The plan price has changed. Please review the updated total.");
         return;
       }
       await billingRequest("choose", { planId: requested, requestId: requestId.current });

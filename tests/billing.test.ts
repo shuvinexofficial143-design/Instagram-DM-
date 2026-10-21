@@ -32,6 +32,24 @@ test('public plan catalog reads admin prices from trusted storage without authen
  assert.equal(r.body.plans[0].ai_replies,1500);
  assert.ok(!JSON.stringify(r.body).includes('test-secret'));
 });
+test('a new Cashfree checkout uses the administrator-updated price, not the old browser amount', async()=>{
+ setup();
+ const changed={...order,amount_inr:399,checkout_state:'active'};
+ let charged=0;
+ globalThis.fetch=async(url:any,init:any)=>{
+  const path=String(url);
+  if(path.includes('/auth/'))return Response.json({id:uid});
+  if(path.includes('rpc/autoreply_reserve_billing_checkout'))return Response.json(changed);
+  if(path.includes('cashfree.com')){charged++;assert.equal(JSON.parse(init.body).order_amount,399);return Response.json({order_id:oid,payment_session_id:'session'});}
+  if(init?.method==='PATCH')return Response.json([{...changed,status:'pending'}]);
+  throw new Error('Unexpected payment request');
+ };
+ const r=res();
+ await handler(req('create','POST',{planId:'pro',amount:599,name:'Example Person',email:'person@example.test',phone:'9876543210',requestId:rid}),r);
+ assert.equal(r.code,200);
+ assert.equal(r.body.order.amount,399);
+ assert.equal(charged,1);
+});
 test('raw body signature rejects JSON reformatting, wrong key and missing signatures',()=>{
  const raw=Buffer.from('{"amount":599.00}'),ts='1791356400000',secret='secret';const sig=createHmac('sha256',secret).update(ts).update(raw).digest('base64');
  assert.equal(verifyCashfreeSignature(raw,ts,sig,secret),true);assert.equal(verifyCashfreeSignature(Buffer.from('{"amount":599}'),ts,sig,secret),false);assert.equal(verifyCashfreeSignature(raw,ts,sig,'other'),false);assert.equal(verifyCashfreeSignature(raw,ts,'',secret),false);

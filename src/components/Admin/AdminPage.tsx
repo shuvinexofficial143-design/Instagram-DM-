@@ -163,6 +163,7 @@ export const AdminPage: React.FC = () => {
       const result = await res.json();
       if (!res.ok || !result?.ok) throw new Error(result?.error || 'Plan update failed');
       await fetchPlatformData();
+      window.dispatchEvent(new Event('autoreply:plan-updated'));
     } finally { setSavingPlan(''); }
   };
 

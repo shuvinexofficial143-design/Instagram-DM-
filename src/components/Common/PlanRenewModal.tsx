@@ -24,10 +24,11 @@ export const PlanRenewModal: React.FC = () => {
           <p className="mt-2 text-sm font-semibold text-indigo-100">Upgrade your Instagram automation with clear monthly limits.</p>
         </header>
 
-        {current === 'free' && <div className="mx-auto mb-6 max-w-3xl rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm font-bold text-emerald-800">
+        {current === 'free' && usage.source === 'server' && <div className="mx-auto mb-6 max-w-3xl rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm font-bold text-emerald-800">
           Your unused Free allowance carries forward on your first paid upgrade: {freeMessagesLeft.toLocaleString()} standard replies and {freeAiLeft.toLocaleString()} independent AI replies.
         </div>}
 
+        {!catalog.synced && <p role="status" className="mb-5 text-center text-sm text-slate-600">{catalog.error || 'Loading current plans and prices…'}</p>}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {catalog.plans.map(plan => {
             const active = current === plan.id;
