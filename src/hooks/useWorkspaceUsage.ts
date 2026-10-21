@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { auth } from '../lib/supabase';
-import { ADMINISTRATOR_PLAN, getFallbackWorkspaceUsage, getPlanConfig } from '../lib/planUsage';
+import { ADMINISTRATOR_PLAN, getFallbackWorkspaceUsage, planFromEntitlement } from '../lib/planUsage';
 import { usePlanCatalog } from './usePlanCatalog';
 
 type ServerUsage = {
   ok?: boolean;
   plan?: string;
+  planName?: string;
+  priceInr?: number;
+  billingDays?: number;
   totalUsed?: number;
   aiUsed?: number;
   totalLimit?: number | null;
@@ -31,8 +34,9 @@ export const useWorkspaceUsage = () => {
   const { user, automations, inboxMessages } = useApp();
   const catalog=usePlanCatalog();
   const fallback = useMemo(
-    () => getFallbackWorkspaceUsage(user, automations || [], inboxMessages || []),
+    () => getFallbackWorkspaceUsage(user, automations || [], inboxMessages || [], catalog.plans),
     [
+      catalog.plans,
       user?.plan,
       user?.carry_forward_messages,
       user?.carry_forward_ai_replies,
@@ -89,15 +93,29 @@ export const useWorkspaceUsage = () => {
     };
 
     void load();
-    const timer = window.setInterval(() => void load(), 60000);
+    const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 60000);
+    const onFocus = () => void load();
+    const onVisible = () => { if (!document.hidden) void load(); };
+    const onPlanUpdated = () => {
+      billingUsageCache.delete(userId || '');
+      setRecord(null);
+      void load();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('autoreply:plan-updated', onPlanUpdated);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('autoreply:plan-updated', onPlanUpdated);
     };
   }, [userId, user?.plan, retryTick]);
 
   const unlimited = serverUsage?.unlimited === true;
-  const plan = unlimited ? ADMINISTRATOR_PLAN : getPlanConfig(serverUsage?.plan || fallback.plan.id,catalog.plans);
+  const plan = unlimited ? ADMINISTRATOR_PLAN : serverUsage
+    ? planFromEntitlement(serverUsage, catalog.plans) : fallback.plan;
   const freeBonusMessages = plan.id === 'free' ? 0 : Math.max(0, Number(serverUsage?.freeBonusMessages ?? (fallback.messageLimit - fallback.plan.messages)));
   const freeBonusAi = plan.id === 'free' ? 0 : Math.max(0, Number(serverUsage?.freeBonusAi ?? (fallback.aiLimit - fallback.plan.ai)));
   const baseMessageLimit = Number(serverUsage?.baseMessageLimit ?? plan.messages);
