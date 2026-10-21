@@ -19,16 +19,46 @@ export const ADMINISTRATOR_PLAN: PlanConfig = {
   ai: Infinity, accounts: Infinity, automations: null,
 };
 
-export const PLAN_CATALOG: PlanConfig[] = [
-  { id: 'free', name: 'Free', price: '₹0', messages: 1500, ai: 1500, accounts: 1, automations: 5 },
-  { id: 'starter', name: 'Starter', price: '₹299', messages: 7500, ai: 5000, accounts: 1, automations: null },
-  { id: 'pro', name: 'Pro', price: '₹599', messages: 25000, ai: 15000, accounts: 2, automations: null },
-  { id: 'business', name: 'Business', price: '₹1,299', messages: 75000, ai: 40000, accounts: 5, automations: null },
-];
+/** No hardcoded prices or quotas: these values come from Supabase. */
+export const PLAN_CATALOG: PlanConfig[] = [];
 
-export const getPlanConfig = (value?: string | null, catalog: PlanConfig[] = PLAN_CATALOG): PlanConfig => {
+export const getPlanConfig = (value?: string | null, catalog: PlanConfig[] = []): PlanConfig => {
   const key = String(value || 'free').toLowerCase();
-  return catalog.find((plan) => plan.id === key) || PLAN_CATALOG.find((plan) => plan.id === key) || PLAN_CATALOG[0];
+  const found = catalog.find((plan) => plan.id === key);
+  if (found) return found;
+  // Fail closed while the live catalog is unavailable, instead of showing stale prices.
+  const id = (['free', 'starter', 'pro', 'business'] as string[]).includes(key) ? key as PlanId : 'free';
+  return { id, name: 'Plan unavailable', price: '—', messages: 0, ai: 0, accounts: 0, automations: 0 };
+};
+
+export type PlanEntitlement = {
+  plan?: string;
+  planName?: string;
+  priceInr?: number;
+  billingDays?: number;
+  baseMessageLimit?: number;
+  baseAiLimit?: number;
+  accounts?: number | null;
+  automationLimit?: number | null;
+};
+
+/** An authenticated entitlement overrides stale public catalog data. */
+export const planFromEntitlement = (entitlement: PlanEntitlement, catalog: PlanConfig[] = []): PlanConfig => {
+  const listed = getPlanConfig(entitlement.plan, catalog);
+  const count = (value: number | null | undefined, fallback: number) =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+  return {
+    ...listed,
+    name: entitlement.planName || listed.name,
+    price: typeof entitlement.priceInr === 'number' && Number.isFinite(entitlement.priceInr)
+      ? '₹' + entitlement.priceInr.toLocaleString('en-IN') : listed.price,
+    messages: count(entitlement.baseMessageLimit, listed.messages),
+    ai: count(entitlement.baseAiLimit, listed.ai),
+    accounts: count(entitlement.accounts, listed.accounts),
+    automations: entitlement.automationLimit === null
+      ? null : count(entitlement.automationLimit, listed.automations ?? 0),
+    billingDays: count(entitlement.billingDays, listed.billingDays ?? 0) || undefined,
+  };
 };
 
 export const usagePercent = (used: number, limit: number | null): number => {
@@ -45,9 +75,10 @@ export const usageLevel = (pct: number): 'safe' | 'warning' | 'critical' => {
 export const getFallbackWorkspaceUsage = (
   user: UserProfile | undefined,
   automations: Automation[],
-  inboxMessages: InboxMessage[]
+  inboxMessages: InboxMessage[],
+  catalog: PlanConfig[] = []
 ) => {
-  const plan = getPlanConfig(user?.plan);
+  const plan = getPlanConfig(user?.plan, catalog);
   const expiry = Date.parse(String(user?.carry_forward_expires_at || ''));
   const carryActive = Number.isFinite(expiry) && expiry > Date.now();
   const messageLimit = plan.messages + (carryActive ? Number(user?.carry_forward_messages || 0) : 0);
