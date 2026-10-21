@@ -1,3 +1,5 @@
+import { safeImageUrl } from '../../supabase/functions/instagram-live-webhook/catalogRuntime';
+export { safeImageUrl as safeCatalogUrl };
 import { useEffect, useState } from 'react';
 import { auth, supabase, subscribeToUserCollection } from './supabase';
 export type Catalog = { id:string; name:string; description:string; active:boolean };
@@ -7,14 +9,14 @@ export const defaultCatalog:Catalog = {id:'default',name:'Main Catalog',descript
 export function catalogCards(products:CatalogProduct[]) {
  return products.filter(p=>p.active).flatMap(p=>(p.images||[]).map(image=>({image,title:p.name,subtitle:[p.price,p.description].filter(Boolean).join(' · '),url:p.url})));
 }
-export function catalogProblem(catalog:Catalog|undefined, products:CatalogProduct[]) {
+export function catalogProblem(catalog:Catalog|undefined, products:CatalogProduct[], ai=false) {
  if(!catalog) return 'This catalog no longer exists.';
  if(!catalog.active) return 'Activate this catalog before using it.';
  const active=products.filter(p=>p.active);
  if(!active.length) return 'Add an active product first.';
- if(active.some(p=>!p.name.trim()||!p.images?.length)) return 'Every active product needs a name and at least one image.';
- if(catalogCards(products).length>10) return 'Instagram allows up to 10 image cards per catalog message.';
- if(active.some(p=>p.images!.some(url=>!/^https:\/\//.test(url))||p.url&&!/^https:\/\//.test(p.url))) return 'Use secure HTTPS image and product links.';
+ if(active.some(p=>!p.name.trim())) return 'Every active product needs a name.';
+ if(!ai&&!catalogCards(products).length) return 'Add a product photo to send an Instagram catalog. AI can still use written product details.';
+ if(active.some(p=>(p.images||[]).some(url=>!safeImageUrl(url))||p.url&&!safeImageUrl(p.url))) return 'Use secure HTTPS image and product links.';
  return '';
 }
 export function useCatalogs(workspaceId:string) {

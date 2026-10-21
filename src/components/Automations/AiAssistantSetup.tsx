@@ -14,6 +14,7 @@ import {
   Smile,
   Video,
 } from "lucide-react";
+import { CatalogPreview } from "../Catalog/CatalogPicker";
 import { useApp } from "../../context/AppContext";
 import { GoogleSheetsSetup } from "./GoogleSheetsSetup";
 
@@ -27,6 +28,12 @@ export type AiAssistantSetupProps = {
   testError: string;
   testing: boolean;
   onTest: () => void;
+  testImage?:string;
+  testSentImage?:string;
+  testCatalog?:any;
+  testWarning?:string;
+  onTestImageChange?:(file:File|null)=>void;
+  onClearTest?:()=>void;
   dataControls?: React.ReactNode;
   promptTools: React.ReactNode;
   replySettings: React.ReactNode;
@@ -198,7 +205,7 @@ export const AiAssistantSetup = (p: AiAssistantSetupProps) => {
                     {p.testMessage && (
                       <div className="ai-ig-message-row ai-ig-message-row-user">
                         <div className="ai-ig-bubble ai-ig-bubble-user">
-                          {p.testMessage}
+                          {p.testSentImage&&<img src={p.testSentImage} alt="Customer test product" className="mb-2 max-h-40 max-w-full rounded-lg object-contain"/>}{p.testMessage}
                         </div>
                       </div>
                     )}
@@ -225,7 +232,7 @@ export const AiAssistantSetup = (p: AiAssistantSetupProps) => {
                           {avatar ? <img src={avatar} alt="" /> : <Bot />}
                         </span>
                         <div className="ai-ig-bubble ai-ig-bubble-business">
-                          {p.testReply}
+                          {p.testCatalog?.elements?.length?<CatalogPreview products={p.testCatalog.elements.map((card:any,i:number)=>({id:String(i),name:card.title,images:[card.image_url],description:card.subtitle||'',price:'',url:card.buttons?.[0]?.url||'',active:true}))}/>:p.testReply}
                         </div>
                       </div>
                     )}
@@ -244,25 +251,19 @@ export const AiAssistantSetup = (p: AiAssistantSetupProps) => {
                       p.onTest();
                     }}
                   >
-                    <button
-                      type="button"
-                      className="ai-ig-camera-button"
-                      tabIndex={-1}
-                      aria-hidden="true"
-                    >
-                      <Camera />
-                    </button>
+                    <label className="ai-ig-camera-button cursor-pointer" title="Test with a product photo"><Camera/><input aria-label="Test product image" type="file" accept="image/jpeg,image/png,image/webp" disabled={p.testing} className="sr-only" onChange={e=>{p.onTestImageChange?.(e.target.files?.[0]||null);e.target.value='';}}/></label>
                     <label className="sr-only" htmlFor="ai-test-message">
                       Test customer message
                     </label>
                     <input
                       id="ai-test-message"
+                      disabled={p.testing}
                       value={p.testInput}
                       onChange={(e) => p.onTestInputChange(e.target.value)}
                       placeholder="Message..."
                       autoComplete="off"
                     />
-                    {p.testInput.trim() ? (
+                    {p.testInput.trim()||p.testImage ? (
                       <button
                         type="submit"
                         className="ai-ig-send-button"
@@ -283,6 +284,9 @@ export const AiAssistantSetup = (p: AiAssistantSetupProps) => {
               </div>
             </div>
 
+            {p.testImage&&<div className="mt-3 flex items-center gap-3 text-xs"><img src={p.testImage} alt="Selected test product image" className="h-14 w-14 rounded-lg object-cover"/><span>Photo ready · Up to 2 MB</span><button disabled={p.testing} onClick={()=>p.onTestImageChange?.(null)} className="rounded-lg border px-2 py-1">Remove</button></div>}
+            {p.testWarning&&<p role="status" className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">{p.testWarning}</p>}
+            {p.onClearTest&&<button disabled={p.testing} onClick={p.onClearTest} className="mt-3 rounded-lg border px-3 py-2 text-xs">New test conversation</button>}
             <p className="ai-phone-preview-note">
               <Info size={15} /> Test messages stay inside this preview. AI test
               usage may count toward your allowance.

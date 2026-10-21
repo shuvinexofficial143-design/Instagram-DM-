@@ -259,14 +259,19 @@ function ensureOwner(userId: string) {
 
 async function readCollection<T extends { id?: string }>(userId: string, collection: string): Promise<T[]> {
   ensureOwner(userId);
+  // Catalogs can exceed PostgREST's default 1,000-row response cap.
+  if(['catalogs','catalog_products'].includes(collection)){
+    const rows:any[]=[];
+    for(let offset=0;offset<10000;offset+=500){
+      const {data,error}=await supabase.from('autoreply_documents').select('id,data').eq('user_id',userId).eq('collection',collection).order('id',{ascending:true}).range(offset,offset+499);
+      if(error)throw error;rows.push(...(data||[]));if((data||[]).length<500)return rows.map(row=>({...row.data,id:row.id} as T));
+    }
+    throw new Error('This workspace has too many catalog records. Please split it into smaller workspaces.');
+  }
   const { data, error } = await supabase
-    .from('autoreply_documents')
-    .select('id,data')
-    .eq('user_id', userId)
-    .eq('collection', collection)
-    .order('updated_at', { ascending: false });
+    .from('autoreply_documents').select('id,data').eq('user_id', userId).eq('collection', collection).order('updated_at', { ascending: false });
   if (error) throw error;
-  return (data || []).map((row: any) => ({ id: row.id, ...(row.data || {}) } as T));
+  return (data || []).map((row: any) => ({ ...(row.data || {}), id: row.id } as T));
 }
 
 export function subscribeToUserCollection<T extends { id?: string }>(

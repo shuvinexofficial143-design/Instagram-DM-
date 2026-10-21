@@ -10,7 +10,7 @@ const raw = await fs.readFile(
   ),
   "utf8",
 );
-const compiled = await transform(
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+
   raw.replace(/^import .*;\n/gm, "") +
     "\nglobalThis.customerHelpers={captureCustomerData,customerDataFields,isCustomerPurchaseReport};",
   { loader: "ts", format: "esm" },

@@ -6,7 +6,7 @@ import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform(source + '\nglobalThis.helpers = { extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog };', { loader: 'ts', format: 'esm' });
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+source + '\nglobalThis.helpers = { extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
@@ -25,7 +25,7 @@ function fixture(automations = [ai], options = {}) {
       const query = {
         select(value) { columns = value; return query; },
         eq(key, value) { filters[key] = value; return query; },
-        or() { return query; }, delete() { mutation = { deleted: true, ...filters }; return query; }, in() { return query; }, order() { return query; }, limit() { return query; },
+        or() { return query; }, delete() { mutation = { deleted: true, ...filters }; return query; }, in() { return query; }, order() { return query; }, range() { return query; }, limit() { return query; },
         upsert(value) { mutation = value; return query; }, update(value) { mutation = value; return query; },
         async maybeSingle() { return result(true); },
         then(resolve, reject) { return Promise.resolve(result(false)).then(resolve, reject); },
@@ -125,12 +125,12 @@ function fixture(automations = [ai], options = {}) {
     fetch: async (url, init = {}) => {
       const body = JSON.parse(init.body || '{}');
       if (String(url).includes('api.openai.com')) {
-        if(body.response_format?.type==='json_object')return Response.json({choices:[{message:{content:'{}'}}]});
+        if(body.response_format?.type==='json_object'){const vision=body.messages.some(m=>Array.isArray(m.content));if(vision&&options.visionFails)return Response.json({error:{message:'Image unavailable'}},{status:400});return Response.json({choices:[{message:{content:vision?JSON.stringify({description:'Silver watch with adjustable strap',uncertain:false}):'{}'}}]});}
         aiInputs.push(body.messages);
         if(options.handoff)return Response.json({choices:[{message:{tool_calls:[{function:{name:'handoff_to_human',arguments:options.malformedHandoff?'{bad-json':JSON.stringify({reason:'customer_requested',summary:'Customer wants a human',workspaceId:'forged-target'})}}]}}]});
         options.onAIStart?.(body);
         if (options.aiFails) return Response.json({ error: { message: 'AI outage' } }, { status: 503 });
-        return Response.json({ choices: [{ message: options.chooseCatalog ? {tool_calls:[{function:{name:'send_catalog',arguments:'{}'}}]} : { content: 'AI: ' + body.messages.at(-1).content } }] });
+        return Response.json({ choices: [{ message: options.photoSelections ? {tool_calls:[{id:'photos',type:'function',function:{name:'send_product_photos',arguments:JSON.stringify({selections:options.photoSelections})}}]} : options.chooseCatalog ? {tool_calls:[{function:{name:'send_catalog',arguments:JSON.stringify({page:options.catalogPage||1})}}]} : { content: 'AI: ' + body.messages.at(-1).content } }] });
       }
       if (String(url).includes('graph.instagram.com')) {
         apiCalls.push({ url: String(url), body, signal: init.signal });
@@ -579,9 +579,9 @@ test('AI can select an approved catalog without a second AI request; normal ques
  assert.equal(Boolean(sent[0].body.message.attachment),chooseCatalog);assert.ok(f.apiCalls.some(c=>c.body.sender_action==='typing_off'));
  }
 });
-test('missing, inactive, image-free and oversized catalogs cannot be sent',async()=>{
+test('missing, inactive, image-free and unsafe catalogs cannot be sent',async()=>{
  const rule=staticRule('dm');rule.actions=[{type:'send_dm',catalog_id:'watches'}];
- for(const options of [{catalogs:[],products:photoProducts},{catalogs:[{...photoCatalog[0],active:false}],products:photoProducts},{catalogs:photoCatalog,products:[{...photoProducts[0],images:[]}]},{catalogs:photoCatalog,products:[{...photoProducts[0],images:Array.from({length:11},(_,i)=>'https://images.example/'+i+'.jpg')}]},{catalogs:photoCatalog,products:[{...photoProducts[0],images:['http://unsafe.example/image.jpg']}]}]){
+ for(const options of [{catalogs:[],products:photoProducts},{catalogs:[{...photoCatalog[0],active:false}],products:photoProducts},{catalogs:photoCatalog,products:[{...photoProducts[0],images:[]}]},{catalogs:photoCatalog,products:[{...photoProducts[0],images:['http://unsafe.example/image.jpg']}]}]){
  const f=fixture([rule],options);await f.post(dm());assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
  }
 });
@@ -679,4 +679,36 @@ test('a manual pause and resume during generation invalidates the old AI answer 
  assert.equal((await f.post(dm())).body.results[0].reason,'conversation_control_changed');assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
  const stale={handoff:true,controlChanged:true};const h=fixture([ai],stale);assert.equal((await h.post(dm())).body.results[0].reason,'conversation_control_changed');
  assert.equal(h.writes.filter(w=>w.collection==='workspace_notices').length,0);
+});
+
+
+test('signed image-only DMs reach vision and Inbox and send only selected product photos',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',ai_system_instruction:'Sell watches',catalog_id:'watches'}]};
+ const f=fixture([rule],{catalogs:photoCatalog,products:photoProducts,photoSelections:[{product_id:'watch',image_indexes:[1]}],onAIStart:body=>assert.ok(Array.isArray(body.messages.at(-1).content))});
+ const event=dm('photo-only','');event.entry[0].messaging[0].message.attachments=[{type:'image',payload:{url:'https://images.example/customer.jpg'}}];
+ const result=await f.direct(event);assert.equal(result.status,200);
+ assert.ok(f.writes.some(w=>w.collection==='inbox_messages'&&w.data.image_urls?.[0]==='https://images.example/customer.jpg'));
+ const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,1);assert.equal(sent[0].body.message.attachment.payload.elements.length,1);assert.equal(sent[0].body.message.attachment.payload.elements[0].image_url,'https://images.example/back.jpg');
+});
+test('text-plus-image and changes payloads retain attachments; image echoes never trigger AI',()=>{
+ const f=fixture();const event=dm('image-and-text','Is this available?');event.entry[0].messaging[0].message.attachments=[{type:'image',payload:{url:'https://images.example/customer.jpg'}}];
+ let rows=f.helpers.extractAutomationEvents(event);assert.equal(rows.length,1);assert.equal(rows[0].images.length,1);assert.equal(rows[0].text,'Is this available?');
+ const value=event.entry[0].messaging[0];rows=f.helpers.extractAutomationEvents({entry:[{id:'business',changes:[{field:'messages',value}]}]});assert.equal(rows[0].images.length,1);
+ value.message.is_echo=true;assert.equal(f.helpers.extractAutomationEvents(event).length,0);
+});
+test('large AI catalogs can send later pages instead of failing the whole reply',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',ai_system_instruction:'Sell watches',catalog_id:'watches'}]};
+ const products=Array.from({length:16},(_,i)=>({...photoProducts[0],id:'watch_'+i,name:'Watch '+i,images:['https://images.example/'+i+'.jpg']}));
+ const f=fixture([rule],{catalogs:photoCatalog,products,chooseCatalog:true,catalogPage:2});await f.post(dm('next-page','Show more watches'));
+ const sent=f.apiCalls.find(c=>c.body.message);assert.equal(sent.body.message.attachment.payload.elements.length,6);assert.equal(sent.body.message.attachment.payload.elements[0].title,'Watch 10');
+});
+test('inactive catalog no longer replaces an ordinary AI answer with fallback',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',ai_system_instruction:'Our shop is in Ujjain',catalog_id:'watches'}]};
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],active:false}],products:photoProducts,onAIStart:body=>assert.equal(body.tools.length,1)});await f.post(dm('inactive-catalog','Where is your shop?'));
+ const sent=f.apiCalls.find(c=>c.body.message);assert.ok(sent.body.message.text.startsWith('AI:'));assert.notEqual(sent.body.message.text,'Fallback reply');
+});
+test('text-only catalog product remains in AI knowledge without a photo requirement',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',ai_system_instruction:'Sell watches',catalog_id:'watches'}]};
+ const f=fixture([rule],{catalogs:photoCatalog,products:[{...photoProducts[0],images:[]}],onAIStart:body=>assert.ok(body.messages[0].content.includes('₹399'))});await f.post(dm('text-product','What is the price?'));
+ assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);
 });

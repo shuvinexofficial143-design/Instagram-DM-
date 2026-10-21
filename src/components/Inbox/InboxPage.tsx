@@ -48,6 +48,11 @@ const emptyMeta = (id: string): ThreadMeta => ({
   updated_at: new Date().toISOString(),
 });
 
+function CustomerImage({url,index}:{url:string;index:number}) {
+ const [failed,setFailed]=useState(false);
+ return failed?<p className="rounded-lg bg-slate-100 p-3 text-xs text-slate-600">This Instagram image is no longer available. Ask the customer to resend it.</p>:<img src={url} alt={'Customer product image '+(index+1)} loading="lazy" referrerPolicy="no-referrer" onError={()=>setFailed(true)} className="max-h-64 max-w-full rounded-lg object-contain"/>;
+}
+
 export const InboxPage: React.FC = () => {
   const {
     workspaceId, inboxMessages, instagramAccount, contacts, firebaseUser, sendManualReply,
@@ -321,7 +326,7 @@ export const InboxPage: React.FC = () => {
                     const outgoing = message.direction === 'out';
                     return (
                       <div key={message.id} className={'flex flex-col ' + (outgoing ? 'items-end' : 'items-start')}>
-                        <div className={'max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm ' + (outgoing ? 'rounded-br-sm bg-indigo-600 text-white' : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800')}>{message.catalog_elements?.length?<CatalogPreview products={message.catalog_elements.map((card,i)=>({id:String(i),name:card.title,images:[card.image_url],description:card.subtitle||'',price:'',url:card.buttons?.[0]?.url||'',active:true}))}/>:message.message_text}</div>
+                        <div className={'max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm ' + (outgoing ? 'rounded-br-sm bg-indigo-600 text-white' : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800')}>{message.image_urls?.length?<div className="space-y-2">{message.image_urls.map((url,i)=><CustomerImage key={url} url={url} index={i}/>)}{message.message_text!=="[Customer sent an image]"&&<p>{message.message_text}</p>}</div>:message.catalog_elements?.length?<CatalogPreview products={message.catalog_elements.map((card,i)=>({id:String(i),name:card.title,images:[card.image_url],description:card.subtitle||'',price:'',url:card.buttons?.[0]?.url||'',active:true}))}/>:message.message_text}</div>
                         <span className="mt-1 px-1 text-xs font-medium text-slate-400">{new Date(message.timestamp).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}{outgoing && message.delivery_status ? ' · ' + message.delivery_status : ''}</span>
                       </div>
                     );

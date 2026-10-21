@@ -13,7 +13,7 @@ test('compiled API functions load in native Node ESM without a TS resolver', asy
     await fs.writeFile(path.join(root, 'package.json'), '{"type":"module"}');
     await fs.symlink(path.resolve('node_modules'), path.join(root,'node_modules'), 'dir');
     const files = [];
-    for (const folder of ['api','src/server']) {
+    for (const folder of ['api','src/server','supabase/functions/instagram-live-webhook']) {
       for (const entry of await fs.readdir(folder,{recursive:true})) {
         if (entry.endsWith('.ts')) files.push(path.join(folder,entry));
       }

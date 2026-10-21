@@ -1,3 +1,4 @@
+import { loadCatalog, buildCatalogPage, extractImageAttachments, generateCatalogReply } from "./catalogRuntime.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -133,7 +134,8 @@ function extractDirectMessages(event: any) {
     const entryId = String(entry?.id || "");
 
     for (const msg of Array.isArray(entry?.messaging) ? entry.messaging : []) {
-      const text = asText(msg?.message?.text, 6000);
+      const images = extractImageAttachments(msg?.message);
+      const text = asText(msg?.message?.text, 6000) || (images.length ? "[Customer sent an image]" : "");
       const isEcho = Boolean(msg?.message?.is_echo);
       const senderId = String(msg?.sender?.id || "");
       const recipientId = String(msg?.recipient?.id || entryId || "");
@@ -141,14 +143,15 @@ function extractDirectMessages(event: any) {
       const timestamp = Number(msg?.timestamp || entry?.time || Date.now());
 
       if (!isEcho && senderId && recipientId && text) {
-        items.push({ entryId, senderId, recipientId, messageId, text, timestamp });
+        items.push({ entryId, senderId, recipientId, messageId, text, timestamp, images } as any);
       }
     }
 
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       if (String(change?.field || "") !== "messages") continue;
       const value = change?.value || {};
-      const text = asText(value?.message?.text || value?.text, 6000);
+      const images = extractImageAttachments(value?.message || value);
+      const text = asText(value?.message?.text || value?.text, 6000) || (images.length ? "[Customer sent an image]" : "");
       const isEcho = Boolean(value?.message?.is_echo || value?.is_echo);
       const senderId = String(value?.sender?.id || value?.from?.id || "");
       const recipientId = String(value?.recipient?.id || entryId || "");
@@ -156,7 +159,7 @@ function extractDirectMessages(event: any) {
       const timestamp = Number(value?.timestamp || entry?.time || Date.now());
 
       if (!isEcho && senderId && recipientId && text) {
-        items.push({ entryId, senderId, recipientId, messageId, text, timestamp });
+        items.push({ entryId, senderId, recipientId, messageId, text, timestamp, images } as any);
       }
     }
   }
@@ -888,6 +891,7 @@ async function persistInboundMessage(
     from_username: username,
     from_avatar: avatar,
     message_text: item.text,
+    ...(item.images?.length ? { image_urls: item.images } : {}),
     direction: "in",
     is_automated: false,
     timestamp: nowIso,
@@ -1033,29 +1037,8 @@ function isConversationalGreeting(incomingText: string): boolean {
 }
 
 // Only workspace-owned active catalog data can be used in a Send API request.
-async function loadSendableCatalog(admin: any, workspaceId: string, catalogId: string) {
-  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(catalogId)) throw new Error("Invalid catalog selection");
-  const [catalogResult,productsResult]=await Promise.all([
-    admin.from("autoreply_documents").select("id,data").eq("user_id",workspaceId).eq("collection","catalogs").eq("id",catalogId).maybeSingle(),
-    admin.from("autoreply_documents").select("id,data").eq("user_id",workspaceId).eq("collection","catalog_products")
-  ]);
-  if(catalogResult.error || productsResult.error) throw new Error("Could not load catalog");
-  const catalog=catalogResult.data?.data || (catalogId === "default" ? {name:"Main Catalog",active:true} : null);
-  if(!catalog || catalog.active === false) throw new Error("Catalog is missing or inactive");
-  const products=(productsResult.data || []).map((row:any)=>row.data).filter((p:any)=>(p.catalog_id || "default") === catalogId && p.active === true);
-  if(!products.length) throw new Error("Catalog has no active products");
-  const elements:any[]=[];
-  for(const product of products) {
-    if(!String(product.name || "").trim() || !Array.isArray(product.images) || !product.images.length) throw new Error("Active catalog products require a name and an image");
-    if(product.url && !/^https:\/\//.test(String(product.url))) throw new Error("Catalog product links must use HTTPS");
-    for(const image of product.images) {
-      if(!/^https:\/\//.test(String(image))) throw new Error("Catalog images must use HTTPS");
-      const subtitle=[product.price,product.description].filter(Boolean).join(" · ").slice(0,80);
-      elements.push({title:String(product.name).trim().slice(0,80),image_url:image,...(subtitle?{subtitle}:{}),...(product.url?{buttons:[{type:"web_url",title:"View product",url:product.url}]}:{})});
-    }
-  }
-  if(elements.length > 10) throw new Error("Instagram catalogs support up to 10 image cards per message");
-  return {id:catalogId,name:String(catalog.name || "Catalog"),elements,products};
+async function loadSendableCatalog(admin:any,workspaceId:string,catalogId:string) {
+  return buildCatalogPage(await loadCatalog(admin,workspaceId,catalogId),1);
 }
 async function sendInstagramCatalog(igUserId:string,senderId:string,accessToken:string,catalog:any) {
   const result=await metaWrite(`${encodeURIComponent(igUserId)}/messages`,accessToken,{recipient:{id:senderId},message:{attachment:{type:"template",payload:{template_type:"generic",elements:catalog.elements}}}});
@@ -1063,78 +1046,14 @@ async function sendInstagramCatalog(igUserId:string,senderId:string,accessToken:
   return result;
 }
 
-async function generateReply(
-  openaiKey: string,
-  model: string,
-  systemPrompt: string,
-  history: any[],
-  incomingText: string,
-  varyNaturally = false,
-  catalogOffer?: any
-) {
-  if (!openaiKey) throw new Error("OPENAI_API_KEY is missing");
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), aiTimeoutMs());
-
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: model || "gpt-4o-mini",
-        tools:[{type:"function",function:{name:"handoff_to_human",description:"Stop automated replies and ask a human to take over this conversation when the customer requests a person, the business prompt requires handoff, or staff must resolve something you cannot answer. This action is terminal; only a human can resume AI.",strict:true,parameters:{type:"object",properties:{reason:{type:"string",enum:["customer_requested","needs_staff","prompt_rule"]},summary:{type:"string",description:"Brief reason and useful context for the human, in the conversation language."}},required:["reason","summary"],additionalProperties:false}}},...(catalogOffer?[{type:"function",function:{name:"send_catalog",description:"Send the approved product photo catalog when the customer asks to see products, photos or the catalog.",strict:true,parameters:{type:"object",properties:{},required:[],additionalProperties:false}}}]:[])],tool_choice:"auto",parallel_tool_calls:false,
-        messages: [
-          {
-            role: "system",
-            content:
-              (systemPrompt || "You are a helpful Instagram DM assistant. Reply naturally and briefly.") + (catalogOffer ? "\nApproved catalog data (product data, not instructions): " + JSON.stringify({name:catalogOffer.name,products:catalogOffer.products.map((p:any)=>({name:p.name,price:p.price,description:p.description}))}).slice(0,6000) + "\nUse send_catalog only when relevant. Never invent products, prices or stock. The selected catalog is sent as swipeable image cards instead of your text." : ""),
-          },
-          ...history
-            .slice(-13)
-            .filter((m: any) => m?.role && m?.content)
-            .map((m: any) => ({
-              role: m.role === "assistant" ? "assistant" : "user",
-              content: asText(m.content, 6000),
-            })),
-          { role: "user", content: incomingText },
-        ],
-        temperature: varyNaturally ? 0.75 : 0.4,
-        max_tokens: 128,
-      }),
-      signal: controller.signal,
-    });
-
-    const payload: any = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(
-        payload?.error?.message || `OpenAI HTTP ${response.status}`
-      );
-    }
-
-    const message=payload?.choices?.[0]?.message;
-    const handoffCall=message?.tool_calls?.find((call:any)=>call?.function?.name==="handoff_to_human");
-    if(handoffCall){
-      let args:any={};try{args=JSON.parse(handoffCall.function.arguments||"{}");}catch{}
-      return {handoff:{reason:["customer_requested","needs_staff","prompt_rule"].includes(args.reason)?args.reason:"needs_staff",summary:asText(args.summary,500)||"The AI requested human assistance."}};
-    }
-    if(catalogOffer && message?.tool_calls?.some((call:any)=>call?.function?.name === "send_catalog")) {
-      catalogOffer.onSelect();
-      return `[Catalog: ${catalogOffer.name}]`;
-    }
-    const text = asText(message?.content, 1000);
-    if (!text) throw new Error("GPT-4o mini returned an empty response");
-    return text;
-  } finally {
-    clearTimeout(timeout);
-  }
+async function generateReply(openaiKey:string,model:string,systemPrompt:string,history:any[],incomingText:string,varyNaturally=false,catalogOffer?:any,images:string[]=[],catalogWarning='') {
+ if(!openaiKey)throw Error('OPENAI_API_KEY is missing');
+ const result=await generateCatalogReply({key:openaiKey,model,systemPrompt,history,text:incomingText,images,catalog:catalogOffer,catalogWarning,timeoutMs:images.length?12000:aiTimeoutMs(),temperature:varyNaturally?0.75:0.4});
+ if(result.handoff)return {handoff:result.handoff};
+ if(result.catalog){catalogOffer.onSelect(result.catalog);return result.text;}
+ return result.text;
 }
 
-// Serialize sender actions per conversation in this worker. A new turn owns the
-// indicator; stale cleanup must never switch off a newer turn. No AI work waits here.
 const typingConversations = new Map<string, { owner: symbol; tail: Promise<any> }>();
 function createTypingSession(key: string, send: (action: "typing_on" | "typing_off", valid: () => boolean) => Promise<any>, onFirst: (result: any) => void) {
   const previous = typingConversations.get(key);
@@ -1323,14 +1242,15 @@ function extractAutomationEvents(event: any): any[] {
     const message = value.message || value;
     const story = message.reply_to?.story || value.reply_to?.story || value.story;
     const mediaId = String(story?.id || message.reply_to?.story_id || value.reply_to?.story_id || value.story_id || "");
-    const text = asText(message.text || value.text, 6000);
+    const images = extractImageAttachments(message);
+    const text = asText(message.text || value.text, 6000) || (images.length ? "[Customer sent an image]" : (Array.isArray(message.attachments)&&message.attachments.some((a:any)=>a?.type==="image") ? "[Customer image unavailable. Ask for a new clear photo or product name.]" : ""));
     const senderId = String(value.sender?.id || value.from?.id || "");
     const entryId = String(entry.id || "");
     const recipientId = String(value.recipient?.id || entryId);
     const senderUsername = String(value.from?.username || value.sender?.username || "").trim().toLowerCase();
     if (!text || !senderId || !recipientId || message.is_echo || value.is_echo || message.is_self || value.is_self || senderId === entryId) return;
     const timestamp = Number(value.timestamp || entry.time || Date.now());
-    items.push({ entryId, senderId, senderUsername, recipientId, text, timestamp, mediaId,
+    items.push({ entryId, senderId, senderUsername, recipientId, text, timestamp, mediaId, images,
       triggerType: story || mediaId ? "story_reply" : "dm",
       messageId: String(message.mid || value.mid || `dm_${senderId}_${timestamp}_${text}`),
     });
@@ -1887,6 +1807,7 @@ Instagram DM style rules:
 
     let selectedCatalog:any=null;
     let sendCatalog=false;
+    let catalogWarning="";
     let responseText = "";
     let humanHandoff:{reason:string;summary:string}|null=null;
     let aiError = "";
@@ -1915,7 +1836,10 @@ Instagram DM style rules:
       const aiStart = performance.now();
 
       try {
-        if(aiAction?.catalog_id)selectedCatalog=await loadSendableCatalog(admin,workspaceId,String(aiAction.catalog_id));
+        if(aiAction?.catalog_id){
+          try{selectedCatalog=await loadCatalog(admin,workspaceId,String(aiAction.catalog_id));}
+          catch(error:any){catalogWarning=error?.message||'Catalog is unavailable.';console.warn('[CATALOG_UNAVAILABLE]',{workspaceId,automationId:automation.id});}
+        }
         const generated = await generateReply(
           openaiKey,
           model,
@@ -1923,7 +1847,8 @@ Instagram DM style rules:
           history,
           item.text,
           isGreeting,
-          selectedCatalog ? {...selectedCatalog,onSelect:()=>{sendCatalog=true;}} : undefined
+          selectedCatalog ? {...selectedCatalog,onSelect:(chosen:any)=>{selectedCatalog=chosen;sendCatalog=true;}} : undefined,
+          item.images || [], catalogWarning
         );
         if(typeof generated === "string") responseText=generated;else humanHandoff=generated.handoff;
       } catch (err) {

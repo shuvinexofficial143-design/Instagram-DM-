@@ -131,6 +131,7 @@ export interface Contact {
 }
 
 export interface InboxMessage {
+  image_urls?: string[];
   catalog_id?: string;
   catalog_name?: string;
   catalog_elements?: Array<{title:string;image_url:string;subtitle?:string;buttons?:Array<{url:string}>}>;

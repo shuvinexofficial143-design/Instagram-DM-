@@ -6,7 +6,7 @@ import { transform } from 'esbuild';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8'))
   .replace(/^import .*;\n/gm, '');
-const compiled = await transform(source + '\nglobalThis.helpers = { getPlanQuota, aiTimeoutMs, canReuseSharedReply, sendInstagramText };', { loader: 'ts', format: 'esm' });
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+source + '\nglobalThis.helpers = { getPlanQuota, aiTimeoutMs, canReuseSharedReply, sendInstagramText };', { loader: 'ts', format: 'esm' });
 function runtime(fetch = globalThis.fetch, env = {}) {
   const context = vm.createContext({ console, fetch, AbortSignal, setTimeout, clearTimeout, performance, crypto: globalThis.crypto,
     Deno: { env: { get: key => env[key] }, serve() {} } });

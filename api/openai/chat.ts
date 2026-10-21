@@ -1,3 +1,6 @@
+import { createClient } from '@supabase/supabase-js';
+import { authenticatedWorkspace, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../src/server/supabaseConfig.js';
+import { loadCatalog, generateCatalogReply, safeImageUrl } from '../../supabase/functions/instagram-live-webhook/catalogRuntime.js';
 import { typedFetch as httpFetch } from '../../src/server/typedFetch.js';
 import { enforceRateLimit, resolveAiIdentity } from '../_auth.js';
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
@@ -60,6 +63,22 @@ export default async function handler(req: any, res: any) {
       error: 'OPENAI_API_KEY is not configured in Vercel.',
       code: 'OPENAI_KEY_MISSING',
     });
+  }
+
+  if(req.body?.previewMode==='catalog') {
+    try {
+      const workspace=await authenticatedWorkspace(req);
+      if(!workspace)return res.status(401).json({ok:false,error:'Sign in before testing product replies.'});
+      const image=String(req.body?.image||'');
+      if(image&&!safeImageUrl(image,true))return res.status(400).json({ok:false,error:'Choose a JPG, PNG or WebP image up to 2 MB.'});
+      const input=String(req.body?.text||'').trim().slice(0,6000);
+      if(!input&&!image)return res.status(400).json({ok:false,error:'Enter a message or choose a product image.'});
+      const client=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{global:{headers:{Authorization:String(req.headers.authorization)}},auth:{persistSession:false,autoRefreshToken:false}});
+      let catalog=null,warning='';
+      if(req.body?.catalogId){try{catalog=await loadCatalog(client,workspace.id,String(req.body.catalogId));}catch(error:any){warning=error?.message||'Catalog could not be loaded.';}}
+      const result=await generateCatalogReply({key:OPENAI_API_KEY,model:OPENAI_MODEL,systemPrompt:String(req.body.systemInstruction||'Reply helpfully about this business.').slice(0,12000),history:cleanHistory(req.body.history),text:input,images:image?[image]:[],catalog,catalogWarning:warning,timeoutMs:12000,maxTokens:250,fetcher:httpFetch});
+      return res.status(200).json({ok:true,previewOnly:true,reply:result.handoff?'A human handoff would be requested.':result.text,catalog:result.catalog?{id:result.catalog.id,name:result.catalog.name,elements:result.catalog.elements,page:result.catalog.page,pages:result.catalog.pages}:null,warning:result.warning||warning,handoff:Boolean(result.handoff)});
+    }catch(error:any){return res.status(error.status||503).json({ok:false,error:'AI preview could not be completed. Please retry.'});}
   }
 
   const input = String(req.body?.text || '').trim();

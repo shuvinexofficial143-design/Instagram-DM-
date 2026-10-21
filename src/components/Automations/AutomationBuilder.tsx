@@ -24,7 +24,7 @@ export const AutomationBuilder:React.FC=()=>{
  const{workspaceId,isBuilderOpen,setIsBuilderOpen,editingAutomation,setEditingAutomation,automations,createAutomation,updateAutomation}=useApp();
  const[catalogId,setCatalogId]=useState('');
  const catalogData=useCatalogs(workspaceId);
- const catalogError=catalogId?catalogProblem(catalogData.catalogs.find(c=>c.id===catalogId),catalogData.products.filter(p=>(p.catalog_id||'default')===catalogId)):'';
+
  const[step,setStep]=useState(1); const[name,setName]=useState(''); const[type,setType]=useState<TriggerType|null>(null);
  const[mode,setMode]=useState<'all'|'keywords'>('all'); const[keywords,setKeywords]=useState<string[]>([]); const[kw,setKw]=useState('');
  const[message,setMessage]=useState(''); const[buttons,setButtons]=useState<{label:string;url:string}[]>([]);
@@ -34,8 +34,11 @@ export const AutomationBuilder:React.FC=()=>{
  const[language,setLanguage]=useState(()=>readBuilderPreference('autoreply_default_ai_language','Auto detect')); const[tone,setTone]=useState(()=>readBuilderPreference('autoreply_default_ai_tone','Friendly')); const[handoff,setHandoff]=useState(true); const[advanced,setAdvanced]=useState(false);
  const[delaySeconds,setDelaySeconds]=useState(0); const[tagName,setTagName]=useState(''); const[autoLikeComment,setAutoLikeComment]=useState(false);
  const[testMessage,setTestMessage]=useState(''); const[testError,setTestError]=useState(''); const[testInput,setTestInput]=useState(''); const[testReply,setTestReply]=useState(''); const[testing,setTesting]=useState(false); const[error,setError]=useState('');
+ const[testImage,setTestImage]=useState(''),[testSentImage,setTestSentImage]=useState('');const[testCatalog,setTestCatalog]=useState<any>(null);const[testWarning,setTestWarning]=useState('');const[testHistory,setTestHistory]=useState<any[]>([]);const previewVersion=useRef(0);
+ useEffect(()=>{previewVersion.current++;setTestImage('');setTestSentImage('');setTestCatalog(null);setTestHistory([]);setTestWarning('');setTestReply('');setTestMessage('');setTesting(false);},[workspaceId,catalogId,aiPrompt,isBuilderOpen]);
  const[builderId,setBuilderId]=useState('');
  const[saving,setSaving]=useState(false);const saveInFlight=useRef(false);
+ const catalogError=catalogId?catalogProblem(catalogData.catalogs.find(c=>c.id===catalogId),catalogData.products.filter(p=>(p.catalog_id||'default')===catalogId),type==='dm_ai_conversation'):'';
  const[dataEnabled,setDataEnabled]=useState(true); const[dataFields,setDataFields]=useState<string[]>(['Name','Phone','Email','City','Product']);
 
  useEffect(()=>{if(!isBuilderOpen)return;
@@ -79,7 +82,18 @@ export const AutomationBuilder:React.FC=()=>{
   catch(error:any){setError(error?.message||'Automation could not be saved. Your draft is still open. Please retry.');}
   finally{saveInFlight.current=false;setSaving(false);}
  };
- const testAI=async()=>{if(!testInput.trim()||testing||!aiPrompt.trim())return;setTestMessage(testInput.trim());setTestError('');setTesting(true);setTestReply('');try{const token=await(await import('../../lib/supabase')).auth.currentUser?.getIdToken();const r=await fetch('/api/openai/chat',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},credentials:'same-origin',body:JSON.stringify({text:testInput,history:[],systemInstruction:aiPrompt+(catalogId?'\nApproved product catalog: '+JSON.stringify(catalogData.products.filter(p=>(p.catalog_id||'default')===catalogId&&p.active).map(p=>({name:p.name,price:p.price,description:p.description}))):''),personality:tone,language,maxReplyLength:'Short'})});const p=await r.json();if(!r.ok||!p?.ok)throw new Error(p?.error||'AI test failed');setTestReply(p.reply||'');}catch(e:any){setTestError(e?.message||'AI test failed. Please try again.');}finally{setTesting(false)}};
+ const chooseTestImage=(file:File|null)=>{setTestError('');if(!file){setTestImage('');return;}if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>2*1024*1024){setTestError('Choose a JPG, PNG or WebP image up to 2 MB.');return;}const version=previewVersion.current;const reader=new FileReader();reader.onload=()=>{if(version===previewVersion.current)setTestImage(String(reader.result||''));};reader.onerror=()=>setTestError('Image could not be opened.');reader.readAsDataURL(file);};
+ const testAI=async()=>{
+  if((!testInput.trim()&&!testImage)||testing||!aiPrompt.trim())return;
+  const version=previewVersion.current,message=testInput.trim(),image=testImage;setTestMessage(message||'Product image');setTestSentImage(image);setTestError('');setTestWarning('');setTesting(true);setTestReply('');setTestCatalog(null);
+  try{
+   const token=await(await import('../../lib/supabase')).auth.currentUser?.getIdToken();
+   const r=await fetch('/api/openai/chat',{method:'POST',signal:AbortSignal.timeout(50000),headers:{'Content-Type':'application/json','X-Autoreply-Workspace':workspaceId,...(token?{Authorization:'Bearer '+token}:{})},credentials:'same-origin',body:JSON.stringify({previewMode:'catalog',catalogId,image,text:message,history:testHistory,systemInstruction:aiPrompt+'\nTone: '+tone+'. Language: '+language+'.'})});
+   const payload=await r.json();if(version!==previewVersion.current)return;if(!r.ok||!payload?.ok)throw Error(payload?.error||'AI preview failed.');
+   setTestReply(payload.reply||'');setTestCatalog(payload.catalog||null);setTestWarning(payload.warning||'');setTestHistory(previous=>[...previous,{role:'user',content:message||'[Customer sent a product image]'},{role:'assistant',content:payload.reply||''}].slice(-12));setTestInput('');setTestImage('');
+  }catch(error:any){if(version===previewVersion.current)setTestError(error?.message||'AI test failed. Please retry.');}finally{if(version===previewVersion.current)setTesting(false);}
+ };
+
 
  return <div id="automation-builder-dialog" role="dialog" aria-modal="true" aria-label="Automation builder" className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-0 backdrop-blur-sm sm:p-5">
   <div className="mx-auto min-h-screen max-w-6xl bg-[#F8FAFD] sm:min-h-0 sm:rounded-[24px] sm:border sm:border-slate-200 sm:shadow-2xl">
@@ -98,6 +112,7 @@ export const AutomationBuilder:React.FC=()=>{
     </Panel>}
     {step===3&&type==='dm_ai_conversation'&&<AiAssistantSetup
       prompt={aiPrompt} onPromptChange={value=>{setAiPrompt(value);setTestReply('');setTestMessage('');setTestError('');}}
+      testImage={testImage} testSentImage={testSentImage} onTestImageChange={chooseTestImage} testCatalog={testCatalog} testWarning={testWarning} onClearTest={()=>{previewVersion.current++;setTestHistory([]);setTestImage('');setTestSentImage('');setTestCatalog(null);setTestReply('');setTestMessage('');setTestWarning('');setTestError('');setTesting(false);}}
       testInput={testInput} onTestInputChange={setTestInput} testMessage={testMessage} testReply={testReply} testError={testError} testing={testing} onTest={testAI}
       promptTools={<SmartPromptAnalyzer currentPrompt={aiPrompt} onApplyStructuredPrompt={value=>{setAiPrompt(value);setTestReply('');setTestMessage('');}} onAnalysisComplete={r=>{if(r.customer_data_fields?.length)setDataFields(r.customer_data_fields.slice(0,30));}}/>}
       dataControls={<DataCaptureSetup enabled={dataEnabled} onEnabledChange={setDataEnabled} fields={dataFields} onFieldsChange={setDataFields}/>}

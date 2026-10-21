@@ -1,3 +1,4 @@
+import openaiChatHandler from './api/openai/chat.js';
 import adminHandler, { configuredAdminEmails, isConfiguredAdmin } from './src/server/adminAccess';
 import workspaceDataHandler from './api/workspace-data';
 import automationsHandler from './api/automations';
@@ -135,7 +136,8 @@ async function startServer() {
 
   app.all('/api/billing', billingHandler);
   app.all('/api/usage', usageHandler);
-  app.use(express.json());
+  app.use(express.json({limit:'4mb'}));
+  app.all('/api/openai/chat', openaiChatHandler);
   app.use(express.urlencoded({ extended: true }));
   app.all('/api/workspace-data', workspaceDataHandler);
   app.all('/api/automations', automationsHandler);
