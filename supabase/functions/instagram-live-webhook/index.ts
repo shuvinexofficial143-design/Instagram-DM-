@@ -800,7 +800,7 @@ async function getSenderProfile(
       `https://graph.instagram.com/${GRAPH_VERSION}/${encodeURIComponent(
         senderId
       )}?${params.toString()}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
+      { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(5000) }
     );
 
     const payload: any = await response.json().catch(() => null);
@@ -909,7 +909,7 @@ async function persistInboundMessage(
         },
         { onConflict: "user_id,collection,id" }
       ),
-    admin
+    countInteraction ? admin
       .from("autoreply_documents")
       .upsert(
         {
@@ -919,7 +919,7 @@ async function persistInboundMessage(
           data: inbox,
         },
         { onConflict: "user_id,collection,id" }
-      ),
+      ) : Promise.resolve({error:null}),
   ]);
 
   if (contactResult.error) {
@@ -931,6 +931,12 @@ async function persistInboundMessage(
   }
 
   if (!contactResult.error) {
+    if (!countInteraction && canMatchUsername) {
+      const {error} = await admin.rpc("autoreply_enrich_instagram_contact", {
+        p_workspace:workspaceId,p_sender:senderId,p_username:username,p_avatar:avatar,
+      });
+      if(error)console.warn("[INBOUND_CONTACT_ENRICH_FAILED]",error.code);
+    }
     for (const duplicate of matches.filter((row: any) => row.id !== canonicalId)) {
       // Keep a recoverable copy before removing a redundant contact. Messages
       // retain their original IDs and timestamps for conversation history.
@@ -1525,7 +1531,19 @@ Deno.serve(async (req: Request) => {
       p_message_id:item.messageId,p_text:item.text,p_timestamp:new Date(item.timestamp).toISOString(),p_is_echo:item.echo,
     });
     if(error)return reply(503,{ok:false,error:"Outgoing conversation context could not be saved"});
-    if(data?.recorded)outgoingSaved++;
+    if(data?.recorded) {
+      outgoingSaved++;
+      if (!data.duplicate && data.workspace_id) runInBackground((async () => {
+        const {data: connection} = await admin.from("autoreply_instagram_tokens").select("account").eq("user_id",data.workspace_id).maybeSingle();
+        if (!connection?.account?.access_token) return;
+        const profile = await getSenderProfile(item.recipientId, connection.account.access_token);
+        if (/^\d+$/.test(profile.username)) return;
+        const {error: enrichmentError} = await admin.rpc("autoreply_enrich_instagram_contact", {
+          p_workspace:data.workspace_id,p_sender:item.recipientId,p_username:profile.username,p_avatar:profile.avatar_url,
+        });
+        if (enrichmentError) console.warn("[OUTBOUND_CONTACT_ENRICH_FAILED]", enrichmentError.code);
+      })());
+    }
   }
   const messages = extractAutomationEvents(event);
   if (!messages.length) {
@@ -1599,7 +1617,7 @@ Deno.serve(async (req: Request) => {
     };
 
     try {
-      context = await loadDmContext(admin, [item.entryId, item.recipientId], item.messageId, "", item.senderId, true);
+      context = await loadDmContext(admin, [item.entryId || item.recipientId], item.messageId, "", item.senderId, true);
     } catch {
       results.push({ messageId: item.messageId, ok: false, reason: "context_lookup_failed" });
       continue;
@@ -1626,6 +1644,11 @@ Deno.serve(async (req: Request) => {
         item.entryId ||
         item.recipientId
     );
+    const businessAliases = [igUserId, account.ig_scoped_id, account.id, account.user_id, ...(account.own_sender_ids || [])].map(String);
+    if (item.entryId && !businessAliases.includes(item.entryId)) {
+      results.push({ messageId: item.messageId, ok: true, ignored: true, reason: "foreign_business_entry" });
+      continue;
+    }
     const accessToken = cleanToken(account?.access_token);
     const messageState = String(context?.message_state || "new");
 
@@ -1658,9 +1681,9 @@ Deno.serve(async (req: Request) => {
     // without is_echo. Accept only events addressed to this business; never
     // suppress a real customer's message just because its text matches a reply.
     const ownSenderIds = Array.isArray(account.own_sender_ids) ? account.own_sender_ids.map(String) : [];
-    if (item.senderId === igUserId || ownSenderIds.includes(item.senderId) ||
+    if (businessAliases.includes(item.senderId) || ownSenderIds.includes(item.senderId) ||
         (item.senderUsername && item.senderUsername === String(account.username || "").toLowerCase()) ||
-        (item.triggerType !== "comment" && item.recipientId !== String(item.entryId) && item.recipientId !== igUserId)) {
+        (item.triggerType !== "comment" && !businessAliases.includes(item.recipientId))) {
       results.push({ messageId: item.messageId, ok: true, ignored: true, reason: "outgoing_message" });
       continue;
     }

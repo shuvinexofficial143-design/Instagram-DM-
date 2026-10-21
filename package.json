@@ -10,7 +10,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:ui": "node tests/ui-regressions.mjs",
-    "test:connections": "node --import tsx --test tests/connections.test.ts tests/automation-save.test.ts tests/manual-reply.test.ts tests/catalog-runtime.test.ts tests/catalog-preview.test.ts tests/instagram-reconnect.test.ts tests/instagram-account-api.test.ts tests/api-esm.test.mjs tests/sheets-recovery.test.ts tests/sheets-toggle.test.tsx",
+    "test:connections": "node --import tsx --test tests/connections.test.ts tests/automation-save.test.ts tests/manual-reply.test.ts tests/inbox-identity.test.ts tests/catalog-runtime.test.ts tests/catalog-preview.test.ts tests/instagram-reconnect.test.ts tests/instagram-account-api.test.ts tests/api-esm.test.mjs tests/sheets-recovery.test.ts tests/sheets-toggle.test.tsx",
     "test:dm": "node --test tests/dm-runtime.test.mjs",
     "test:queue": "node --import tsx --test tests/webhook-queue.test.ts",
     "test:security": "node --import tsx --test tests/guest-store-auth.test.mjs",

@@ -9,6 +9,7 @@ import { useApp } from '../../context/AppContext';
 import { supabase, auth, removeUserDocument, saveUserDocument, subscribeToUserCollection } from '../../lib/supabase';
 import {CustomerBadges,CustomerInsightPanel} from '../Common/CustomerInsight';
 import {customerStages} from '../../lib/customerInsights';
+import { buildInboxThreads } from '../../lib/inboxIdentity';
 import { UserAvatar } from '../Common/UserAvatar';
 
 type ThreadStatus = 'open' | 'pending' | 'resolved';
@@ -96,39 +97,32 @@ export const InboxPage: React.FC = () => {
   const metaMap = useMemo(() => new Map(metas.map((item) => [cleanKey(item.id), item])), [metas]);
   const myUsername = cleanKey(instagramAccount?.username || '');
 
-  const groupedUsers = useMemo(() => {
-    const users = new Set<string>();
-    for (const message of inboxMessages || []) {
-      if (message.is_test) continue;
-      const value = message.from_username || message.from_ig_id || '';
-      const key = cleanKey(value);
-      if (key && key !== myUsername && !key.startsWith('user_') && !key.includes('test_user')) users.add(value.replace(/^@/, ''));
-    }
-    for (const contact of contacts || []) {
-      if (contact.is_test) continue;
-      const value = contact.ig_username || contact.ig_user_id || '';
-      const key = cleanKey(value);
-      if (key && key !== myUsername && !key.startsWith('user_') && !key.includes('test_user')) users.add(value.replace(/^@/, ''));
-    }
-    return [...users];
-  }, [inboxMessages, contacts, myUsername]);
-
-  const summaryFor = (username: string) => {
-    const key = cleanKey(username);
-    const messages = (inboxMessages || [])
-      .filter((m) => cleanKey(m.from_username || m.from_ig_id || '') === key)
-      .sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
-    const unread = messages.filter((m) => m.direction === 'in' && !m.is_read).length;
-    return { messages, last: messages[0], unread };
+  const threads = useMemo(() => buildInboxThreads(inboxMessages || [], contacts || [], myUsername), [inboxMessages, contacts, myUsername]);
+  const threadFor = (key: string) => {
+    const exact = threads.find(thread => thread.key === cleanKey(key));
+    if (exact) return exact;
+    const matches = threads.filter(thread => thread.aliases.includes(cleanKey(key)));
+    return matches.length === 1 ? matches[0] : undefined;
   };
+  const groupedUsers = threads.map(thread => thread.key);
+  const metaFor = (key: string) => {
+    const thread = threadFor(key);
+    return metaMap.get(key) || thread?.aliases.map(alias => metaMap.get(alias)).filter(Boolean).sort((a,b) => Date.parse(b!.updated_at) - Date.parse(a!.updated_at))[0] || emptyMeta(key);
+  };
+  const summaryFor = (key: string) => {
+    const messages = [...(threadFor(key)?.messages || [])].sort((a,b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+    return { messages, last: messages[0], unread: messages.filter(m => m.direction === 'in' && !m.is_read).length };
+  };
+  const labelFor = (key: string) => threadFor(key)?.label || 'Instagram user';
+  const actionKeyFor = (key: string) => threadFor(key)?.actionKey || key;
 
   const visibleUsers = groupedUsers.filter((username) => {
     const key = cleanKey(username);
-    const meta = metaMap.get(key) || emptyMeta(key);
+    const meta = metaFor(key);
     const summary = summaryFor(username);
-    const matchesSearch = !search.trim() || key.includes(cleanKey(search));
+    const matchesSearch = !search.trim() || threadFor(username)?.aliases.some(alias => alias.includes(cleanKey(search))) || labelFor(username).toLowerCase().includes(search.trim().toLowerCase());
     if (!matchesSearch) return false;
-    const insight=(contacts||[]).find(c=>cleanKey(c.ig_username||c.ig_user_id)===key)?.customer_insight;
+    const insight=threadFor(username)?.contact?.customer_insight;
     if(stageFilter!=='all'&&(insight?.stage||'new')!==stageFilter)return false;
     if (filter === 'unread') return summary.unread > 0;
     if (filter === 'open') return meta.status === 'open';
@@ -152,17 +146,17 @@ export const InboxPage: React.FC = () => {
     }
   }, []);
 
-  const selectedUser = activeUsername || visibleUsers[0] || '';
+  const selectedUser = threadFor(activeUsername)?.key || visibleUsers[0] || '';
   const selectedKey = cleanKey(selectedUser);
-  const selectedMeta = metaMap.get(selectedKey) || emptyMeta(selectedKey);
+  const selectedMeta = metaFor(selectedKey);
   const selectedSummary = selectedUser ? summaryFor(selectedUser) : { messages: [], last: undefined, unread: 0 };
   const currentThread = [...selectedSummary.messages].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
-  const selectedContact = (contacts || []).find((contact) => cleanKey(contact.ig_username || contact.ig_user_id || '') === selectedKey);
-  const selectedNotes = notes.filter((note) => cleanKey(note.thread_id) === selectedKey).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  const aiPaused = selectedUser ? isAiPausedForUser(selectedUser) : false;
+  const selectedContact = threadFor(selectedUser)?.contact;
+  const selectedNotes = notes.filter((note) => threadFor(selectedUser)?.aliases.includes(cleanKey(note.thread_id))).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const aiPaused = selectedUser ? isAiPausedForUser(actionKeyFor(selectedUser)) : false;
 
   useEffect(() => {
-    if (selectedUser) void runAction(()=>markInboxThreadRead(selectedUser));
+    if (selectedUser) void runAction(()=>markInboxThreadRead(actionKeyFor(selectedUser)));
   }, [selectedKey]);
 
   const saveMeta = async (updates: Partial<ThreadMeta>) => {
@@ -223,7 +217,7 @@ export const InboxPage: React.FC = () => {
     if(sendingRef.current)return;
     sendingRef.current=true;setSending(true);setActionError('');
     try {
-      await sendManualReply(selectedUser,inputText.trim());
+      await sendManualReply(actionKeyFor(selectedUser),inputText.trim());
       setInputText('');
       if(selectedMeta.status==='resolved')await saveMeta({status:'open'});
     } catch(error:any){setActionError(error?.message||'Message could not be sent. Your reply is still here.');}
@@ -236,20 +230,14 @@ export const InboxPage: React.FC = () => {
     await saveMeta({ status: 'pending', snooze_until: until });
   };
 
-  const getAvatar = (username: string) => {
-    const key = cleanKey(username);
-    const contact = (contacts || []).find((item) => cleanKey(item.ig_username || item.ig_user_id || '') === key);
-    if (contact?.avatar_url && !contact.avatar_url.includes('dicebear')) return contact.avatar_url;
-    const message = (inboxMessages || []).find((item) => cleanKey(item.from_username || item.from_ig_id || '') === key && item.from_avatar);
-    return message?.from_avatar || '';
-  };
+  const getAvatar = (key: string) => threadFor(key)?.contact?.avatar_url || threadFor(key)?.messages.find(message => message.from_avatar)?.from_avatar || '';
 
   const statusCounts = {
     all: groupedUsers.length,
     unread: groupedUsers.filter((u) => summaryFor(u).unread > 0).length,
-    open: groupedUsers.filter((u) => (metaMap.get(cleanKey(u)) || emptyMeta(cleanKey(u))).status === 'open').length,
-    pending: groupedUsers.filter((u) => (metaMap.get(cleanKey(u)) || emptyMeta(cleanKey(u))).status === 'pending').length,
-    resolved: groupedUsers.filter((u) => (metaMap.get(cleanKey(u)) || emptyMeta(cleanKey(u))).status === 'resolved').length,
+    open: groupedUsers.filter((u) => metaFor(u).status === 'open').length,
+    pending: groupedUsers.filter((u) => metaFor(u).status === 'pending').length,
+    resolved: groupedUsers.filter((u) => metaFor(u).status === 'resolved').length,
   };
 
   return (
@@ -276,17 +264,17 @@ export const InboxPage: React.FC = () => {
             <div className="flex-1 overflow-y-auto">
               {visibleUsers.map((username) => {
                 const key = cleanKey(username);
-                const meta = metaMap.get(key) || emptyMeta(key);
+                const meta = metaFor(key);
                 const summary = summaryFor(username);
                 const active = key === selectedKey;
                 return (
                   <button key={key} onClick={() => { setActiveUsername(username); setMobileChatOpen(true); }} className={'w-full border-b border-slate-100 p-3 text-left transition ' + (active ? 'bg-indigo-50' : 'hover:bg-slate-50')}>
                     <div className="flex gap-2.5">
-                      <UserAvatar src={getAvatar(username)} username={username} size="sm" isAiPaused={isAiPausedForUser(username)} />
+                      <UserAvatar src={getAvatar(username)} username={username} size="sm" isAiPaused={isAiPausedForUser(actionKeyFor(username))} />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5"><p className="truncate text-xs font-bold text-slate-900">@{username}</p>{meta.priority === 'high' && <Star className="h-3 w-3 fill-rose-500 text-rose-500" />}{summary.unread > 0 && <span className="ml-auto min-w-5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-center text-xs font-bold text-white">{Math.min(99, summary.unread)}</span>}</div>
+                        <div className="flex items-center gap-1.5"><p className="truncate text-xs font-bold text-slate-900">{labelFor(username)}</p>{meta.priority === 'high' && <Star className="h-3 w-3 fill-rose-500 text-rose-500" />}{summary.unread > 0 && <span className="ml-auto min-w-5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-center text-xs font-bold text-white">{Math.min(99, summary.unread)}</span>}</div>
                         <p className="mt-1 truncate text-xs text-slate-500">{summary.last?.message_text || 'No messages yet'}</p>
-                        <CustomerBadges insight={(contacts||[]).find(c=>cleanKey(c.ig_username||c.ig_user_id)===key)?.customer_insight}/><div className="mt-1.5 flex items-center gap-1.5"><span className={'rounded-full px-1.5 py-0.5 text-xs font-bold ' + (meta.status === 'resolved' ? 'bg-emerald-50 text-emerald-700' : meta.status === 'pending' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700')}>{meta.status}</span>{meta.assignee && <span className="truncate text-xs font-semibold text-slate-400">· {meta.assignee}</span>}</div>
+                        <CustomerBadges insight={threadFor(username)?.contact?.customer_insight}/><div className="mt-1.5 flex items-center gap-1.5"><span className={'rounded-full px-1.5 py-0.5 text-xs font-bold ' + (meta.status === 'resolved' ? 'bg-emerald-50 text-emerald-700' : meta.status === 'pending' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700')}>{meta.status}</span>{meta.assignee && <span className="truncate text-xs font-semibold text-slate-400">· {meta.assignee}</span>}</div>
                       </div>
                     </div>
                   </button>
@@ -305,13 +293,13 @@ export const InboxPage: React.FC = () => {
                   <div className="flex min-w-0 items-center gap-2.5">
                     <button onClick={() => setMobileChatOpen(false)} className="rounded-lg p-2 text-slate-500 md:hidden"><ArrowLeft className="h-4 w-4" /></button>
                     <UserAvatar src={getAvatar(selectedUser)} username={selectedUser} size="md" isAiPaused={aiPaused} />
-                    <div className="min-w-0"><h2 className="truncate text-sm font-bold text-slate-900">@{selectedUser}</h2><p className="text-xs text-slate-500">{selectedMeta.assignee ? 'Assigned to ' + selectedMeta.assignee : 'Unassigned'} · {selectedMeta.status}</p></div>
+                    <div className="min-w-0"><h2 className="truncate text-sm font-bold text-slate-900">{labelFor(selectedUser)}</h2><p className="text-xs text-slate-500">{selectedMeta.assignee ? 'Assigned to ' + selectedMeta.assignee : 'Unassigned'} · {selectedMeta.status}</p></div>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button onClick={() => void toggleCustomerPriority()} className={'rounded-lg border p-2 ' + ((selectedContact?.customer_insight?.priority || selectedMeta.priority) === 'high' ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-500')} title="Toggle priority"><Star className="h-4 w-4" /></button>
                     <button onClick={() => void runAction(()=>saveMeta({ assignee: selectedMeta.assignee ? '' : (firebaseUser?.displayName || firebaseUser?.email || 'Me') }))} className="rounded-lg border border-slate-200 p-2 text-slate-600" title="Assign to me"><UserCheck className="h-4 w-4" /></button>
                     <button onClick={() => void runAction(()=>snoozeFor(1))} className="rounded-lg border border-slate-200 p-2 text-slate-600" title="Snooze 1 hour"><AlarmClock className="h-4 w-4" /></button>
-                    <button disabled={aiControlSaving} aria-busy={aiControlSaving} onClick={() => void changeAiControl(selectedUser)} className={'rounded-lg border p-2 ' + (aiPaused ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700')} aria-label={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'} title={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'}><span className="flex items-center gap-2 text-sm font-semibold">{aiPaused ? <BotOff className="h-4 w-4" /> : <Bot className="h-4 w-4" />}{aiPaused?'Resume AI':'Take over'}</span></button>
+                    <button disabled={aiControlSaving} aria-busy={aiControlSaving} onClick={() => void changeAiControl(actionKeyFor(selectedUser))} className={'rounded-lg border p-2 ' + (aiPaused ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700')} aria-label={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'} title={aiPaused ? 'Resume AI replies' : 'Take over conversation and pause AI'}><span className="flex items-center gap-2 text-sm font-semibold">{aiPaused ? <BotOff className="h-4 w-4" /> : <Bot className="h-4 w-4" />}{aiPaused?'Resume AI':'Take over'}</span></button>
                     <button onClick={() => void runAction(()=>saveMeta({ status: selectedMeta.status === 'resolved' ? 'open' : 'resolved', snooze_until: undefined }))} className={'rounded-lg px-3 py-2 text-xs font-bold ' + (selectedMeta.status === 'resolved' ? 'bg-slate-100 text-slate-700' : 'bg-emerald-600 text-white')}>{selectedMeta.status === 'resolved' ? 'Reopen' : 'Resolve'}</button>
                     <button onClick={() => setRightPanelOpen(!rightPanelOpen)} className="rounded-lg border border-slate-200 p-2 text-slate-500"><MoreHorizontal className="h-4 w-4" /></button>
                   </div>
@@ -356,7 +344,7 @@ export const InboxPage: React.FC = () => {
             <aside className="hidden w-[300px] shrink-0 overflow-y-auto border-l border-slate-200 bg-white xl:block">
               <div className="border-b border-slate-200 p-4">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Contact</p>
-                <div className="mt-3 flex items-center gap-3"><UserAvatar src={getAvatar(selectedUser)} username={selectedUser} size="lg" /><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">@{selectedUser}</p><p className="mt-1 text-xs text-slate-500">{selectedContact?.status || 'lead'} · {(selectedContact?.tags || []).join(', ') || 'No contact tags'}</p></div></div>
+                <div className="mt-3 flex items-center gap-3"><UserAvatar src={getAvatar(selectedUser)} username={selectedUser} size="lg" /><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{labelFor(selectedUser)}</p><p className="mt-1 text-xs text-slate-500">{selectedContact?.status || 'lead'} · {(selectedContact?.tags || []).join(', ') || 'No contact tags'}</p></div></div>
               </div>
 
               <div className="border-b border-slate-200 p-4">
@@ -381,8 +369,8 @@ export const InboxPage: React.FC = () => {
               </div>
 
               <div className="border-t border-slate-200 p-4">
-                <button onClick={() => void runAction(()=>markInboxThreadUnread(selectedUser))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600">Mark unread</button>
-                <button disabled={deleting} onClick={() => { if (deleting || !window.confirm('Delete this conversation permanently?'))return;setDeleting(true);void runAction(async()=>{await deleteInboxThread(selectedUser);setActiveUsername('');}).finally(()=>setDeleting(false)); }} className="mt-2 w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">Delete conversation</button>
+                <button onClick={() => void runAction(()=>markInboxThreadUnread(actionKeyFor(selectedUser)))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600">Mark unread</button>
+                <button disabled={deleting} onClick={() => { if (deleting || !window.confirm('Delete this conversation permanently?'))return;setDeleting(true);void runAction(async()=>{await deleteInboxThread(actionKeyFor(selectedUser));setActiveUsername('');}).finally(()=>setDeleting(false)); }} className="mt-2 w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">Delete conversation</button>
               </div>
             </aside>
           )}

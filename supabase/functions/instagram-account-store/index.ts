@@ -216,6 +216,7 @@ async function fetchMessagingUserProfile(accessToken: string, igsid: string) {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
+      signal: AbortSignal.timeout(5000),
     }
   );
 
@@ -308,33 +309,11 @@ async function refreshMissingContactProfiles(
           return;
         }
 
-        const { data: messageRows, error: messageListError } = await admin
-          .from("autoreply_documents")
-          .select("id,data")
-          .eq("user_id", workspaceId)
-          .eq("collection", "inbox_messages")
-          .contains("data", { from_ig_id: igsid });
-
-        if (!messageListError && messageRows?.length) {
-          await Promise.all(
-            messageRows.map(async (msg: any) => {
-              const nextMessage = {
-                ...(msg?.data || {}),
-                from_username:
-                  profile.username || msg?.data?.from_username || igsid,
-                from_avatar:
-                  profile.profile_pic || msg?.data?.from_avatar || "",
-              };
-
-              await admin
-                .from("autoreply_documents")
-                .update({ data: nextMessage })
-                .eq("user_id", workspaceId)
-                .eq("collection", "inbox_messages")
-                .eq("id", msg.id);
-            })
-          );
-        }
+        const {error: enrichmentError} = await admin.rpc("autoreply_enrich_instagram_contact", {
+          p_workspace: workspaceId, p_sender: igsid, p_username: profile.username,
+          p_avatar: profile.profile_pic,
+        });
+        if (enrichmentError) console.warn("[IG_CONTACT_ENRICH_FAILED]", enrichmentError.code);
 
         refreshed += 1;
       })
@@ -791,7 +770,7 @@ Deno.serve(async (req: Request) => {
       if (!response.ok || result?.error || !result?.message_id) {
         return reply(502,{ok:false,sent:false,error:String(result?.error?.message || "Instagram did not confirm the message"),meta_code:result?.error?.code || null});
       }
-      const message = {id:String(result.message_id),from_ig_id:recipientId,from_username:username,
+      const message = {id:String(result.message_id),from_ig_id:recipientId,from_username:matches.find((row:any)=>row.data?.ig_username && !/^\d+$/.test(row.data.ig_username))?.data.ig_username || username,
         message_text:text,direction:"out",is_automated:false,is_read:true,delivery_status:"sent",timestamp:new Date().toISOString()};
       const {error:saveError} = await admin.from("autoreply_documents").upsert({user_id:workspaceId,collection:"inbox_messages",id:message.id,data:message},{onConflict:"user_id,collection,id"});
       if (saveError) console.warn("[MANUAL_DM_INBOX_SAVE_FAILED]",{workspaceId,messageId:message.id});

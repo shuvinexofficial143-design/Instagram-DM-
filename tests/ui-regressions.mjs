@@ -38,6 +38,7 @@ try {
   await build({
     stdin:{contents:`export {default as App} from './src/App';
       export {Sidebar} from './src/components/Sidebar';
+      export {InboxPage} from './src/components/Inbox/InboxPage';
       export {BillingUsagePage} from './src/components/Billing/BillingUsagePage';
       export {SettingsPage} from './src/components/Settings/SettingsPage';
       export {AdminEmailPreferences} from './src/components/Admin/AdminEmailPreferences';
@@ -87,6 +88,19 @@ try {
     assert.equal(ui.paymentLabel(record),label,'history distinguishes payment confirmation from checkout availability');checks++;
   }
   const catalogHtml=renderToStaticMarkup(React.createElement(ui.CatalogPreview,{products:[{id:'p',name:'Watch',price:'₹399',description:'Steel',url:'https://shop.example',active:true,images:['https://img.example/1.jpg','https://img.example/2.jpg']}]}));assert.equal((catalogHtml.match(/<article/g)||[]).length,2);assert.ok(catalogHtml.includes('snap-mandatory'));assert.ok(catalogHtml.includes('₹399'));checks++;
+  const inboxContact={id:'77000000001',ig_user_id:'77000000002',ig_user_ids:['77000000001','77000000002'],ig_username:'customer_handle',interactions:{dms:2,stories:0,comments:0},tags:[]};
+  globalThis.__uiFixture=fixture({contacts:[inboxContact],inboxMessages:[
+    {id:'old',from_ig_id:'77000000001',from_username:'77000000001',message_text:'Original customer question',direction:'in',timestamp:'2026-10-21T00:00:00Z'},
+    {id:'new',from_ig_id:'77000000002',from_username:'customer_handle',message_text:'Native Instagram opening message',direction:'out',timestamp:'2026-10-21T00:01:00Z'},
+  ]});
+  const inboxHtml=renderToStaticMarkup(React.createElement(ui.InboxPage));
+  assert.ok(inboxHtml.includes('@customer_handle'));checks++;
+  assert.ok(!inboxHtml.includes('@77000000001')&&!inboxHtml.includes('@77000000002'));checks++;
+  assert.ok(inboxHtml.includes('All <span class="opacity-70">(1)</span>'));checks++;
+  assert.ok(inboxHtml.includes('Original customer question')&&inboxHtml.includes('Native Instagram opening message'));checks++;
+  globalThis.__uiFixture=fixture({contacts:[{...inboxContact,ig_username:'77000000002'}],inboxMessages:[]});
+  const unknownHtml=renderToStaticMarkup(React.createElement(ui.InboxPage));
+  assert.ok(unknownHtml.includes('Instagram user · 0002')&&!unknownHtml.includes('@77000000002'));checks++;
   for (const [route,heading] of [
     ['/','More conversations.'],['/help','Help Center'],['/help/faq','Frequently Asked Questions'],
     ['/help/billing','Billing &amp; Payment Help'],['/about','About'],['/privacy','Privacy Policy'],['/terms','Terms of Service'],

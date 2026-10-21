@@ -1,3 +1,4 @@
+import { buildInboxThreads, contactKeys, identityKey } from '../lib/inboxIdentity';
 import { dispatchManualReply } from '../lib/manualReply';
 import { requestAutomationMutation } from '../lib/automationMutations';
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, startTransition } from 'react';
@@ -765,7 +766,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // AI Human Takeover state
   const isAiPausedForUser = (username: string): boolean => {
     const clean=String(username||'').replace(/^@/,'').toLowerCase();
-    const contact=contacts.find(c=>c.ig_username?.toLowerCase()===clean || c.ig_user_id===clean);
+    const contact=contacts.find(c=>contactKeys(c).includes(clean));
     const sender=contact?.ig_user_id || inboxMessages.find(m=>m.from_username?.toLowerCase()===clean)?.from_ig_id;
     return pausedAiUsers.includes(clean) || Boolean(sender && pausedAiUsers.includes(sender.toLowerCase()));
   };
@@ -773,7 +774,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setAiPausedForUser = async (username: string, paused: boolean) => {
     const clean=String(username||'').replace(/^@/,'').toLowerCase();
     const uid=workspaceId || firebaseUser?.uid || '';
-    const contact=contacts.find(c=>c.ig_username?.toLowerCase()===clean || c.ig_user_id===clean);
+    const contact=contacts.find(c=>contactKeys(c).includes(clean));
     const senderId=contact?.ig_user_id || inboxMessages.find(m=>m.from_username?.toLowerCase()===clean || m.from_ig_id===clean)?.from_ig_id || (/^\d+$/.test(clean)?clean:'');
     if(!uid || !senderId)throw new Error('This conversation is still loading. Please try again.');
     const key=uid+':'+senderId,version=(threadPauseVersions.current.get(key)||0)+1;
@@ -1229,17 +1230,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!clean) return;
     const now = new Date().toISOString();
     const uid = workspaceId || firebaseUser?.uid;
+    const thread = buildInboxThreads(inboxMessages, contacts).find(item => item.key === clean || item.aliases.includes(clean));
+    const messageIds = new Set(thread?.messages.map(message => message.id) || []);
     const affected = inboxMessages.filter(
       (m) =>
         m.direction === 'in' &&
-        (m.from_username || m.from_ig_id || '').replace(/^@/, '').toLowerCase() === clean &&
+        messageIds.has(m.id) &&
         Boolean(m.is_read) !== read
     );
     setInboxMessages((prev) =>
       prev.map((m) => {
         const same =
           m.direction === 'in' &&
-          (m.from_username || m.from_ig_id || '').replace(/^@/, '').toLowerCase() === clean;
+          messageIds.has(m.id);
         return same ? { ...m, is_read: read, read_at: read ? now : undefined } : m;
       })
     );
@@ -1266,7 +1269,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (workspaceScope.current !== uid || auth.currentUser?.uid !== owner) return;
     const targets = new Set(result.usernames);
     setContacts(previous => previous.filter(contact => !contactIds.includes(contact.id)));
-    setInboxMessages(previous => previous.filter(message => !targets.has((message.from_username || message.from_ig_id || '').trim().replace(/^@/, '').toLowerCase())));
+    setInboxMessages(previous => previous.filter(message => !targets.has(identityKey(message.from_username)) && !targets.has(identityKey(message.from_ig_id))));
   };
   const deleteContact = (contactId: string, username?: string) => deleteWorkspaceConversations(contactId ? [contactId] : [], username ? [username] : []);
   const deleteContactsBulk = (contactIds: string[], usernames: string[] = []) => deleteWorkspaceConversations(contactIds, usernames);

@@ -712,3 +712,21 @@ test('text-only catalog product remains in AI knowledge without a photo requirem
  const f=fixture([rule],{catalogs:photoCatalog,products:[{...photoProducts[0],images:[]}],onAIStart:body=>assert.ok(body.messages[0].content.includes('₹399'))});await f.post(dm('text-product','What is the price?'));
  assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);
 });
+
+// A disconnected account can still emit a second view of the same DM.
+// The entry belongs to that account; the recipient must never re-route it.
+test('a foreign business entry cannot create a numeric incoming thread in the sole connected account',async()=>{
+ const f=fixture();const event=dm('foreign-view','Our opening message');
+ event.entry[0].id='disconnected-business';event.entry[0].messaging[0].recipient.id='business';
+ const r=await f.post(event);
+ assert.equal(r.body.results[0].reason,'foreign_business_entry');
+ assert.equal(f.writes.filter(w=>w.collection==='inbox_messages'||w.collection==='contacts').length,0);
+ assert.equal(f.aiInputs.length,0);assert.equal(f.apiCalls.length,0);
+ const call=f.rpcCalls.find(c=>c.name==='autoreply_prepare_automation_event');
+ assert.deepEqual(Array.from(call.args.p_candidates),['disconnected-business']);
+});
+test('verified business recipient aliases still accept a real customer inbound DM',async()=>{
+ const f=fixture([ai],{ownSenderIds:['business-scoped']});const event=dm('scoped-recipient','How does it work?');
+ event.entry[0].messaging[0].recipient.id='business-scoped';
+ const r=await f.post(event);assert.equal(r.body.sent,1);assert.equal(f.aiInputs.length,1);
+});

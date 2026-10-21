@@ -165,3 +165,10 @@ test('closed handoffs and unverified users cannot send an admin reply',async()=>
   const f=fixture(options);const r=await f.post(adminHandoffReply,adminHeaders());assert.ok([403,409].includes(r.status));assert.equal(f.calls.length,0);
  }
 });
+
+test('replying through a stable numeric conversation ID retains the verified display handle',async()=>{
+ const f=fixture();const r=await f.post({...send,recipientUsername:customer});
+ assert.equal(r.status,200);assert.equal(r.body.sent,true);
+ const saved=f.tables.autoreply_documents.find(row=>row.collection==='inbox_messages');
+ assert.equal(saved.data.from_username,'customer');assert.equal(saved.data.from_ig_id,customer);
+});
