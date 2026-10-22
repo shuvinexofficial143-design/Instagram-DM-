@@ -1,3 +1,4 @@
+import {mergeInboxMessages,type InboxCursor} from '../lib/inboxPaging';
 import { buildInboxThreads, contactKeys, identityKey } from '../lib/inboxIdentity';
 import { dispatchManualReply } from '../lib/manualReply';
 import { requestAutomationMutation } from '../lib/automationMutations';
@@ -16,12 +17,15 @@ import {
 } from '../types';
 import {
   auth,
+  supabase,
   signOut,
   onAuthStateChanged,
   getRedirectResult,
   signInAnonymously,
   User,
   subscribeToUserCollection,
+  subscribeToInbox,
+  fetchInboxPage,
   saveUserDocument,
   removeWorkspaceConversations,
   syncUserProfileDocument,
@@ -89,6 +93,9 @@ interface AppContextType {
   automations: Automation[];
   contacts: Contact[];
   inboxMessages: InboxMessage[];
+  inboxUnreadCounts:Record<string,number>;
+  inboxPaging: Record<string,{cursor:InboxCursor|null;hasMore:boolean;loading:boolean;loaded:boolean;error?:string}>;
+  loadInboxMessages:(sender:string,older?:boolean)=>Promise<void>;
   webhookLogs: WebhookLogEvent[];
   pausedAiUsers: string[];
   isAdmin: boolean;
@@ -282,6 +289,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [customerInsights,setCustomerInsights]=useState<any[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([]);
+  const [inboxUnreadCounts,setInboxUnreadCounts]=useState<Record<string,number>>({});
+  const [inboxPaging,setInboxPaging]=useState<Record<string,{cursor:InboxCursor|null;hasMore:boolean;loading:boolean;loaded:boolean;error?:string}>>({});
+  const inboxPageState=useRef(inboxPaging);inboxPageState.current=inboxPaging;
+  const inboxPageEpoch=useRef(0);
+  const inboxPageRequests=useRef(new Map<string,Promise<void>>());
   const [webhookLogs, setLogs] = useState<WebhookLogEvent[]>([]);
   const [pausedAiUsers, setPausedAiUsers] = useState<string[]>([]);
   const pendingAutomationStatuses=useRef(new Map<string,Automation['status']>());
@@ -591,12 +603,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }));
 
           setWorkspaceDataLoading(false);
-          setInboxMessages(
-            filterOutMockMessages(guestMessages).sort(
-              (a, b) =>
-                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-            )
-          );
+          setInboxMessages(previous=>mergeInboxMessages(previous,filterOutMockMessages(guestMessages)));
+          setInboxUnreadCounts(payload.inboxUnreadCounts||{});
 
         } catch (err: any) {
           console.warn('[GUEST_WORKSPACE_LOAD_WARN]', err?.message || err);
@@ -716,9 +724,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    const unsubscribeInbox = subscribeToUserCollection<InboxMessage>(uid, 'inbox_messages', (data) => {
-      if (data) {
-        const sanitized: InboxMessage[] = data.map((m) => ({
+    const unsubscribeInbox = subscribeToInbox(uid, (page) => {
+      if(!live)return;
+      setInboxUnreadCounts(page.unread_counts||{});
+        const sanitized: InboxMessage[] = page.messages.map((m) => ({
           ...m,
           id: m.id || `msg_${Date.now()}`,
           from_ig_id: m.from_ig_id || '',
@@ -730,14 +739,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           is_read: (m.direction || 'in') === 'out' ? true : Boolean(m.is_read),
           read_at: m.read_at || undefined,
         }));
-        const filtered = filterOutMockMessages(sanitized);
-        setInboxMessages(filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-      } else {
-        setInboxMessages([]);
-      }
-      setWorkspaceDataError(false);
-      markLoaded('inbox');
-    },(err)=>{console.warn('[INBOX_LOAD_ERROR]',err?.message||err);markLoaded('inbox',true);});
+      setInboxMessages(previous=>mergeInboxMessages(previous,filterOutMockMessages(sanitized)));
+      setWorkspaceDataError(false);markLoaded('inbox');
+    },(message,id)=>{if(live)setInboxMessages(previous=>message?mergeInboxMessages(previous,[message]):previous.filter(item=>item.id!==id));},
+    (err)=>{console.warn('[INBOX_LOAD_ERROR]',err?.message||err);markLoaded('inbox',true);});
 
     let legacyLogs: WebhookLogEvent[] = [], liveLogs: WebhookLogEvent[] = [];
     const refreshLogs = () => setLogs([...liveLogs, ...legacyLogs].sort((a,b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)));
@@ -762,6 +767,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribeAccount();
     };
   }, [firebaseUser?.uid, workspaceId, isSupabaseInitialized]);
+
+  useEffect(()=>{inboxPageEpoch.current++;inboxPageRequests.current.clear();setInboxPaging({});setInboxUnreadCounts({});},[workspaceId,firebaseUser?.uid]);
+  const loadInboxMessages=async(sender:string,older=false)=>{
+    const scope=workspaceScope.current,epoch=inboxPageEpoch.current,key=identityKey(sender),requestKey=scope+':'+epoch+':'+key;
+    if(!scope||!key)return;
+    const state=inboxPageState.current[key];if(!older&&state?.loaded||older&&state?.loaded&&!state.hasMore)return;
+    if(inboxPageRequests.current.has(requestKey))return inboxPageRequests.current.get(requestKey)!;
+    const run=(async()=>{
+      setInboxPaging(previous=>({...previous,[key]:{cursor:state?.cursor||null,hasMore:state?.hasMore||false,loaded:Boolean(state?.loaded),loading:true}}));
+      try{
+        let page;
+        if(isGuestMode){const params=new URLSearchParams({action:'inbox-page',sender:key});if(older&&state?.cursor){params.set('before_time',state.cursor.time);params.set('before_id',state.cursor.id);}
+          const response=await fetch('/api/workspace-data?'+params,{credentials:'same-origin'});page=await response.json();if(!response.ok||!page.ok)throw Error(page.error||'Conversation could not be loaded.');
+        }else page=await fetchInboxPage(scope,key,older?state?.cursor||null:null);
+        if(workspaceScope.current!==scope||inboxPageEpoch.current!==epoch)return;
+        setInboxMessages(previous=>mergeInboxMessages(previous,page.messages));
+        setInboxPaging(previous=>({...previous,[key]:{cursor:page.next_cursor,hasMore:page.has_more,loaded:true,loading:false}}));
+      }catch(error:any){if(workspaceScope.current===scope&&inboxPageEpoch.current===epoch)setInboxPaging(previous=>({...previous,[key]:{cursor:state?.cursor||null,hasMore:state?.hasMore||false,loaded:Boolean(state?.loaded),loading:false,error:error?.message||'Conversation could not be loaded.'}}));}
+      finally{inboxPageRequests.current.delete(requestKey);}
+    })();inboxPageRequests.current.set(requestKey,run);return run;
+  };
 
   // AI Human Takeover state
   const isAiPausedForUser = (username: string): boolean => {
@@ -1232,30 +1258,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uid = workspaceId || firebaseUser?.uid;
     const thread = buildInboxThreads(inboxMessages, contacts).find(item => item.key === clean || item.aliases.includes(clean));
     const messageIds = new Set(thread?.messages.map(message => message.id) || []);
-    const affected = inboxMessages.filter(
-      (m) =>
-        m.direction === 'in' &&
-        messageIds.has(m.id) &&
-        Boolean(m.is_read) !== read
-    );
-    setInboxMessages((prev) =>
-      prev.map((m) => {
-        const same =
-          m.direction === 'in' &&
-          messageIds.has(m.id);
-        return same ? { ...m, is_read: read, read_at: read ? now : undefined } : m;
-      })
-    );
-    if (!uid) return;
-    await Promise.all(
-      affected.map((m) =>
-        saveUserDocument(uid, 'inbox_messages', {
-          ...m,
-          is_read: read,
-          read_at: read ? now : undefined,
-        })
-      )
-    );
+    if(!uid)return;
+    const scope=workspaceScope.current;
+    if(isGuestMode){const response=await fetch('/api/workspace-data?action=inbox-read',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:clean,read})});if(!response.ok)throw Error('Read status could not be saved.');}
+    else {const {error}=await supabase.rpc('autoreply_mark_inbox_read',{p_workspace:uid,p_sender:clean,p_read:read});if(error)throw error;}
+    if(workspaceScope.current!==scope)return;
+    setInboxMessages(previous=>previous.map(message=>message.direction==='in'&&messageIds.has(message.id)?{...message,is_read:read,read_at:read?now:undefined}:message));
+    if(read)setInboxUnreadCounts(previous=>{const next={...previous};for(const alias of thread?.aliases||[clean])delete next[alias];return next;});
   };
 
   const markInboxThreadRead = (username: string) => setThreadReadState(username, true);
@@ -1354,7 +1363,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshInstagramAccounts, switchInstagramAccount, startInstagramConnection, instagramConnectMode,instagramReconnectWorkspaceId,
         automations,
         contacts: enrichedContacts,
-        inboxMessages,
+        inboxMessages,inboxPaging,inboxUnreadCounts,loadInboxMessages,
         webhookLogs,
         pausedAiUsers,
         isAdmin,

@@ -54,6 +54,20 @@ export default async function handler(req: any, res: any) {
     return supportHandler(req, res);
   }
 
+  if(['inbox-page','inbox-analytics','inbox-read'].includes(String(req.query?.action||''))){
+    const action=String(req.query.action),workspaceId=getCookie(req,GUEST_COOKIE);
+    if(!isWorkspaceId(workspaceId))return res.status(401).json({ok:false,error:'Workspace session required.'});
+    if(req.method!==(action==='inbox-read'?'POST':'GET'))return res.status(405).json({ok:false,error:'Method Not Allowed'});
+    try{
+      const response=await fetchWithTimeout(SUPABASE_URL+'/functions/v1/instagram-account-store',{method:'POST',headers:{'Content-Type':'application/json',...guestStoreHeaders()},body:JSON.stringify({
+        action:action==='inbox-page'?'list_inbox_page':action==='inbox-analytics'?'inbox_analytics':'mark_inbox_read',workspaceId,
+        sender:action==='inbox-read'?req.body?.sender:String(req.query.sender||''),read:req.body?.read,
+        before_time:req.query.before_time||null,before_id:req.query.before_id||null,start:req.query.start,end:req.query.end,timezone:req.query.timezone,
+      })});
+      const data=await response.json();res.setHeader('Cache-Control','private, no-store');return res.status(response.status).json(data);
+    }catch{return res.status(503).json({ok:false,error:'Inbox service unavailable.'});}
+  }
+
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
@@ -96,6 +110,7 @@ export default async function handler(req: any, res: any) {
       automations: Array.isArray(payload?.automations) ? payload.automations : [],
       contacts: Array.isArray(payload?.contacts) ? payload.contacts : [],
       inboxMessages: Array.isArray(payload?.inboxMessages) ? payload.inboxMessages : [],
+      inboxUnreadCounts:payload?.inboxUnreadCounts||{},
     });
   } catch (err: any) {
     return res.status(500).json({

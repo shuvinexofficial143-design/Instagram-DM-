@@ -1,3 +1,4 @@
+import { memorySettings,memoryLogPreview } from './smartMemory.ts';
 import { loadCatalog, buildCatalogPage, extractImageAttachments, generateCatalogReply } from "./catalogRuntime.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -772,6 +773,7 @@ async function logEvent(
   data: Record<string, unknown>
 ) {
   if (!id) return;
+  const {incoming_text,reply_text,...metadata}=data;
 
   await admin
     .from("autoreply_documents")
@@ -780,7 +782,7 @@ async function logEvent(
         user_id: workspaceId,
         collection: "webhook_events",
         id,
-        data: { ...data, updated_at: new Date().toISOString() },
+        data: { ...metadata,...(incoming_text?{incoming_preview:memoryLogPreview(incoming_text)}:{}),...(reply_text?{reply_preview:memoryLogPreview(reply_text)}:{}), updated_at: new Date().toISOString() },
       },
       { onConflict: "user_id,collection,id" }
     );
@@ -1052,9 +1054,9 @@ async function sendInstagramCatalog(igUserId:string,senderId:string,accessToken:
   return result;
 }
 
-async function generateReply(openaiKey:string,model:string,systemPrompt:string,history:any[],incomingText:string,varyNaturally=false,catalogOffer?:any,images:string[]=[],catalogWarning='') {
+async function generateReply(openaiKey:string,model:string,systemPrompt:string,history:any[],incomingText:string,varyNaturally=false,catalogOffer?:any,images:string[]=[],catalogWarning='',memoryOptions:any={}) {
  if(!openaiKey)throw Error('OPENAI_API_KEY is missing');
- const result=await generateCatalogReply({key:openaiKey,model,systemPrompt,history,text:incomingText,images,catalog:catalogOffer,catalogWarning,timeoutMs:images.length?12000:aiTimeoutMs(),temperature:varyNaturally?0.75:0.4});
+ const result=await generateCatalogReply({key:openaiKey,model,systemPrompt,history,text:incomingText,images,...memoryOptions,catalog:catalogOffer,catalogWarning,timeoutMs:images.length?12000:aiTimeoutMs(),temperature:varyNaturally?0.75:0.4});
  if(result.handoff)return {handoff:result.handoff};
  if(result.catalog){catalogOffer.onSelect(result.catalog);return result.text;}
  return result.text;
@@ -1225,7 +1227,7 @@ function extractOutgoingMessages(event:any):any[] {
 }
 
 function conversationHistory(context:any):any[] {
-  const recent=(Array.isArray(context?.history)?context.history:[]).slice(-12);
+  const recent=(Array.isArray(context?.history)?context.history:[]).slice(-memorySettings(context?.memory_settings).recent_limit);
   const anchor=context?.manual_context;
   const messages=anchor?.content&&!recent.some((m:any)=>m.id&&m.id===anchor.id)?[anchor,...recent]:recent;
   const chosen=new Set<number>();let remaining=24000;
@@ -1533,6 +1535,7 @@ Deno.serve(async (req: Request) => {
     if(error)return reply(503,{ok:false,error:"Outgoing conversation context could not be saved"});
     if(data?.recorded) {
       outgoingSaved++;
+      runInBackground(admin.rpc("autoreply_dispatch_memory_worker"));
       if (!data.duplicate && data.workspace_id) runInBackground((async () => {
         const {data: connection} = await admin.from("autoreply_instagram_tokens").select("account").eq("user_id",data.workspace_id).maybeSingle();
         if (!connection?.account?.access_token) return;
@@ -1698,6 +1701,7 @@ Deno.serve(async (req: Request) => {
       { username: item.senderId, avatar_url: "" }).then(() => true, () => false)
       .then(saved => {
         inboundSaveMs = Math.round(performance.now() - inboundSaveStart);
+        if(saved)runInBackground(admin.rpc("autoreply_dispatch_memory_worker"));
         if (!saved) {
           stopTyping();
           runInBackground(logEvent(admin, workspaceId, item.messageId, {
@@ -1835,6 +1839,7 @@ Instagram DM style rules:
     let humanHandoff:{reason:string;summary:string}|null=null;
     let aiError = "";
     let aiMs = 0;
+    const replyUsage:any={input_tokens:0,output_tokens:0,cached_input_tokens:0,calls:0,usage_available:false,provider_ms:0};
     const history: any[] = conversationHistory(context);
     const historyMs = 0;
     let fastPath: string | null = null;
@@ -1871,7 +1876,11 @@ Instagram DM style rules:
           item.text,
           isGreeting,
           selectedCatalog ? {...selectedCatalog,onSelect:(chosen:any)=>{selectedCatalog=chosen;sendCatalog=true;}} : undefined,
-          item.images || [], catalogWarning
+          item.images || [], catalogWarning, {
+            memory:context.memory,memorySettings:context.memory_settings,manualAnchorId:context.manual_context?.id,
+            historySearch:async(query:string)=>{const {data,error}=await admin.rpc('autoreply_search_conversation',{p_workspace:workspaceId,p_sender:item.senderId,p_query:query});if(error)throw Error('Historical search unavailable');return data;},
+            onUsage:(usage:any)=>{for(const key of ['input_tokens','output_tokens','cached_input_tokens','calls','provider_ms'])replyUsage[key]+=usage[key]||0;replyUsage.usage_available=replyUsage.usage_available||usage.usage_available;},
+          }
         );
         if(typeof generated === "string") responseText=generated;else humanHandoff=generated.handoff;
       } catch (err) {
@@ -1994,6 +2003,7 @@ Instagram DM style rules:
         saveHistory(admin, workspaceId, item.senderId, nextHistory),
         persistOutboundMessage(admin,workspaceId,item,senderProfile,automation,responseText,instagramMessageId,sendCatalog?selectedCatalog:undefined),
       ]);
+      runInBackground(admin.rpc("autoreply_dispatch_memory_worker"));
       runInBackground(
         (async () => {
           await typingTask;
@@ -2009,6 +2019,7 @@ Instagram DM style rules:
               incoming_text: item.text,
               reply_text: responseText,
               ai_model: model,
+              ai_usage:replyUsage, memory_version:context.memory?.version||0, memory_included:Boolean(context.memory?.summary||Object.keys(context.memory?.facts||{}).length),
               ai_error: aiError || null,
               instagram_message_id: instagramMessageId || null,
               context_ms: contextMs,

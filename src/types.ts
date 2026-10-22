@@ -133,6 +133,7 @@ export interface Contact {
 }
 
 export interface InboxMessage {
+  server_updated_at?: string;
   image_urls?: string[];
   catalog_id?: string;
   catalog_name?: string;

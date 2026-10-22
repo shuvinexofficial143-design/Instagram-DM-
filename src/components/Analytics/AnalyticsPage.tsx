@@ -1,3 +1,4 @@
+import {supabase} from '../../lib/supabase';
 import React, { useEffect, useId, useMemo, useState } from 'react';
 import '../workspace-overview.css';
 import {
@@ -107,7 +108,7 @@ const TrendBadge: React.FC<{ value: number; inverse?: boolean }> = ({ value, inv
 };
 
 export const AnalyticsPage: React.FC = () => {
-  const { inboxMessages, contacts, automations, webhookLogs, setActiveTab } = useApp();
+  const { inboxMessages, contacts, automations, webhookLogs, setActiveTab,workspaceId,firebaseUser,isGuestMode } = useApp();
   const [period, setPeriod] = useState<Period>(30);
   const [customFrom, setCustomFrom] = useState(() => toDateInput(new Date(Date.now() - 29 * DAY)));
   const [customTo, setCustomTo] = useState(() => toDateInput(new Date()));
@@ -130,6 +131,25 @@ export const AnalyticsPage: React.FC = () => {
     };
   }, [period, customFrom, customTo]);
 
+  const [serverStats,setServerStats]=useState<{key:string;data:any}|null>(null);
+  const [statsError,setStatsError]=useState('');
+  const [statsRefresh,setStatsRefresh]=useState(0);
+  const statsKey=workspaceId+':'+range.start.toISOString()+':'+range.end.toISOString();
+  const fullStats=serverStats?.key===statsKey?serverStats.data:null;
+  useEffect(()=>{
+    if(!workspaceId||!firebaseUser?.uid&&!isGuestMode)return;
+    let active=true;setStatsError('');
+    void (async()=>{
+      try{
+        const timezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+        let data;
+        if(isGuestMode){const params=new URLSearchParams({action:'inbox-analytics',start:range.start.toISOString(),end:range.end.toISOString(),timezone});const response=await fetch('/api/workspace-data?'+params,{credentials:'same-origin'});data=await response.json();if(!response.ok||!data.ok)throw Error(data.error||'Message analytics unavailable.');}
+        else {const result=await supabase.rpc('autoreply_inbox_analytics',{p_workspace:workspaceId,p_start:range.start.toISOString(),p_end:range.end.toISOString(),p_timezone:timezone});if(result.error)throw result.error;data=result.data;}
+        if(active)setServerStats({key:statsKey,data});
+      }catch(error:any){if(active)setStatsError(error?.message||'Message analytics could not be loaded.');}
+    })();return ()=>{active=false;};
+  },[statsKey,firebaseUser?.uid,isGuestMode,statsRefresh,inboxMessages?.[0]?.id]);
+
   const analytics = useMemo(() => {
     const startMs = range.start.getTime();
     const endMs = range.end.getTime();
@@ -140,7 +160,7 @@ export const AnalyticsPage: React.FC = () => {
     const contactTime = (item: { first_interaction_at?: string }) => new Date(item.first_interaction_at || 0).getTime();
     const logTime = (item: { timestamp?: string }) => new Date(item.timestamp || 0).getTime();
 
-    const selectedMessages = (inboxMessages || []).filter((item) => {
+    const selectedMessages: typeof inboxMessages = fullStats?.recent || (inboxMessages || []).filter((item) => {
       const ts = messageTime(item);
       return ts >= startMs && ts <= endMs;
     });
@@ -178,6 +198,9 @@ export const AnalyticsPage: React.FC = () => {
 
     const current = splitMessages(selectedMessages);
     const previous = splitMessages(previousMessages);
+    const zeroTotals={incoming:0,outgoing:0,ai:0,manual:0,failed:0};
+    const currentTotals=fullStats?{...zeroTotals,...fullStats.current}:Object.fromEntries(Object.entries(current).map(([key,items])=>[key,items.length]));
+    const previousTotals=fullStats?{...zeroTotals,...fullStats.previous}:Object.fromEntries(Object.entries(previous).map(([key,items])=>[key,items.length]));
 
     const timingValues = selectedLogs
       .map((log) => Number(log.total_processing_duration_ms || log.timing_breakdown?.total_pipeline_duration_ms || 0))
@@ -216,9 +239,9 @@ export const AnalyticsPage: React.FC = () => {
       }).length;
       return {
         label: dayStart.toLocaleDateString([], { month: 'short', day: 'numeric' }),
-        incoming,
-        outgoing,
-        ai,
+        incoming:fullStats?Number(fullStats.daily.find((d:any)=>d.day===toDateInput(dayStart))?.incoming||0):incoming,
+        outgoing:fullStats?Number(fullStats.daily.find((d:any)=>d.day===toDateInput(dayStart))?.outgoing||0):outgoing,
+        ai:fullStats?Number(fullStats.daily.find((d:any)=>d.day===toDateInput(dayStart))?.ai||0):ai,
         leads,
       };
     });
@@ -229,7 +252,7 @@ export const AnalyticsPage: React.FC = () => {
       return acc;
     }, {});
     const intents = ['Price', 'Order', 'Delivery', 'Product', 'Support', 'Other']
-      .map((label) => ({ label, value: intentCounts[label] || 0 }))
+      .map((label) => ({ label, value: fullStats?Number(fullStats.intents.find((i:any)=>i.label===label)?.value||0):intentCounts[label] || 0 }))
       .sort((a, b) => b.value - a.value);
 
     const sources = [
@@ -240,7 +263,7 @@ export const AnalyticsPage: React.FC = () => {
 
     const heatmap = Array.from({ length: 7 }, (_, dayIndex) =>
       Array.from({ length: 4 }, (_, blockIndex) =>
-        current.incoming.filter((message) => {
+        fullStats?Number(fullStats.heat.find((h:any)=>h.day===dayIndex&&h.block===blockIndex)?.value||0):current.incoming.filter((message) => {
           const date = new Date(message.timestamp || 0);
           const mondayIndex = (date.getDay() + 6) % 7;
           const hour = date.getHours();
@@ -250,8 +273,8 @@ export const AnalyticsPage: React.FC = () => {
       )
     );
 
-    const uniqueIncoming = new Set(current.incoming.map((item) => item.from_username || item.from_ig_id).filter(Boolean)).size;
-    const uniqueAi = new Set(current.ai.map((item) => item.from_username || item.from_ig_id).filter(Boolean)).size;
+    const uniqueIncoming = fullStats?Number(fullStats.uniqueIncoming||0):new Set(current.incoming.map((item) => item.from_username || item.from_ig_id).filter(Boolean)).size;
+    const uniqueAi = fullStats?Number(fullStats.uniqueAi||0):new Set(current.ai.map((item) => item.from_username || item.from_ig_id).filter(Boolean)).size;
 
     const recent = [
       ...selectedMessages.map((item) => ({
@@ -276,7 +299,7 @@ export const AnalyticsPage: React.FC = () => {
 
     return {
       current,
-      previous,
+      previous,currentTotals,previousTotals,
       selectedContacts,
       previousContacts,
       selectedLogs,
@@ -294,24 +317,24 @@ export const AnalyticsPage: React.FC = () => {
       uniqueAi,
       recent,
     };
-  }, [inboxMessages, contacts, webhookLogs, range]);
+  }, [inboxMessages, contacts, webhookLogs, range,fullStats]);
 
   const activeAutomations = (automations || []).filter((automation) => automation.status === 'active').length;
   const topAutomations = [...(automations || [])]
     .sort((a, b) => (b.stats?.runs || 0) - (a.stats?.runs || 0))
     .slice(0, 6);
 
-  const incomingTrend = percentChange(analytics.current.incoming.length, analytics.previous.incoming.length);
-  const repliesTrend = percentChange(analytics.current.outgoing.length, analytics.previous.outgoing.length);
-  const aiTrend = percentChange(analytics.current.ai.length, analytics.previous.ai.length);
+  const incomingTrend = percentChange(analytics.currentTotals.incoming, analytics.previousTotals.incoming);
+  const repliesTrend = percentChange(analytics.currentTotals.outgoing, analytics.previousTotals.outgoing);
+  const aiTrend = percentChange(analytics.currentTotals.ai, analytics.previousTotals.ai);
   const leadsTrend = percentChange(analytics.selectedContacts.length, analytics.previousContacts.length);
   const conversionTrend = Math.round(analytics.conversionRate - analytics.previousConversionRate);
   const responseTrend = analytics.previousAvgResponseMs
     ? Math.round(((analytics.avgResponseMs - analytics.previousAvgResponseMs) / analytics.previousAvgResponseMs) * 100)
     : 0;
 
-  const aiHandleRate = analytics.current.outgoing.length
-    ? Math.round((analytics.current.ai.length / analytics.current.outgoing.length) * 100)
+  const aiHandleRate = analytics.currentTotals.outgoing
+    ? Math.round((analytics.currentTotals.ai / analytics.currentTotals.outgoing) * 100)
     : 0;
   const aiPerformanceHue = Math.round(Math.max(0, Math.min(100, aiHandleRate)) * 1.35);
   const aiPerformanceColor = `hsl(${aiPerformanceHue} 78% 46%)`;
@@ -324,21 +347,21 @@ export const AnalyticsPage: React.FC = () => {
   const cards = [
     {
       label: 'Incoming DMs',
-      value: analytics.current.incoming.length.toLocaleString(),
+      value: analytics.currentTotals.incoming.toLocaleString(),
       icon: MessageCircle,
       trend: incomingTrend,
       note: 'vs previous period',
     },
     {
       label: 'Replies sent',
-      value: analytics.current.outgoing.length.toLocaleString(),
+      value: analytics.currentTotals.outgoing.toLocaleString(),
       icon: Send,
       trend: repliesTrend,
       note: 'AI + manual replies',
     },
     {
       label: 'AI replies (Inbox)',
-      value: analytics.current.ai.length.toLocaleString(),
+      value: analytics.currentTotals.ai.toLocaleString(),
       icon: Bot,
       trend: aiTrend,
       note: 'Tagged inbox events only; verified ledger below',
@@ -373,9 +396,9 @@ export const AnalyticsPage: React.FC = () => {
       ['Period', range.start.toLocaleDateString(), range.end.toLocaleDateString()],
       [],
       ['Metric', 'Value'],
-      ['Incoming DMs', analytics.current.incoming.length],
-      ['Replies sent', analytics.current.outgoing.length],
-      ['AI replies', analytics.current.ai.length],
+      ['Incoming DMs', analytics.currentTotals.incoming],
+      ['Replies sent', analytics.currentTotals.outgoing],
+      ['AI replies', analytics.currentTotals.ai],
       ['New leads', analytics.selectedContacts.length],
       ['Converted leads', analytics.converted],
       ['Conversion rate', analytics.conversionRate + '%'],
@@ -411,11 +434,13 @@ export const AnalyticsPage: React.FC = () => {
     ' – ' +
     range.end.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 
-  const insight = analytics.current.incoming.length
+  const insight = analytics.currentTotals.incoming
     ? (incomingTrend >= 0 ? 'DM volume is up ' + incomingTrend + '% versus the previous period. ' : 'DM volume is down ' + Math.abs(incomingTrend) + '% versus the previous period. ') +
       'AI handled ' + aiHandleRate + '% of sent replies' +
       (topIntent ? ', and ' + topIntent.label.toLowerCase() + ' questions are the most common customer intent.' : '.')
     : 'Once Instagram conversations start coming in, this page will show message trends, AI performance, lead conversion and the busiest customer times.';
+
+  if((firebaseUser?.uid||isGuestMode)&&workspaceId&&!fullStats)return <div className="p-6" aria-busy={!statsError}>{statsError?<p role="alert">{statsError} <button className="underline" onClick={()=>setStatsRefresh(value=>value+1)}>Retry</button></p>:<p role="status">Loading full conversation analytics…</p>}</div>;
 
   return (
     <div className="workspace-overview analytics-overview min-h-full bg-[#F7FAFF] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
@@ -618,17 +643,17 @@ export const AnalyticsPage: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm font-bold text-slate-800">AI-handled replies</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">{analytics.current.ai.length.toLocaleString()} automated replies of {analytics.current.outgoing.length.toLocaleString()} total replies.</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{analytics.currentTotals.ai.toLocaleString()} automated replies of {analytics.currentTotals.outgoing.toLocaleString()} total replies.</p>
               </div>
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
                 <p className="text-[11px] font-semibold text-slate-500">Manual replies</p>
-                <p className="mt-1 text-xl font-bold text-slate-900">{analytics.current.manual.length.toLocaleString()}</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{analytics.currentTotals.manual.toLocaleString()}</p>
               </div>
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
                 <p className="text-[11px] font-semibold text-slate-500">Failed sends</p>
-                <p className="mt-1 text-xl font-bold text-slate-900">{analytics.current.failed.length.toLocaleString()}</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{analytics.currentTotals.failed.toLocaleString()}</p>
               </div>
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
                 <p className="text-[11px] font-semibold text-slate-500">Avg response</p>

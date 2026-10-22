@@ -1,0 +1,105 @@
+{
+  "automated_tests": 370,
+  "suites": {
+    "connections": {
+      "tests": 111,
+      "failed": 0
+    },
+    "automations": {
+      "tests": 115,
+      "failed": 0
+    },
+    "customer-data": {
+      "tests": 12,
+      "failed": 0
+    },
+    "dm": {
+      "tests": 6,
+      "failed": 0
+    },
+    "queue": {
+      "tests": 3,
+      "failed": 0
+    },
+    "security": {
+      "tests": 2,
+      "failed": 0
+    },
+    "support": {
+      "tests": 8,
+      "failed": 0
+    },
+    "billing": {
+      "tests": 47,
+      "failed": 0
+    },
+    "invoices": {
+      "tests": 6,
+      "failed": 0
+    },
+    "lifecycle": {
+      "tests": 9,
+      "failed": 0
+    },
+    "dashboard": {
+      "tests": 11,
+      "failed": 0
+    },
+    "visual": {
+      "tests": 6,
+      "failed": 0
+    },
+    "admin": {
+      "tests": 34,
+      "failed": 0
+    }
+  },
+  "ui_checks": 95,
+  "sql_tests": [
+    "smart-memory.integration.sql",
+    "smart-memory-pagination.integration.sql",
+    "manual-conversation-context.integration.sql",
+    "inbox-identity.integration.sql"
+  ],
+  "pagination_benchmark": [
+    {
+      "messages": 10,
+      "page_rows": 10,
+      "page_bytes": 2849,
+      "page_db_ms": 8.5,
+      "unpaginated_bytes": 2202,
+      "unpaginated_db_ms": 4.419
+    },
+    {
+      "messages": 50,
+      "page_rows": 50,
+      "page_bytes": 14009,
+      "page_db_ms": 1.499,
+      "unpaginated_bytes": 11082,
+      "unpaginated_db_ms": 0.525
+    },
+    {
+      "messages": 100,
+      "page_rows": 50,
+      "page_bytes": 14085,
+      "page_db_ms": 2.038,
+      "unpaginated_bytes": 22184,
+      "unpaginated_db_ms": 0.764
+    },
+    {
+      "messages": 500,
+      "page_rows": 50,
+      "page_bytes": 14184,
+      "page_db_ms": 2.407,
+      "unpaginated_bytes": 111784,
+      "unpaginated_db_ms": 3.139
+    }
+  ],
+  "live_backfill": {
+    "original_messages": 320,
+    "summarized_conversations": 7,
+    "jobs_idle": 7,
+    "dead_jobs": 0
+  },
+  "worker_unsigned_post_status": 401
+}

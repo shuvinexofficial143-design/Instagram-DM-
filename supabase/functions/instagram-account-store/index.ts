@@ -421,7 +421,7 @@ Deno.serve(async (req: Request) => {
       return [{workspaceId:row.workspace_id,account:{...safeAccount(token.account),status:token.account.status || "connected"}}];
     })});
   }
-  if (["send_dm","load","delete","list_media","list_workspace_data","list_automations","set_automation_status","save_automation","delete_automation","refresh_contact_profiles","create_catalog_upload"].includes(action) && (action === "create_catalog_upload" || !String(workspaceId || "").startsWith("guest_"))) {
+  if (["send_dm","load","delete","list_media","list_workspace_data","list_inbox_page","inbox_analytics","mark_inbox_read","list_automations","set_automation_status","save_automation","delete_automation","refresh_contact_profiles","create_catalog_upload"].includes(action) && (action === "create_catalog_upload" || !String(workspaceId || "").startsWith("guest_"))) {
     const jwt = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
     const admin = getAdminClient();
     const {data:identity,error:authError} = await admin.auth.getUser(jwt);
@@ -584,11 +584,16 @@ Deno.serve(async (req: Request) => {
       return reply(200, { ok: true, refreshed });
     }
 
+    if (["list_inbox_page","inbox_analytics","mark_inbox_read"].includes(action)) {
+      const args=action==="inbox_analytics"?{p_workspace:workspaceId,p_start:payload.start,p_end:payload.end,p_timezone:String(payload.timezone||'UTC')}:action==="mark_inbox_read"?{p_workspace:workspaceId,p_sender:String(payload.sender||''),p_read:payload.read!==false}:{p_workspace:workspaceId,p_sender:String(payload.sender||''),p_before_time:payload.before_time||null,p_before_id:payload.before_id||null,p_limit:50};
+      const {data,error}=await admin.rpc(action==="list_inbox_page"?'autoreply_inbox_page':action==="inbox_analytics"?'autoreply_inbox_analytics':'autoreply_mark_inbox_read',args);
+      if(error)return reply(500,{ok:false,error:'Inbox data could not be loaded.'});
+      return reply(200,{ok:true,...data});
+    }
     if (action === "list_workspace_data") {
       const collections = [
         "automations",
         "contacts",
-        "inbox_messages",
       ];
 
       const { data, error } = await admin
@@ -620,11 +625,14 @@ Deno.serve(async (req: Request) => {
         });
       }
 
+      const {data:page,error:pageError}=await admin.rpc('autoreply_inbox_page',{p_workspace:workspaceId,p_limit:50});
+      if(pageError)return reply(500,{ok:false,error:'Inbox could not be loaded.'});
       return reply(200, {
         ok: true,
+        inboxUnreadCounts:page?.unread_counts||{},
         automations: result.automations,
         contacts: result.contacts,
-        inboxMessages: result.inbox_messages,
+        inboxMessages: page?.messages||[],
       });
     }
 

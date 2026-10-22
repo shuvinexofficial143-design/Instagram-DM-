@@ -56,7 +56,7 @@ function CustomerImage({url,index}:{url:string;index:number}) {
 
 export const InboxPage: React.FC = () => {
   const {
-    workspaceId, inboxMessages, instagramAccount, contacts, firebaseUser, sendManualReply,
+    workspaceId, inboxMessages, inboxPaging, inboxUnreadCounts, loadInboxMessages, instagramAccount, contacts, firebaseUser, sendManualReply,
     isAiPausedForUser, toggleAiForUser, deleteInboxThread, markInboxThreadRead, markInboxThreadUnread,
   } = useApp();
 
@@ -111,7 +111,7 @@ export const InboxPage: React.FC = () => {
   };
   const summaryFor = (key: string) => {
     const messages = [...(threadFor(key)?.messages || [])].sort((a,b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
-    return { messages, last: messages[0], unread: messages.filter(m => m.direction === 'in' && !m.is_read).length };
+    return { messages, last: messages[0], unread: inboxUnreadCounts ? (threadFor(key)?.aliases||[]).reduce((sum,alias)=>sum+Number(inboxUnreadCounts[alias]||0),0) : messages.filter(m => m.direction === 'in' && !m.is_read).length };
   };
   const labelFor = (key: string) => threadFor(key)?.label || 'Instagram user';
   const actionKeyFor = (key: string) => threadFor(key)?.actionKey || key;
@@ -134,7 +134,7 @@ export const InboxPage: React.FC = () => {
   }).sort((a, b) => {
     const aTs = new Date(summaryFor(a).last?.timestamp || 0).getTime();
     const bTs = new Date(summaryFor(b).last?.timestamp || 0).getTime();
-    return bTs - aTs;
+    return (bTs||Date.parse(threadFor(b)?.contact?.last_interaction_at||'')||0) - (aTs||Date.parse(threadFor(a)?.contact?.last_interaction_at||'')||0);
   });
 
   useEffect(() => {
@@ -153,6 +153,9 @@ export const InboxPage: React.FC = () => {
   const currentThread = [...selectedSummary.messages].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
   const selectedContact = threadFor(selectedUser)?.contact;
   const selectedNotes = notes.filter((note) => threadFor(selectedUser)?.aliases.includes(cleanKey(note.thread_id))).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const selectedActionKey=actionKeyFor(selectedUser);
+  const paging=inboxPaging?.[selectedActionKey];
+  useEffect(()=>{if(selectedActionKey)void loadInboxMessages(selectedActionKey);},[selectedActionKey,workspaceId]);
   const aiPaused = selectedUser ? isAiPausedForUser(actionKeyFor(selectedUser)) : false;
 
   useEffect(() => {
@@ -310,6 +313,9 @@ export const InboxPage: React.FC = () => {
                 {selectedMeta.snooze_until && new Date(selectedMeta.snooze_until).getTime() > Date.now() && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800">Snoozed until {new Date(selectedMeta.snooze_until).toLocaleString()} · <button onClick={() => void runAction(()=>saveMeta({ snooze_until: undefined, status: 'open' }))} className="underline">Unsnooze</button></div>}
 
                 <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
+                  {paging?.loading&&<p role="status" className="text-center text-xs text-slate-500">Loading messages…</p>}
+                  {paging?.error&&<p role="alert" className="text-center text-xs text-rose-700">{paging.error} <button onClick={()=>void loadInboxMessages(selectedActionKey,Boolean(paging.loaded))} className="underline">Retry</button></p>}
+                  {paging?.hasMore&&<div className="text-center"><button disabled={paging.loading} onClick={()=>void loadInboxMessages(selectedActionKey,true)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600">Load older messages</button></div>}
                   {currentThread.map((message) => {
                     const outgoing = message.direction === 'out';
                     return (

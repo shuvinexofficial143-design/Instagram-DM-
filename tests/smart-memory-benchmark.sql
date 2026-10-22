@@ -1,0 +1,3 @@
+-- Controlled cursor payload and DB timing comparison lives in smart-memory-pagination.integration.sql.
+-- Real provider A/B measurements are in docs/SMART_MEMORY_BENCHMARK.json.
+-- Both use synthetic conversations. Never send test DMs to customers.

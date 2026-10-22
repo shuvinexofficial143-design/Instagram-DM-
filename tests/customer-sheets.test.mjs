@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import vm from 'node:vm';import {transform} from 'esbuild';
 const source=(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
-const compiled=await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+source+'\nglobalThis.syncHelpers={inferCustomerInsight,syncAiLeadToGoogleSheet};',{loader:'ts',format:'esm'});
+const compiled=await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source+'\nglobalThis.syncHelpers={inferCustomerInsight,syncAiLeadToGoogleSheet};',{loader:'ts',format:'esm'});
 function setup(){
  const docs=new Map(),grids=new Map(),calls=[];let fail=false;
  const key=(c,id)=>c+':'+id;

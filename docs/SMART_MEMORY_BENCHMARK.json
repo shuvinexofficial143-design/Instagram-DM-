@@ -1,0 +1,543 @@
+[
+  {
+    "ok": true,
+    "messages": 10,
+    "before": {
+      "reply": "बिलकुल! यहाँ एक साधारण डेमो है:\n\n1. **DM Automation**: जब कोई ग्राहक आपके Instagram पर DM भेजता है, तो हम एक स्वचालित उत्तर सेट कर सकते हैं, जैसे \"धन्यवाद! हम आपकी मदद के लिए यहाँ हैं।\" \n\n2. **Keyword DMs**: आप कुछ कीवर्ड सेट कर सकते हैं। जैसे, अगर कोई \"गिफ्ट\" लिखता है, तो उन्हें एक विशेष उत्तर मिलेगा, जैसे \"हमारे पास विभिन्न प्रकार के गिफ्ट हैं, और आप हमारी वेबसाइट पर देख सकते हैं।\"\n\n3. **Comment Replies**: जब कोई आपके पोस्ट पर टिप्पणी करता है, तो हम स्वचालित उत्तर दे सकते हैं, जैसे \"आपका धन्यवाद! क्या आप हमारे गिफ्ट्स के बारे में और जानना चाहेंगे?\"\n\n4. **Story Replies**: अगर कोई आपके स्टोरीज पर प्रतिक्रिया करता है, तो हम उन्हें एक स्वचालित उत्तर भेज सकते हैं, जैसे \"आपकी प्रतिक्रिया के लिए धन्यवाद! क्या आपको कोई विशेष गिफ्ट चाहिए?\"\n\nक्या आप किसी विशेष फीचर पर ध्यान केंद्रित करना चाहेंगे?",
+      "usage": {
+        "input_tokens": 566,
+        "output_tokens": 232,
+        "calls": 1,
+        "provider_ms": 4325,
+        "usage_available": true
+      },
+      "wall_ms": 4326
+    },
+    "after": {
+      "reply": "बिल्कुल! आपके गिफ्ट बिजनेस के लिए Instagram DM Automation का एक सरल डेमो इस प्रकार है:\n\n1. **DM Automation**: जब कोई नया फॉलोअर आपके पेज पर आता है, तो उन्हें एक स्वचालित स्वागत संदेश भेजा जा सकता है, जैसे \"नमस्ते! हमारे गिफ्ट बिजनेस में आपका स्वागत है। क्या हम आपकी मदद कर सकते हैं?\"\n\n2. **Keyword DMs**: यदि कोई उपयोगकर्ता \"गिफ्ट\" या \"ऑफर\" जैसे कीवर्ड्स लिखता है, तो उन्हें स्वचालित रूप से संबंधित जानकारी या ऑफर्स भेजे जा सकते हैं।\n\n3. **Comment Replies**: जब कोई आपके पोस्ट पर टिप्पणी करता है, तो स्वचालित रूप से एक उत्तर भेजा जा सकता है, जैसे \"धन्यवाद! आपकी प्रतिक्रिया के लिए।\"\n\n4. **Story Replies**: यदि कोई आपके स्टोरीज पर प्रतिक्रिया देता है, तो आप उन्हें एक स्वचालित संदेश भेज सकते हैं, जैसे \"आपकी प्रतिक्रिया के लिए धन्यवाद! क्या आपको और जानकारी चाहिए?\"\n\nक्या आप इनमें से किसी विशेष फीचर के बारे में और जानना चाहेंगे?",
+      "usage": {
+        "input_tokens": 1026,
+        "output_tokens": 241,
+        "calls": 1,
+        "provider_ms": 2960,
+        "usage_available": true
+      },
+      "wall_ms": 2961
+    },
+    "synthetic_only": true,
+    "summary_processing": [
+      {
+        "input_tokens": 1084,
+        "output_tokens": 203,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 3701
+      }
+    ],
+    "memory": {
+      "summary": "The customer has a gift business and is interested in Instagram DM automation with a budget of 5000 INR. They have acknowledged understanding and are open to discussing further details later.",
+      "facts": {
+        "business_category": {
+          "value": "मेरा Gift Business",
+          "source_message_id": "synthetic-2",
+          "source_seq": 2,
+          "source_timestamp": "2026-07-23T13:08:19.526Z",
+          "source_role": "customer"
+        },
+        "requirements": {
+          "value": "मेरा Gift Business है और मुझे Instagram DM Automation चाहिए। My budget is 5000 INR.",
+          "source_message_id": "synthetic-2",
+          "source_seq": 2,
+          "source_timestamp": "2026-07-23T13:08:19.526Z",
+          "source_role": "customer"
+        },
+        "budget": {
+          "value": "budget is 5000 INR",
+          "source_message_id": "synthetic-2",
+          "source_seq": 2,
+          "source_timestamp": "2026-07-23T13:08:19.526Z",
+          "source_role": "customer"
+        },
+        "last_topic": {
+          "value": "हाँ, समझ आया। बाकी बातों पर हम बाद में बात करेंगे।",
+          "source_message_id": "synthetic-10",
+          "source_seq": 10,
+          "source_timestamp": "2026-07-23T13:16:19.526Z",
+          "source_role": "customer"
+        },
+        "next_action": {
+          "value": "बाकी बातों को बाद में आगे बढ़ाएँगे।",
+          "source_message_id": "synthetic-5",
+          "source_seq": 5,
+          "source_timestamp": "2026-07-23T13:11:19.526Z",
+          "source_role": "ai"
+        }
+      },
+      "version": 1
+    },
+    "initial_reply_measurement": {
+      "before": {
+        "reply": "बिल्कुल! यहाँ एक साधारण डेमो है कि कैसे हम आपके गिफ्ट बिजनेस के लिए Instagram DM Automation सेट कर सकते हैं:\n\n1. **DM Automation**: हम आपके ग्राहकों को स्वचालित रूप से संदेश भेज सकते हैं जब वे आपको DM करते हैं। उदाहरण के लिए, जब कोई \"गिफ्ट\" शब्द भेजता है, तो हम उन्हें एक स्वागत संदेश और आपके उत्पादों की जानकारी भेज सकते हैं।\n\n2. **Keyword DMs**: आप विशेष कीवर्ड सेट कर सकते हैं, जैसे \"ऑफर\" या \"नया\", और जब ग्राहक ये शब्द भेजते हैं, तो उन्हें संबंधित जानकारी या ऑफर्स भेजे जाएंगे।\n\n3. **Comment Replies**: आपके पोस्ट पर कमेंट्स का स्वचालित उत्तर देने की सुविधा भी है, जिससे आपके ग्राहकों को तुरंत प्रतिक्रिया मिलती है।\n\n4. **Story Replies**: जब ग्राहक आपकी स्टोरीज़ पर प्रतिक्रिया देते हैं, तो हम उन्हें स्वचालित उत्तर भेज सकते हैं।\n\nक्या आप किसी विशेष कीवर्ड या संदेश के बारे में सोच रहे हैं जो आप सेट करना चाहेंगे?",
+        "usage": {
+          "input_tokens": 566,
+          "output_tokens": 227,
+          "calls": 1,
+          "provider_ms": 3595,
+          "usage_available": true
+        },
+        "wall_ms": 3597
+      },
+      "after": {
+        "reply": "बिल्कुल! आपके गिफ्ट बिजनेस के लिए Instagram DM automation का एक सरल डेमो इस प्रकार है:\n\n1. **DM Automation**: जब कोई आपके इंस्टाग्राम पर DM भेजता है, तो हम एक स्वचालित उत्तर सेट कर सकते हैं, जैसे \"धन्यवाद! आपकी रुचि के लिए धन्यवाद। हम जल्द ही आपसे संपर्क करेंगे।\"\n\n2. **Keyword DMs**: आप कुछ कीवर्ड्स सेट कर सकते हैं, जैसे \"गिफ्ट\", \"ऑफर\", आदि। जब कोई इन कीवर्ड्स का उपयोग करता है, तो उन्हें एक विशेष उत्तर मिलेगा, जैसे \"हमारे पास शानदार गिफ्ट विकल्प हैं! अधिक जानकारी के लिए DM करें।\"\n\n3. **Comment Replies**: आपके पोस्ट पर कोई टिप्पणी करता है, तो हम एक स्वचालित उत्तर सेट कर सकते हैं, जैसे \"धन्यवाद! आपकी टिप्पणी के लिए।\"\n\n4. **Story Replies**: जब कोई आपकी स्टोरी पर प्रतिक्रिया देता है, तो हम एक स्वचालित उत्तर भेज सकते हैं, जैसे \"आपकी प्रतिक्रिया के लिए धन्यवाद! क्या आपको और जानकारी चाहिए?\"\n\nक्या आप किसी विशेष फीचर पर ध्यान केंद्रित करना चाहेंगे?",
+        "usage": {
+          "input_tokens": 1003,
+          "output_tokens": 247,
+          "calls": 1,
+          "provider_ms": 3385,
+          "usage_available": true
+        },
+        "wall_ms": 3385
+      }
+    },
+    "reply_worker_version": 2
+  },
+  {
+    "ok": true,
+    "messages": 50,
+    "before": {
+      "reply": "बिलकुल! आइए हम एक साधारण डेमो देखते हैं। \n\n1. **Instagram AI DM Automation**: आप अपने ग्राहकों को स्वचालित संदेश भेज सकते हैं, जैसे कि स्वागत संदेश या विशेष ऑफ़र की जानकारी। \n   \n2. **Keyword DMs**: आप कुछ विशेष कीवर्ड सेट कर सकते हैं, जैसे \"बिक्री\" या \"जानकारी\", और जब ग्राहक ये शब्द भेजते हैं, तो उन्हें स्वचालित उत्तर मिलते हैं।\n\n3. **Comment Replies**: आपके पोस्ट पर आने वाले कमेंट्स का स्वचालित उत्तर दिया जा सकता है, जिससे आपके ग्राहक को तुरंत प्रतिक्रिया मिलती है।\n\n4. **Story Replies**: जब ग्राहक आपकी कहानियों पर प्रतिक्रिया देते हैं, तो आप स्वचालित उत्तर भेज सकते हैं।\n\nक्या आपके पास कोई विशेष कीवर्ड या संदेश हैं, जिन्हें आप डेमो में शामिल करना चाहेंगे?",
+      "usage": {
+        "input_tokens": 618,
+        "output_tokens": 190,
+        "calls": 1,
+        "provider_ms": 3797,
+        "usage_available": true
+      },
+      "wall_ms": 3798
+    },
+    "after": {
+      "reply": "बिल्कुल! आपके गिफ्ट बिजनेस के लिए Instagram DM Automation का एक साधारण डेमो इस प्रकार होगा:\n\n1. **DM Automation**: हम आपके Instagram अकाउंट पर DM ऑटोमेशन सेट करेंगे, जिससे आप अपने ग्राहकों को स्वचालित रूप से संदेश भेज सकेंगे। उदाहरण के लिए, जब कोई नया फॉलोअर आपके अकाउंट को फॉलो करता है, तो उन्हें एक स्वागत संदेश भेजा जा सकता है।\n\n2. **Keyword DMs**: आप विशेष कीवर्ड सेट कर सकते हैं। जैसे, अगर कोई ग्राहक \"गिफ्ट\" लिखता है, तो उन्हें एक ऑटोमेटेड जवाब मिलेगा जिसमें आपके गिफ्ट उत्पादों की जानकारी होगी।\n\n3. **Comment Replies**: आपके पोस्ट पर आने वाले कमेंट्स का ऑटोमेटेड जवाब दिया जा सकता है। जैसे, \"धन्यवाद!\" या \"आपके सवाल का जवाब जल्दी ही देंगे।\"\n\n4. **Story Replies**: आप अपने स्टोरीज पर आने वाले प्रतिक्रियाओं का भी ऑटोमेटेड जवाब सेट कर सकते हैं।\n\nक्या आपको किसी विशेष फीचर पर और जानकारी चाहिए या कोई और सवाल है?",
+      "usage": {
+        "input_tokens": 1008,
+        "output_tokens": 242,
+        "calls": 1,
+        "provider_ms": 5229,
+        "usage_available": true
+      },
+      "wall_ms": 5229
+    },
+    "synthetic_only": true,
+    "summary_processing": [
+      {
+        "input_tokens": 2244,
+        "output_tokens": 165,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 3499
+      },
+      {
+        "input_tokens": 1695,
+        "output_tokens": 195,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 3089
+      }
+    ],
+    "memory": {
+      "summary": "The customer has a gift business and is interested in Instagram DM automation with a budget of 5000 INR. They have acknowledged understanding and are open to discussing further details later.",
+      "facts": {
+        "business_category": {
+          "value": "मेरा Gift Business",
+          "source_message_id": "synthetic-2",
+          "source_seq": 2,
+          "source_timestamp": "2026-07-23T13:09:02.702Z",
+          "source_role": "customer"
+        },
+        "requirements": {
+          "value": "मेरा Gift Business है और मुझे Instagram DM Automation चाहिए। My budget is 5000 INR.",
+          "source_message_id": "synthetic-2",
+          "source_seq": 2,
+          "source_timestamp": "2026-07-23T13:09:02.702Z",
+          "source_role": "customer"
+        },
+        "budget": {
+          "value": "budget is 5000 INR",
+          "source_message_id": "synthetic-2",
+          "source_seq": 2,
+          "source_timestamp": "2026-07-23T13:09:02.702Z",
+          "source_role": "customer"
+        },
+        "last_topic": {
+          "value": "हाँ, समझ आया। बाकी बातों पर हम बाद में बात करेंगे।",
+          "source_message_id": "synthetic-50",
+          "source_seq": 50,
+          "source_timestamp": "2026-07-23T13:57:02.702Z",
+          "source_role": "customer"
+        }
+      },
+      "version": 2
+    },
+    "initial_reply_measurement": {
+      "before": {
+        "reply": "बिल्कुल! आइए मैं आपको एक सरल डेमो दिखाता हूँ। \n\nहमारे Instagram DM ऑटोमेशन से आप अपने ग्राहकों को स्वचालित संदेश भेज सकते हैं। उदाहरण के लिए, जब कोई आपके पोस्ट पर कमेंट करता है, तो आप एक स्वचालित उत्तर सेट कर सकते हैं जैसे \"धन्यवाद! आपकी रुचि के लिए धन्यवाद।\" \n\nक्या आप विशेष रूप से किसी प्रकार के DM या कमेंट उत्तर के लिए डेमो देखना चाहेंगे?",
+        "usage": {
+          "input_tokens": 618,
+          "output_tokens": 105,
+          "calls": 1,
+          "provider_ms": 2012,
+          "usage_available": true
+        },
+        "wall_ms": 2013
+      },
+      "after": {
+        "reply": "बिल्कुल! आपके गिफ्ट बिजनेस के लिए Instagram DM Automation का एक साधारण डेमो इस प्रकार होगा:\n\n1. **DM Automation**: हम आपके इंस्टाग्राम अकाउंट पर DM भेजने की प्रक्रिया को ऑटोमेट कर सकते हैं। जब कोई ग्राहक आपको DM करेगा, तो उन्हें स्वचालित उत्तर मिलेगा, जैसे \"धन्यवाद! आपके संदेश के लिए। हम जल्द ही आपसे संपर्क करेंगे।\"\n\n2. **Keyword DMs**: आप कुछ कीवर्ड सेट कर सकते हैं। जैसे, यदि कोई ग्राहक \"गिफ्ट\" लिखता है, तो उन्हें एक विशेष उत्तर मिलेगा जिसमें आपके उत्पादों की जानकारी होगी।\n\n3. **Comment Replies**: आपके पोस्ट पर कमेंट्स का ऑटोमेटिक जवाब दिया जा सकता है। जैसे, \"धन्यवाद! आपके कमेंट के लिए। अधिक जानकारी के लिए DM करें।\"\n\n4. **Story Replies**: जब कोई आपके स्टोरीज़ पर प्रतिक्रिया देता है, तो आप एक ऑटोमेटिक उत्तर सेट कर सकते हैं, जैसे \"आपकी प्रतिक्रिया के लिए धन्यवाद! क्या आप और जानकारी चाहते हैं?\"\n\nक्या आप इन सुविधाओं में से किसी विशेष पर अधिक जानकारी चाहते हैं?",
+        "usage": {
+          "input_tokens": 985,
+          "output_tokens": 246,
+          "calls": 1,
+          "provider_ms": 4533,
+          "usage_available": true
+        },
+        "wall_ms": 4533
+      }
+    },
+    "reply_worker_version": 2
+  },
+  {
+    "ok": true,
+    "messages": 100,
+    "before": {
+      "reply": "बिल्कुल! आइए मैं आपको Instagram DM और कमेंट ऑटोमेशन का एक सरल डेमो दिखाता हूँ। \n\n1. **DM ऑटोमेशन**: आप अपने ग्राहकों को स्वचालित संदेश भेज सकते हैं जब वे आपको DM करते हैं। उदाहरण के लिए, यदि कोई \"जानकारी\" लिखता है, तो आप उन्हें आपके उत्पादों के बारे में जानकारी भेज सकते हैं।\n\n2. **कीवर्ड DMs**: आप विशिष्ट कीवर्ड सेट कर सकते हैं, जैसे \"डिस्काउंट\" या \"ऑफर\", और जब ग्राहक ये शब्द लिखते हैं, तो उन्हें स्वचालित रूप से एक विशेष संदेश प्राप्त होगा।\n\n3. **कमेंट रिप्लाई**: जब कोई आपके पोस्ट पर कमेंट करता है, तो आप स्वचालित रूप से उत्तर दे सकते हैं। जैसे, \"धन्यवाद!\" या \"आपका सवाल पूछने के लिए धन्यवाद!\"\n\n4. **स्टोरी रिप्लाई**: जब कोई आपकी स्टोरी पर प्रतिक्रिया करता है, तो आप उन्हें एक स्वचालित उत्तर भेज सकते हैं, जिससे उनकी संलग्नता बढ़ती है।\n\nक्या आपके पास कोई खास कीवर्ड या ऑटोमेटेड संदेश हैं",
+      "usage": {
+        "input_tokens": 618,
+        "output_tokens": 250,
+        "calls": 1,
+        "provider_ms": 4829,
+        "usage_available": true
+      },
+      "wall_ms": 4830
+    },
+    "after": {
+      "reply": "बिल्कुल! आपके गिफ्ट बिजनेस के लिए Instagram DM Automation का एक साधारण डेमो इस प्रकार होगा:\n\n1. **DM Automation**: हम आपके ग्राहकों को स्वचालित संदेश भेज सकते हैं, जैसे कि स्वागत संदेश, विशेष ऑफ़र या नए उत्पादों की जानकारी।\n\n2. **Keyword DMs**: जब ग्राहक आपके पोस्ट या स्टोरी में विशेष कीवर्ड का उपयोग करते हैं, तो वे स्वचालित रूप से एक पूर्व-निर्धारित उत्तर प्राप्त कर सकते हैं।\n\n3. **Comment Replies**: आपके पोस्ट पर आने वाले कमेंट्स का स्वचालित उत्तर दिया जा सकता है, जिससे आपके ग्राहकों को त्वरित प्रतिक्रिया मिलती है।\n\n4. **Story Replies**: जब ग्राहक आपकी स्टोरी पर प्रतिक्रिया देते हैं, तो हम उन्हें स्वचालित रूप से उत्तर भेज सकते हैं।\n\nआपके बजट के हिसाब से, क्या आपको इनमें से किसी विशेष फीचर पर ध्यान केंद्रित करना है?",
+      "usage": {
+        "input_tokens": 1063,
+        "output_tokens": 199,
+        "calls": 1,
+        "provider_ms": 2667,
+        "usage_available": true
+      },
+      "wall_ms": 2667
+    },
+    "synthetic_only": true,
+    "summary_processing": [
+      {
+        "input_tokens": 2244,
+        "output_tokens": 164,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2662
+      },
+      {
+        "input_tokens": 2274,
+        "output_tokens": 165,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2063
+      },
+      {
+        "input_tokens": 2275,
+        "output_tokens": 133,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2036
+      },
+      {
+        "input_tokens": 1115,
+        "output_tokens": 130,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 1953
+      }
+    ],
+    "memory": {
+      "summary": "The customer has a gift business and is interested in Instagram DM automation with a budget of 8000 INR. They have acknowledged understanding the discussion and agreed to continue later.",
+      "facts": {
+        "business_category": {
+          "value": "मेरा Gift Business",
+          "source_message_id": "synthetic-2",
+          "source_seq": 2,
+          "source_timestamp": "2026-07-23T13:10:10.066Z",
+          "source_role": "customer"
+        },
+        "requirements": {
+          "value": "मेरा Gift Business है और मुझे Instagram DM Automation चाहिए। My budget is 5000 INR.",
+          "source_message_id": "synthetic-2",
+          "source_seq": 2,
+          "source_timestamp": "2026-07-23T13:10:10.066Z",
+          "source_role": "customer"
+        },
+        "budget": {
+          "value": "budget is now 8000 INR",
+          "source_message_id": "synthetic-52",
+          "source_seq": 52,
+          "source_timestamp": "2026-07-23T14:00:10.066Z",
+          "source_role": "customer"
+        },
+        "last_topic": {
+          "value": "हाँ, समझ आया। बाकी बातों पर हम बाद में बात करेंगे।",
+          "source_message_id": "synthetic-100",
+          "source_seq": 100,
+          "source_timestamp": "2026-07-23T14:48:10.066Z",
+          "source_role": "customer"
+        },
+        "next_action": {
+          "value": "ठीक है, बाकी बातों को बाद में आगे बढ़ाएँगे।",
+          "source_message_id": "synthetic-99",
+          "source_seq": 99,
+          "source_timestamp": "2026-07-23T14:47:10.066Z",
+          "source_role": "ai"
+        }
+      },
+      "version": 4
+    },
+    "initial_reply_measurement": {
+      "before": {
+        "reply": "बिल्कुल! मैं आपको Instagram DM और कमेंट ऑटोमेशन का एक साधारण डेमो दिखा सकता हूँ। \n\n1. **DM Automation**: जब कोई यूजर आपके पेज पर DM करता है, तो आप एक स्वचालित उत्तर सेट कर सकते हैं, जैसे \"धन्यवाद! आपकी मैसेज के लिए। हम जल्द ही संपर्क करेंगे।\"\n\n2. **Keyword DMs**: आप विशेष कीवर्ड्स के लिए ऑटोमेटेड उत्तर सेट कर सकते हैं। जैसे अगर कोई \"प्राइस\" पूछता है, तो आप एक ऑटोमेटेड उत्तर भेज सकते हैं जिसमें आपके उत्पादों की कीमतें होंगी।\n\n3. **Comment Replies**: जब कोई यूजर आपके पोस्ट पर कमेंट करता है, तो आप ऑटोमेटेड उत्तर सेट कर सकते हैं, जैसे \"आपके कमेंट के लिए धन्यवाद! क्या आपको और जानकारी चाहिए?\"\n\n4. **Story Replies**: जब कोई यूजर आपकी स्टोरी पर प्रतिक्रिया करता है, तो आप एक स्वचालित उत्तर भेज सकते हैं, जैसे \"आपकी प्रतिक्रिया के लिए धन्यवाद!\"\n\nक्या आपके पास कोई विशेष कीवर्ड या संदेश है जिसे आप ऑटोमेट करना चाहेंगे?",
+        "usage": {
+          "input_tokens": 618,
+          "output_tokens": 248,
+          "calls": 1,
+          "provider_ms": 2717,
+          "usage_available": true
+        },
+        "wall_ms": 2719
+      },
+      "after": {
+        "reply": "बिल्कुल! आपके गिफ्ट बिजनेस के लिए Instagram DM Automation का डेमो इस तरह होगा:\n\n1. **DM Automation**: हम आपके इंस्टाग्राम पर आने वाले संदेशों का ऑटोमेटेड जवाब देंगे। जैसे ही कोई ग्राहक आपको संदेश भेजेगा, उन्हें तुरंत जवाब मिलेगा, जिससे आप ग्राहक सेवा में तेजी ला सकते हैं।\n\n2. **Keyword DMs**: आप कुछ विशेष कीवर्ड सेट कर सकते हैं। जैसे, अगर कोई ग्राहक \"डिस्काउंट\" लिखता है, तो उन्हें विशेष ऑफ़र का संदेश मिल जाएगा।\n\n3. **Comment Replies**: आपके पोस्ट पर आने वाले कमेंट्स का भी ऑटोमेटेड जवाब दिया जा सकता है। इससे आपकी पोस्ट पर बातचीत बढ़ेगी और ग्राहक जुड़ाव महसूस करेंगे।\n\n4. **Story Replies**: आपकी स्टोरीज़ पर आने वाले जवाबों का भी ऑटोमेशन किया जा सकता है, जिससे आप अपने फॉलोअर्स के साथ इंटरैक्ट कर सकें।\n\nआपका बजट 8000 INR है, क्या आप किसी विशेष फीचर पर ध्यान देना चाहेंगे या कोई और जानकारी चाहिए?",
+        "usage": {
+          "input_tokens": 1040,
+          "output_tokens": 235,
+          "calls": 1,
+          "provider_ms": 2935,
+          "usage_available": true
+        },
+        "wall_ms": 2936
+      }
+    },
+    "reply_worker_version": 2
+  },
+  {
+    "ok": true,
+    "messages": 500,
+    "before": {
+      "reply": "बिल्कुल! हमारे Instagram DM ऑटोमेशन का डेमो इस तरह से काम करता है:\n\n1. **DM ऑटोमेशन**: जब कोई आपके पेज पर DM करता है, तो हम उसे स्वचालित उत्तर भेज सकते हैं। जैसे कि \"धन्यवाद, हम आपकी मदद के लिए यहाँ हैं!\"\n\n2. **कीवर्ड DMs**: आप कुछ कीवर्ड सेट कर सकते हैं, जैसे \"प्राइस\" या \"उपलब्धता\", और जब कोई इन शब्दों का उपयोग करता है, तो उन्हें विशेष उत्तर मिलते हैं।\n\n3. **कमेंट रिप्लाई**: जब कोई आपके पोस्ट पर कमेंट करता है, तो हम स्वचालित रूप से जवाब दे सकते हैं, जैसे \"आपके सवाल के लिए धन्यवाद!\"\n\n4. **स्टोरी रिप्लाई**: यदि कोई आपकी स्टोरी पर प्रतिक्रिया करता है, तो हम उसे ऑटोमेटेड उत्तर भेज सकते हैं।\n\nक्या आपके पास कोई विशेष कीवर्ड या संदेश हैं जिन्हें आप सेट करना चाहेंगे?",
+      "usage": {
+        "input_tokens": 618,
+        "output_tokens": 213,
+        "calls": 1,
+        "provider_ms": 2959,
+        "usage_available": true
+      },
+      "wall_ms": 2961
+    },
+    "after": {
+      "reply": "बिल्कुल! आपके गिफ्ट बिजनेस के लिए Instagram DM Automation का एक साधारण डेमो इस तरह से होगा:\n\n1. **DM Automation**: जब कोई ग्राहक आपके इंस्टाग्राम पेज पर DM करता है, तो हमारी AI ऑटोमेटेड प्रतिक्रिया तुरंत भेजी जाएगी। जैसे ही कोई ग्राहक \"नमस्ते\" लिखता है, उन्हें एक स्वागत संदेश मिलेगा।\n\n2. **Keyword DMs**: अगर कोई ग्राहक \"उपहार\" या \"डिस्काउंट\" जैसे कीवर्ड्स का उपयोग करता है, तो उन्हें विशेष जानकारी या ऑफर के बारे में DM भेजा जाएगा।\n\n3. **Comment Replies**: आपके पोस्ट पर जो भी कमेंट्स आएंगे, उन पर स्वचालित रूप से उत्तर दिए जाएंगे। जैसे \"क्या यह उपलब्ध है?\" पर एक उत्तर होगा \"जी हाँ, यह उपलब्ध है!\".\n\n4. **Story Replies**: अगर कोई ग्राहक आपकी स्टोरी पर प्रतिक्रिया देता है, तो उन्हें एक ऑटोमेटेड धन्यवाद संदेश मिलेगा।\n\nक्या आप इस डेमो में कोई विशेष फीचर जोड़ना चाहेंगे या किसी और चीज़ के बारे में जानना चाहेंगे?",
+      "usage": {
+        "input_tokens": 1064,
+        "output_tokens": 239,
+        "calls": 1,
+        "provider_ms": 3499,
+        "usage_available": true
+      },
+      "wall_ms": 3500
+    },
+    "synthetic_only": true,
+    "summary_processing": [
+      {
+        "input_tokens": 2244,
+        "output_tokens": 165,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2681
+      },
+      {
+        "input_tokens": 2275,
+        "output_tokens": 195,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2298
+      },
+      {
+        "input_tokens": 2275,
+        "output_tokens": 195,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2889
+      },
+      {
+        "input_tokens": 2275,
+        "output_tokens": 195,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2770
+      },
+      {
+        "input_tokens": 2275,
+        "output_tokens": 195,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2716
+      },
+      {
+        "input_tokens": 2275,
+        "output_tokens": 195,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2638
+      },
+      {
+        "input_tokens": 2275,
+        "output_tokens": 90,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 1926
+      },
+      {
+        "input_tokens": 2275,
+        "output_tokens": 195,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2579
+      },
+      {
+        "input_tokens": 2275,
+        "output_tokens": 122,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 1773
+      },
+      {
+        "input_tokens": 2276,
+        "output_tokens": 131,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 1887
+      },
+      {
+        "input_tokens": 2331,
+        "output_tokens": 131,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 1935
+      },
+      {
+        "input_tokens": 2331,
+        "output_tokens": 131,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2200
+      },
+      {
+        "input_tokens": 2331,
+        "output_tokens": 131,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2176
+      },
+      {
+        "input_tokens": 2331,
+        "output_tokens": 131,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2342
+      },
+      {
+        "input_tokens": 2331,
+        "output_tokens": 131,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 1981
+      },
+      {
+        "input_tokens": 2331,
+        "output_tokens": 131,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2195
+      },
+      {
+        "input_tokens": 1751,
+        "output_tokens": 131,
+        "calls": 1,
+        "usage_available": true,
+        "processing_ms": 2202
+      }
+    ],
+    "memory": {
+      "summary": "The customer has a gift business and is interested in Instagram DM automation with a budget of 8000 INR. They have acknowledged understanding and are open to discussing further details later.",
+      "facts": {
+        "business_category": {
+          "value": "मेरा Gift Business",
+          "source_message_id": "synthetic-2",
+          "source_seq": 2,
+          "source_timestamp": "2026-07-23T13:13:46.464Z",
+          "source_role": "customer"
+        },
+        "requirements": {
+          "value": "मेरा Gift Business है और मुझे Instagram DM Automation चाहिए। My budget is 5000 INR.",
+          "source_message_id": "synthetic-2",
+          "source_seq": 2,
+          "source_timestamp": "2026-07-23T13:13:46.464Z",
+          "source_role": "customer"
+        },
+        "budget": {
+          "value": "budget is now 8000 INR",
+          "source_message_id": "synthetic-252",
+          "source_seq": 252,
+          "source_timestamp": "2026-07-23T17:23:46.464Z",
+          "source_role": "customer"
+        },
+        "last_topic": {
+          "value": "हाँ, समझ आया। बाकी बातों पर हम बाद में बात करेंगे।",
+          "source_message_id": "synthetic-500",
+          "source_seq": 500,
+          "source_timestamp": "2026-07-23T21:31:46.465Z",
+          "source_role": "customer"
+        },
+        "next_action": {
+          "value": "ठीक है, बाकी बातों को बाद में आगे बढ़ाएँगे।",
+          "source_message_id": "synthetic-481",
+          "source_seq": 481,
+          "source_timestamp": "2026-07-23T21:12:46.465Z",
+          "source_role": "ai"
+        }
+      },
+      "version": 17
+    },
+    "initial_reply_measurement": {
+      "before": {
+        "reply": "बिल्कुल! चलिए एक साधारण डेमो करते हैं। \n\n1. **DM Automation**: आप अपने ग्राहकों को स्वचालित संदेश भेज सकते हैं, जैसे कि \"धन्यवाद, आपके संदेश के लिए!\" जब कोई आपको DM करता है।\n\n2. **Keyword DMs**: यदि कोई ग्राहक \"प्रोडक्ट\" शब्द लिखता है, तो आप उन्हें अपने प्रोडक्ट कैटलॉग का लिंक भेज सकते हैं।\n\n3. **Comment Replies**: जब कोई आपके पोस्ट पर \"बहुत अच्छा!\" लिखता है, तो आप स्वचालित रूप से जवाब दे सकते हैं, \"धन्यवाद! हमें खुशी है कि आपको पसंद आया।\"\n\n4. **Story Replies**: यदि कोई आपके स्टोरी पर प्रतिक्रिया देता है, तो आप उन्हें एक स्वचालित धन्यवाद संदेश भेज सकते हैं।\n\nक्या आप किसी विशेष फीचर पर ध्यान केंद्रित करना चाहेंगे?",
+        "usage": {
+          "input_tokens": 618,
+          "output_tokens": 184,
+          "calls": 1,
+          "provider_ms": 2488,
+          "usage_available": true
+        },
+        "wall_ms": 2489
+      },
+      "after": {
+        "reply": "बिल्कुल! आपके गिफ्ट बिजनेस के लिए Instagram DM Automation का डेमो इस तरह होगा:\n\n1. **DM Automation**: हम आपकी Instagram DMs को ऑटोमेट कर सकते हैं, जिससे आप अपने ग्राहकों को तुरंत जवाब दे सकें। जब कोई ग्राहक आपको DM करता है, तो आपके द्वारा निर्धारित की गई ऑटोमेटेड रिस्पॉन्स भेजी जाएगी।\n\n2. **Keyword DMs**: आप कुछ कीवर्ड सेट कर सकते हैं, जैसे \"प्रोडक्ट\", \"ऑफर\", आदि। जब ग्राहक ये कीवर्ड भेजते हैं, तो उन्हें विशेष जानकारी या ऑफर की जानकारी मिल जाएगी।\n\n3. **Comment Replies**: आपके पोस्ट पर जो भी कमेंट्स आएंगे, उनके लिए भी ऑटोमेटेड जवाब सेट किए जा सकते हैं। इससे आप अपने ग्राहकों के साथ इंटरैक्शन बढ़ा सकते हैं।\n\n4. **Story Replies**: अगर कोई ग्राहक आपकी स्टोरी पर प्रतिक्रिया देता है, तो आप ऑटोमेटेड जवाब सेट कर सकते हैं, जिससे ग्राहक को तुरंत प्रतिक्रिया मिलेगी।\n\nक्या आप इनमें से किसी विशेष फीचर के बारे में और जानकारी चाहते हैं?",
+        "usage": {
+          "input_tokens": 1041,
+          "output_tokens": 240,
+          "calls": 1,
+          "provider_ms": 2636,
+          "usage_available": true
+        },
+        "wall_ms": 2636
+      }
+    },
+    "reply_worker_version": 2
+  }
+]

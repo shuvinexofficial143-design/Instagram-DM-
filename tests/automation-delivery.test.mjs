@@ -6,7 +6,7 @@ import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+source + '\nglobalThis.helpers = { extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog };', { loader: 'ts', format: 'esm' });
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
@@ -704,7 +704,7 @@ test('large AI catalogs can send later pages instead of failing the whole reply'
 });
 test('inactive catalog no longer replaces an ordinary AI answer with fallback',async()=>{
  const rule={...ai,actions:[{type:'ai_chatbot',ai_system_instruction:'Our shop is in Ujjain',catalog_id:'watches'}]};
- const f=fixture([rule],{catalogs:[{...photoCatalog[0],active:false}],products:photoProducts,onAIStart:body=>assert.equal(body.tools.length,1)});await f.post(dm('inactive-catalog','Where is your shop?'));
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],active:false}],products:photoProducts,onAIStart:body=>assert.deepEqual(body.tools.map(tool=>tool.function.name).sort(),['handoff_to_human','search_conversation_history'])});await f.post(dm('inactive-catalog','Where is your shop?'));
  const sent=f.apiCalls.find(c=>c.body.message);assert.ok(sent.body.message.text.startsWith('AI:'));assert.notEqual(sent.body.message.text,'Fallback reply');
 });
 test('text-only catalog product remains in AI knowledge without a photo requirement',async()=>{

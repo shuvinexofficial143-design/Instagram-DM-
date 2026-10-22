@@ -1,7 +1,10 @@
+import {MemorySettings} from './MemorySettings';
+import {fetchInboxPage} from '../../lib/supabase';
+import {loadFullInboxHistory} from '../../lib/inboxPaging';
 import { GoogleSheetsSetup } from '../Automations/GoogleSheetsSetup';
 import { CustomerDataCard } from '../CustomerData/CustomerDataCard';
 import { InstagramAccounts } from '../Common/InstagramAccounts';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   CalendarClock,
   CheckCircle2,
@@ -34,6 +37,7 @@ const readPreference = (key: string, fallback: string) => {
 export const SettingsPage: React.FC = () => {
   const {
     user,
+    workspaceId,isGuestMode,
     firebaseUser,
     logout,
     instagramAccount,
@@ -47,6 +51,9 @@ export const SettingsPage: React.FC = () => {
 
   const usage = useWorkspaceUsage();
 
+  const [exporting,setExporting]=useState(false),[exportError,setExportError]=useState('');
+  const exportScope=useRef(workspaceId);exportScope.current=workspaceId;
+  const exportEpoch=useRef(0);useEffect(()=>{exportEpoch.current++;},[workspaceId,firebaseUser?.uid]);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState('');
@@ -66,14 +73,21 @@ export const SettingsPage: React.FC = () => {
     window.setTimeout(() => setSavedPreference(''), 1600);
   };
 
-  const handleExportData = () => {
+  const handleExportData = async () => {
+    if(exporting)return;setExporting(true);setExportError('');const scope=workspaceId,epoch=exportEpoch.current;
+    try{
+    const history=await loadFullInboxHistory(async(cursor)=>{
+      if(!isGuestMode)return fetchInboxPage(scope,'',cursor,100);
+      const params=new URLSearchParams({action:'inbox-page'});if(cursor){params.set('before_time',cursor.time);params.set('before_id',cursor.id);}
+      const response=await fetch('/api/workspace-data?'+params,{credentials:'same-origin'});const page=await response.json();if(!response.ok||!page.ok)throw Error('Export could not be loaded.');return page;
+    },()=>exportScope.current===scope&&exportEpoch.current===epoch);
     const exportData = {
       exported_at: new Date().toISOString(),
       profile: user,
       instagram_account: instagramAccount ? { ...instagramAccount, access_token: undefined } : null,
       automations,
       contacts,
-      inbox_messages: inboxMessages,
+      inbox_messages: history,
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -84,6 +98,7 @@ export const SettingsPage: React.FC = () => {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+    }catch(error:any){setExportError(error?.message||'Export could not be prepared.');}finally{setExporting(false);}
   };
 
   const handleLogout = async () => {
@@ -295,10 +310,12 @@ export const SettingsPage: React.FC = () => {
         </div>
       </section>
 
+      {exportError&&<p role="alert" className="text-sm text-rose-700">{exportError}</p>}
+      <MemorySettings/>
       <section id="settings-privacy" className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5 sm:p-6">
           <h2 className="text-lg font-bold text-slate-950">Data & privacy</h2>
-          <p className="mt-1 text-sm text-slate-500">Download a copy of the workspace data currently available to Auto Replies.</p>
+          <p className="mt-1 text-sm text-slate-500">Download workspace details and the complete saved Inbox history for this Instagram account.</p>
         </div>
 
         <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
@@ -308,11 +325,11 @@ export const SettingsPage: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={handleExportData}
+            disabled={exporting} onClick={()=>void handleExportData()}
             className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white hover:bg-slate-800 sm:w-auto"
           >
             <Download className="h-4 w-4" />
-            Export data
+            {exporting?'Preparing complete export…':'Export data'}
           </button>
         </div>
       </section>

@@ -167,7 +167,7 @@ try {
   html=renderToStaticMarkup(React.createElement(ui.CatalogPreview,{products:Array.from({length:13},(_,i)=>({id:String(i),name:'Frame '+i,price:'₹499',description:'Frame',url:'',active:true,images:['https://img.example/'+i+'.jpg']}))}));assert.equal((html.match(/<article/g)||[]).length,10);assert.ok(html.includes('Page 1 of 2'));assert.ok(html.includes('Next'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.CatalogPreview,{products:[{id:'text',name:'Consultation',price:'₹499',description:'Written details',url:'',active:true,images:[]}]}));assert.ok(html.includes('Written product details are available to AI'));checks++;
   globalThis.__uiFixture=fixture();
-  html=renderToStaticMarkup(React.createElement(ui.SettingsPage));assert.ok(!html.includes('Email notifications'));assert.ok(!html.includes('Email preferences'));checks++;
+  html=renderToStaticMarkup(React.createElement(ui.SettingsPage));assert.ok(html.includes('AI conversation memory'));assert.ok(html.includes('Recent messages'));assert.ok(html.includes('Update summary after'));assert.ok(html.includes('AI context budget'));checks++;assert.ok(!html.includes('Email notifications'));assert.ok(!html.includes('Email preferences'));checks++;
   html=renderToStaticMarkup(React.createElement(ui.AdminEmailPreferences));assert.equal(html,'');checks++;
   globalThis.__uiFixture=fixture({isAdmin:true,firebaseUser:{uid:'admin',email:'admin@example.test'}});
   html=renderToStaticMarkup(React.createElement(ui.AdminEmailPreferences));assert.ok(html.includes('Email notifications'));assert.ok(html.includes('Send me helpful tips'));checks++;

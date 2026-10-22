@@ -1,3 +1,5 @@
+import type {InboxPage,InboxCursor} from './inboxPaging';
+import type {InboxMessage} from '../types';
 import { createClient, type User as SupabaseUser, type Session } from '@supabase/supabase-js';
 
 const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
@@ -259,6 +261,7 @@ function ensureOwner(userId: string) {
 
 async function readCollection<T extends { id?: string }>(userId: string, collection: string): Promise<T[]> {
   ensureOwner(userId);
+  if(collection==='inbox_messages')return (await fetchInboxPage(userId)).messages as unknown as T[];
   // Catalogs can exceed PostgREST's default 1,000-row response cap.
   if(['catalogs','catalog_products'].includes(collection)){
     const rows:any[]=[];
@@ -272,6 +275,29 @@ async function readCollection<T extends { id?: string }>(userId: string, collect
     .from('autoreply_documents').select('id,data').eq('user_id', userId).eq('collection', collection).order('updated_at', { ascending: false });
   if (error) throw error;
   return (data || []).map((row: any) => ({ ...(row.data || {}), id: row.id } as T));
+}
+
+/** A bounded RLS-protected page; cursor is (message_time,id), not an offset. */
+export async function fetchInboxPage(userId:string,sender='',cursor:InboxCursor|null=null,limit=50):Promise<InboxPage>{
+ ensureOwner(userId);
+ const {data,error}=await supabase.rpc('autoreply_inbox_page',{p_workspace:userId,p_sender:sender,p_before_time:cursor?.time||null,p_before_id:cursor?.id||null,p_limit:limit});
+ if(error)throw error;
+ if(!data||!Array.isArray(data.messages))throw Error('Conversation could not be loaded.');
+ return data as InboxPage;
+}
+export function subscribeToInbox(userId:string,onPage:(page:InboxPage)=>void,onChange:(message:InboxMessage|null,id:string)=>void,onError:(error:Error)=>void){
+ let active=true,running=false,pending=false;
+ const refresh=async()=>{if(running){pending=true;return;}running=true;do{pending=false;try{const page=await fetchInboxPage(userId);if(active)onPage(page);}catch(error){if(active)onError(error as Error);}}while(active&&pending);running=false;};
+ void refresh();
+ const channel=supabase.channel('inbox-pages:'+userId+':'+Math.random().toString(36).slice(2)).on('postgres_changes',{event:'*',schema:'public',table:'autoreply_documents',filter:'user_id=eq.'+userId},(payload:any)=>{
+  const row=payload.eventType==='DELETE'?payload.old:payload.new;
+  if(!active||row?.collection!=='inbox_messages')return;
+  onChange(payload.eventType==='DELETE'?null:{...row.data,id:row.id,server_updated_at:row.updated_at},row.id);
+  void refresh();
+ }).subscribe();
+ const poll=window.setInterval(()=>{if(!document.hidden)void refresh();},30000);
+ const focus=()=>{if(!document.hidden)void refresh();};window.addEventListener('focus',focus);document.addEventListener('visibilitychange',focus);
+ return ()=>{active=false;window.clearInterval(poll);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);void supabase.removeChannel(channel);};
 }
 
 export function subscribeToUserCollection<T extends { id?: string }>(
