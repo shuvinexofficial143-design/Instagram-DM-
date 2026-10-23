@@ -1,3 +1,4 @@
+import { BrandMark } from './components/Common/BrandMark';
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 // Deployment refresh: 2026-09-20T08:59Z
 import { publicSupportPage } from './lib/navigation';
@@ -124,7 +125,7 @@ const AppShell: React.FC = () => {
 
     if (!firebaseUser && (supportPage || pathname === '/about')) {
       return <ErrorBoundary><div className="min-h-[100dvh] bg-slate-50">
-        <header className="public-page-header"><a href="/" className="brand">Auto Replys</a><a href="/login" className="button-secondary">Log in</a></header>
+        <header className="public-page-header"><a href="/" className="brand"><BrandMark />Auto Replys</a><a href="/login" className="button-secondary">Log in</a></header>
         <Suspense fallback={<PageLoadingFallback />}>
           {pathname === '/about' ? <AboutUsPage /> : <SupportPage page={supportPage} />}
         </Suspense>

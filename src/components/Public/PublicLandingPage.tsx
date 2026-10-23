@@ -1,3 +1,4 @@
+import { BrandMark } from '../Common/BrandMark';
 import React, { useState } from 'react';
 import { ArrowRight, Bot, Check, Instagram, Menu, MessageSquare, Package, ShieldCheck, Users, X, Zap, Sheet, CheckCircle2, SlidersHorizontal } from 'lucide-react';
 import { usePlanCatalog } from '../../hooks/usePlanCatalog';
@@ -27,7 +28,7 @@ export const PublicLandingPage = () => {
   return <div className="marketing-page">
     <a className="skip-link" href="#main-content">Skip to content</a>
     <header className="marketing-header"><div className="marketing-container marketing-header-inner">
-      <a href="/" className="brand"><span><img src="/auto-replys-brand.svg" alt="" style={{width:26,height:26,objectFit:"contain",borderRadius:3}} /></span>Auto Replys</a>
+      <a href="/" className="brand"><BrandMark />Auto Replys</a>
       <nav aria-label="Main navigation" className="desktop-marketing-nav"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="#pricing">Pricing</a><a href="/about">About</a><a href="/help/faq">FAQ</a><a href="/login">Log in</a><a href="/login?mode=signup" className="button-primary">Get started <ArrowRight/></a></nav>
       <button className="marketing-menu-toggle" onClick={()=>setMenuOpen(v=>!v)} aria-label={menuOpen?'Close navigation':'Open navigation'} aria-expanded={menuOpen} aria-controls="marketing-mobile-nav">{menuOpen?<X/>:<Menu/>}</button>
     </div>{menuOpen&&<nav id="marketing-mobile-nav" className="marketing-mobile-nav" aria-label="Main navigation">{[['Features','#features'],['How it works','#how-it-works'],['Pricing','#pricing'],['About','/about'],['FAQ','/help/faq'],['Log in','/login'],['Get started','/login?mode=signup']].map(([label,href])=><a key={label} href={href} onClick={()=>setMenuOpen(false)}>{label}</a>)}</nav>}</header>
@@ -47,7 +48,7 @@ export const PublicLandingPage = () => {
       <section className="marketing-section faq-section"><div className="marketing-container faq-grid"><div className="section-heading"><span className="eyebrow">Before you start</span><h2>A few helpful answers.</h2><p>Need more detail? <a href="/help">Visit the Help Center.</a></p></div><div>{faqs.map(([question,answer])=><details key={question}><summary>{question}</summary><p>{answer}</p></details>)}</div></div></section>
       <section className="marketing-container final-cta"><div><span className="eyebrow">Your next conversation starts here</span><h2>Give your inbox a helping hand.</h2><p>Connect your account and build your first automation.</p></div><a className="button-primary" href="/login?mode=signup">Get started <ArrowRight/></a></section>
     </main>
-    <footer className="marketing-footer"><div className="marketing-container"><div><a href="/" className="brand"><span><img src="/auto-replys-brand.svg" alt="" style={{width:26,height:26,objectFit:"contain",borderRadius:3}} /></span>Auto Replys</a><p>Instagram conversations, made easier.</p><small>© {new Date().getFullYear()} Auto Replys</small></div><nav aria-label="Footer navigation">{[['About','/about'],['Help','/help'],['FAQ','/help/faq'],['Contact','/contact'],['Privacy','/privacy'],['Terms','/terms'],['Refunds & cancellation','/refunds']].map(([label,href])=><a key={label} href={href}>{label}</a>)}</nav></div></footer>
+    <footer className="marketing-footer"><div className="marketing-container"><div><a href="/" className="brand"><BrandMark />Auto Replys</a><p>Instagram conversations, made easier.</p><small>© {new Date().getFullYear()} Auto Replys</small></div><nav aria-label="Footer navigation">{[['About','/about'],['Help','/help'],['FAQ','/help/faq'],['Contact','/contact'],['Privacy','/privacy'],['Terms','/terms'],['Refunds & cancellation','/refunds']].map(([label,href])=><a key={label} href={href}>{label}</a>)}</nav></div></footer>
   </div>;
 };
 

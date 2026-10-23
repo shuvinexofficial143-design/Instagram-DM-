@@ -1,3 +1,4 @@
+import { BrandMark } from '../Common/BrandMark';
 import { googleLogo } from '../Common/googleBrandAssets';
 import React, { useEffect, useState } from 'react';
 import {
@@ -164,7 +165,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
     <div className="auth-premium-page">
       <div className="auth-premium-layout">
         <aside className="auth-premium-story" aria-label="About Auto Replys">
-          <a href="/" className="auth-story-brand"><span className="auth-story-mark" style={{width:36,height:36,minWidth:36,display:"inline-flex",alignItems:"center",justifyContent:"center",background:"#000",borderRadius:6,overflow:"hidden"}}><img src="/auto-replys-brand.svg" alt="" style={{width:28,height:28,maxWidth:"100%",maxHeight:"100%",objectFit:"contain",borderRadius:3}} /></span>Auto Replys</a>
+          <a href="/" className="auth-story-brand"><BrandMark size={40} />Auto Replys</a>
           <div className="auth-story-content">
             <span className="auth-story-eyebrow">YOUR INSTAGRAM WORKSPACE</span>
             <h2>More conversations.<br /><em>Less busywork.</em></h2>
@@ -178,7 +179,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess }) => {
           <p className="auth-story-footnote">Secure sign-in · Connect via Meta · You control your replies</p>
         </aside>
         <main className="auth-premium-main">
-          <a href="/" className="auth-mobile-brand" aria-label="Auto Replys home"><span className="auth-story-mark" style={{width:36,height:36,minWidth:36,display:"inline-flex",alignItems:"center",justifyContent:"center",background:"#000",borderRadius:6,overflow:"hidden"}}><img src="/auto-replys-brand.svg" alt="" style={{width:28,height:28,maxWidth:"100%",maxHeight:"100%",objectFit:"contain",borderRadius:3}} /></span>Auto Replys</a>
+          <a href="/" className="auth-mobile-brand" aria-label="Auto Replys home"><BrandMark size={40} />Auto Replys</a>
           <a href="/" className="auth-premium-back">← Back to home</a>
           <div className="auth-premium-card">
         <div className="auth-premium-tabs grid grid-cols-2 gap-1 p-1.5 rounded-2xl mb-7" role="group" aria-label="Sign in or create account">

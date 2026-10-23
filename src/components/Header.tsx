@@ -1,5 +1,6 @@
+import { BrandMark } from './Common/BrandMark';
 import React, { useEffect, useRef, useState } from 'react';
-import { Menu, X, Zap } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { workspaceNavigation } from './WorkspaceNavigation';
 
@@ -27,7 +28,7 @@ export const Header = () => {
     return ()=>{document.body.style.overflow=old;document.removeEventListener('keydown',onKey);toggleRef.current?.focus();};
   },[open]);
   return <>
-    <header className="workspace-mobile-header"><button ref={toggleRef} onClick={()=>setOpen(true)} aria-label="Open navigation" aria-expanded={open} aria-controls="mobile-workspace-menu"><Menu/></button><span><Zap/>Auto Replies</span><small>{current?.label||'Workspace'}</small></header>
-    {open&&<div className="mobile-menu-overlay" onClick={()=>setOpen(false)}><aside id="mobile-workspace-menu" role="dialog" aria-modal="true" aria-label="Navigation" onClick={e=>e.stopPropagation()}><div className="mobile-menu-title"><strong>Auto Replies</strong><button ref={closeRef} aria-label="Close navigation" onClick={()=>setOpen(false)}><X/></button></div><nav>{workspaceNavigation.map(item=>{const Icon=item.icon;return <button key={item.id} aria-current={(item.tabs as string[]).includes(activeTab)?'page':undefined} onClick={()=>{setActiveTab(item.id);setOpen(false);}}><Icon/>{item.label}</button>;})}</nav></aside></div>}
+    <header className="workspace-mobile-header"><button ref={toggleRef} onClick={()=>setOpen(true)} aria-label="Open navigation" aria-expanded={open} aria-controls="mobile-workspace-menu"><Menu/></button><span><BrandMark size={28} />Auto Replys</span><small>{current?.label||'Workspace'}</small></header>
+    {open&&<div className="mobile-menu-overlay" onClick={()=>setOpen(false)}><aside id="mobile-workspace-menu" role="dialog" aria-modal="true" aria-label="Navigation" onClick={e=>e.stopPropagation()}><div className="mobile-menu-title"><strong>Auto Replys</strong><button ref={closeRef} aria-label="Close navigation" onClick={()=>setOpen(false)}><X/></button></div><nav>{workspaceNavigation.map(item=>{const Icon=item.icon;return <button key={item.id} aria-current={(item.tabs as string[]).includes(activeTab)?'page':undefined} onClick={()=>{setActiveTab(item.id);setOpen(false);}}><Icon/>{item.label}</button>;})}</nav></aside></div>}
   </>;
 };
