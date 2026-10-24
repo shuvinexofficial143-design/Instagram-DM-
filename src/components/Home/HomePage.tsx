@@ -12,7 +12,7 @@ type Period = 'today' | '7d' | '30d' | 'all';
 
 export const HomePage: React.FC = () => {
   const {
-    user, instagramAccount, automations, inboxMessages, contacts, workspaceDataLoading, workspaceDataError, workspaceSourceState,
+    user, instagramAccount, automations, inboxMessages, contacts, workspaceDataError, workspaceSourceState,
     setActiveTab, startInstagramConnection, setIsBuilderOpen,
   } = useApp();
   // Default to verified lifetime totals; otherwise earlier successful AI replies
