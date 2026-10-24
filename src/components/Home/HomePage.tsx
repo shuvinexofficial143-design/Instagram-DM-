@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import '../workspace-overview.css';
 import { billingRequest } from '../../lib/billing';
+import { supabase } from '../../lib/supabase';
 import {
   Zap, ChevronRight, ArrowRight, Send, Plus, Instagram,
   Users, Activity, CheckCircle2, AlertTriangle, Bot, Settings,
@@ -12,13 +13,63 @@ type Period = 'today' | '7d' | '30d' | 'all';
 
 export const HomePage: React.FC = () => {
   const {
-    user, instagramAccount, automations, inboxMessages, contacts, workspaceDataError, workspaceSourceState,
+    user, firebaseUser, workspaceId, isGuestMode, instagramAccount, automations, inboxMessages, contacts, workspaceDataError, workspaceSourceState,
     setActiveTab, startInstagramConnection, setIsBuilderOpen,
   } = useApp();
   // Default to verified lifetime totals; otherwise earlier successful AI replies
   // disappear whenever Today is selected or their inbox automation_id is absent.
   const [period, setPeriod] = useState<Period>('all');
   const [verifiedAi,setVerifiedAi]=useState<{all:number;month:number}|null>(null);
+  const [verifiedMessageMetrics,setVerifiedMessageMetrics]=useState<{key:string;outgoing:number;ai:number}|null>(null);
+  const [messageMetricsError,setMessageMetricsError]=useState(false);
+  const messageMetricKey=(workspaceId || (isGuestMode?'guest':''))+':'+period;
+  useEffect(()=>{
+    let live=true;setVerifiedMessageMetrics(null);setMessageMetricsError(false);
+    const load=async()=>{
+      if((!workspaceId&&!isGuestMode)||(!isGuestMode&&!firebaseUser?.uid))return;
+      try{
+        const now=new Date();
+        const windows:{start:Date;end:Date}[]=[];
+        if(period==='all'){
+          // The service began in 2026. Each analytics RPC is limited to 366 days.
+          for(let year=2026;year<=now.getFullYear();year++){
+            const start=new Date(Date.UTC(year,0,1));
+            const end=new Date(Math.min(Date.UTC(year+1,0,1)-1,now.getTime()));
+            if(end>start)windows.push({start,end});
+          }
+        }else{
+          const start=new Date(now);
+          if(period==='today')start.setHours(0,0,0,0);
+          else start.setTime(now.getTime()-(period==='7d'?7:30)*86400000);
+          windows.push({start,end:now});
+        }
+        const results=await Promise.all(windows.map(async ({start,end})=>{
+          const timezone=Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';
+          if(isGuestMode){
+            const params=new URLSearchParams({action:'inbox-analytics',start:start.toISOString(),end:end.toISOString(),timezone});
+            const response=await fetch('/api/workspace-data?'+params,{credentials:'same-origin',cache:'no-store'});
+            const payload=await response.json();
+            if(!response.ok||!payload?.ok)throw Error(payload?.error||'DM totals unavailable');
+            return payload;
+          }
+          const result=await supabase.rpc('autoreply_inbox_analytics',{p_workspace:workspaceId,p_start:start.toISOString(),p_end:end.toISOString(),p_timezone:timezone});
+          if(result.error)throw result.error;
+          return result.data;
+        }));
+        const outgoing=results.reduce((sum,result)=>{
+          if(!result||!Object.prototype.hasOwnProperty.call(result,'current'))throw Error('Unverified DM count');
+          return sum+Math.max(0,Number(result.current?.outgoing||0)-Number(result.current?.failed||0));
+        },0);
+        const ai=results.reduce((sum,result)=>sum+Math.max(0,Number(result?.current?.ai||0)-Number(result?.current?.failed_ai||0)),0);
+        if(live){setVerifiedMessageMetrics({key:messageMetricKey,outgoing,ai});setMessageMetricsError(false);}
+      }catch(err){console.warn('[DASHBOARD_METRICS_LOAD_WARN]',err);if(live){setVerifiedMessageMetrics(null);setMessageMetricsError(true);}}
+    };
+    void load();
+    const timer=window.setInterval(()=>{if(!document.hidden)void load();},60000);
+    const focus=()=>{void load();};window.addEventListener('focus',focus);
+    return()=>{live=false;window.clearInterval(timer);window.removeEventListener('focus',focus);};
+  },[workspaceId,firebaseUser?.uid,isGuestMode,period]);
+  const currentMessageMetrics=verifiedMessageMetrics?.key===messageMetricKey?verifiedMessageMetrics:null;
   useEffect(()=>{
     let live=true;
     setVerifiedAi(null);
@@ -53,18 +104,9 @@ export const HomePage: React.FC = () => {
     }
     return period==='all' ? 0 : Date.now() - (period === '7d' ? 7 : 30) * 24 * 60 * 60 * 1000;
   }, [period]);
-  const periodMessages = useMemo(
-    () => (inboxMessages || []).filter((m) => new Date(m.timestamp || 0).getTime() >= periodStart),
-    [inboxMessages, periodStart]
-  );
-  const totalDmsSent = periodMessages.filter((m) => m.direction === 'out').length;
-  const aiIds = new Set(automations.filter(a=>a.trigger_type==='dm_ai_conversation').map(a=>a.id));
-  // Short-range data is from tagged inbox messages only. The backend stores
-  // authoritative AI quota in monthly buckets (not timestamps per reply).
-  const taggedAiReplies = periodMessages.filter(m=>m.direction==='out'&&m.is_automated&&m.automation_id&&aiIds.has(m.automation_id)).length;
-  const aiReplies:number|null = period==='all'
-    ? (verifiedAi?.all ?? null)
-    : workspaceSourceState.inbox !== 'ready' ? null : taggedAiReplies;
+  // Both message totals and selected-period AI replies come from the full
+  // authenticated server analytics ledger, never just the first Inbox page.
+  const aiReplies:number|null = period==='all' ? (verifiedAi?.all ?? currentMessageMetrics?.ai ?? null) : (currentMessageMetrics?.ai ?? null);
   const newLeads = (contacts || []).filter((c) => new Date(c.first_interaction_at || 0).getTime() >= periodStart).length;
 
   const topAutomations = useMemo(
@@ -91,7 +133,7 @@ export const HomePage: React.FC = () => {
   const unread = inboxMessages.filter(m=>m.direction==='in'&&!m.is_read).length;
   const kpis = [
     { label:'Active Automations', value:workspaceSourceState.automations !== 'ready'?null:activeAutomations.length, icon:Zap, tone:'text-violet-600 bg-violet-50' },
-    { label:'DMs Sent', value:workspaceSourceState.inbox !== 'ready'?null:totalDmsSent, icon:Send, tone:'text-blue-600 bg-blue-50' },
+    { label:'DMs Sent', value:currentMessageMetrics?.outgoing ?? null, icon:Send, tone:'text-blue-600 bg-blue-50' },
     { label:'AI Replies', value:aiReplies, icon:Bot, tone:'text-pink-600 bg-pink-50' },
     { label:'New Leads', value:workspaceSourceState.contacts !== 'ready'?null:newLeads, icon:Users, tone:'text-orange-600 bg-orange-50' },
   ];
@@ -113,6 +155,7 @@ export const HomePage: React.FC = () => {
           </div>
         </header>
 
+        {messageMetricsError && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Verified DM statistics could not be loaded. Refresh to retry; displayed counts are withheld.</p>}
         {workspaceDataError && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Could not load: {failedSources.join(', ')}. Only affected metrics are unavailable. Refresh to retry.</p>}
         {isConnected && !accountExpired && automations.length>0 && <div className="dashboard-next-action"><div><strong>{unread>0?`${unread} unread messages`:'Your workspace is ready'}</strong><p>{unread>0?'Check conversations that may need your attention.':'Review your inbox or create another automation.'}</p></div><button onClick={()=>setActiveTab('inbox')}>Open inbox <ArrowRight/></button></div>}
 

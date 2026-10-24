@@ -21,7 +21,7 @@ import {
   Send,
   WandSparkles,
 } from 'lucide-react';
-import { auth } from '../../lib/supabase';
+import { auth, supabase } from '../../lib/supabase';
 import { useApp } from '../../context/AppContext';
 import {CustomerBadges,CustomerInsightPanel} from '../Common/CustomerInsight';
 import {customerStages} from '../../lib/customerInsights';
@@ -199,6 +199,17 @@ export const ContactsPage: React.FC = () => {
                 const username = contact.ig_username || contact.ig_user_id;
                 if (!username) { failed += 1; continue; }
                 try {
+                  // Check the customer's inbound 24-hour window before any
+                  // paid AI generation or Instagram send attempt.
+                  const recipientId=String(contact.ig_user_id||'').trim();
+                  if(!/^[0-9]{5,30}$/.test(recipientId))throw Error('No verified Instagram conversation ID for this recipient.');
+                  const {data:recentInbound,error:windowError}=await supabase.from('autoreply_documents')
+                    .select('message_time').eq('user_id',workspaceId).eq('collection','inbox_messages')
+                    .eq('data->>from_ig_id',recipientId).eq('data->>direction','in')
+                    .gte('message_time',new Date(Date.now()-24*60*60*1000).toISOString())
+                    .order('message_time',{ascending:false}).limit(1);
+                  if(windowError)throw Error('Messaging window verification is temporarily unavailable.');
+                  if(!recentInbound?.length)throw Error('Recipient is outside the standard 24-hour DM window. Ask them to message you first.');
                   let finalMessage = bulkMessage.trim();
                   if (bulkMode === 'ai') {
                     const token=await auth.currentUser?.getIdToken();

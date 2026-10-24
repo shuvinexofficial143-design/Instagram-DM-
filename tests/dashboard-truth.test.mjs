@@ -31,7 +31,9 @@ test('the dashboard does not invent zero data when initial reads fail',()=>{
  assert.match(home,/workspaceDataError/);
  assert.match(home,/Only affected metrics are unavailable/);
  assert.match(home,/workspaceSourceState\.automations !== 'ready'/);
- assert.match(home,/workspaceSourceState\.inbox !== 'ready'/);
+ assert.match(home,/currentMessageMetrics\?\.outgoing \?\? null/);
+ assert.match(home,/currentMessageMetrics\?\.ai \?\? null/);
+ assert.match(home,/autoreply_inbox_analytics/);
  assert.match(home,/workspaceSourceState\.contacts !== 'ready'/);
  assert.match(home,/Automation history is unavailable/);
  assert.match(home,/Inbox activity is unavailable/);
@@ -102,4 +104,61 @@ test('Billing loading is neutral and does not flash a warning or fake plan',()=>
  assert.match(hook,/billingUsageCache/);
  assert.match(hook,/ownerId===userId/);
  assert.match(hook,/FRESH_CACHE_MS/);
+});
+
+test('complete contacts are paginated and timestamps come from stored records',()=>{
+ const client=read('src/lib/supabase.ts'),ctx=read('src/context/AppContext.tsx');
+ assert.match(client,/catalog_products','contacts'/);
+ assert.match(client,/offset\+499/);
+ assert.match(client,/row\.data\?\.created_at\|\|row\.created_at/);
+ assert.doesNotMatch(ctx,/c\.first_interaction_at \|\| new Date\(\)\.toISOString\(\)/);
+});
+test('admin history and health have authenticated paginated endpoints',()=>{
+ const ops=read('src/server/adminOperations.ts'),page=read('src/components/Admin/AdminPage.tsx');
+ assert.match(ops,/admin-health-totals/);
+ assert.match(ops,/admin-payments/);
+ assert.match(ops,/admin-audit/);
+ assert.match(page,/historyRows/);
+ assert.match(page,/serverTotals\?\.documents/);
+});
+
+test('All Time DM counts are scoped server analytics rather than first page estimates',()=>{
+ const home=read('src/components/Home/HomePage.tsx');
+ assert.match(home,/autoreply_inbox_analytics/);
+ assert.match(home,/currentMessageMetrics\?\.outgoing \?\? null/);
+ assert.match(home,/Number\(result\.current\?\.failed\|\|0\)/);
+ assert.match(home,/hasOwnProperty\.call\(result,'current'\)/);
+});
+test('Bulk DM requires a fresh inbound and checks before paid AI generation',()=>{
+ const contacts=read('src/components/Contacts/ContactsPage.tsx');
+ assert.match(contacts,/data->>direction','in'/);
+ assert.match(contacts,/message_time/);
+ assert.match(contacts,/24\*60\*60\*1000/);
+ assert.ok(contacts.indexOf('recentInbound')<contacts.indexOf("if (bulkMode === 'ai')"));
+});
+test('Admin campaign, payment and audit collections have explicit pages',()=>{
+ const operations=read('src/server/adminOperations.ts');
+ const campaigns=read('src/components/Admin/AdminCampaignCenter.tsx');
+ const admin=read('src/components/Admin/AdminPage.tsx');
+ assert.match(operations,/admin-payments/);
+ assert.match(operations,/admin-audit/);
+ assert.match(operations,/admin-campaign-list/);
+ assert.match(campaigns,/campaignOffset/);
+ assert.match(campaigns,/campaignHasMore/);
+ assert.match(admin,/historyHasMore/);
+});
+test('Admin and guest data readers do not silently truncate at 1000',()=>{
+ const edge=read('supabase/functions/instagram-account-store/index.ts');
+ const client=read('src/lib/supabase.ts');
+ assert.match(edge,/pagedAdminRows/);
+ assert.match(edge,/offset\+=500/);
+ assert.match(client,/catalog_products','contacts'/);
+});
+test('Handoff and automation edit failures are visible rather than false success',()=>{
+ const handoff=read('src/components/Admin/AdminHandoffCenter.tsx');
+ const manager=read('src/components/Admin/AdminWorkspaceManager.tsx');
+ assert.match(handoff,/detailError/);
+ assert.match(handoff,/Retry/);
+ assert.match(manager,/Promise<boolean>/);
+ assert.match(manager,/Change saved, but workspace refresh failed/);
 });

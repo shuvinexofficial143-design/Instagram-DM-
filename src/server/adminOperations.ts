@@ -3,6 +3,7 @@ export const adminOperationMethods:Record<string,string>={
  'admin-handoffs':'GET','admin-handoff-detail':'GET','admin-handoff-action':'POST','admin-handoff-reply':'POST',
  'admin-workspaces':'GET','admin-workspace':'GET','admin-automation-save':'POST','admin-automation-status':'POST','admin-automation-delete':'POST','admin-automation-restore':'POST',
  'admin-campaign-preview':'POST','admin-campaign-create':'POST','admin-campaign-list':'GET','admin-campaign-detail':'GET','admin-campaign-action':'POST','admin-campaign-update':'POST',
+ 'admin-payments':'GET','admin-audit':'GET','admin-health-totals':'GET',
 };
 export class AdminOperationError extends Error{constructor(message:string,public status=400){super(message);}}
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
@@ -14,6 +15,15 @@ export async function adminDb(path:string,method='GET',body?:unknown){
  const data=await r.json().catch(()=>null);
  if(!r.ok)throw new AdminOperationError(r.status>=500?'Administrator storage is temporarily unavailable.':String(data?.message||'This change could not be saved.'),r.status>=500?503:400);
  return data;
+}
+async function adminExactCount(table:'autoreply_documents'|'autoreply_message_claims'|'autoreply_dm_history'|'autoreply_runtime_context'|'autoreply_profiles'){
+ const key=cleanEnvironment(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY);
+ if(!key)throw new AdminOperationError('Administrator storage is unavailable.',503);
+ const r=await upstreamFetch(SUPABASE_URL+'/rest/v1/'+table+'?select=user_id&limit=0',{method:'GET',headers:{apikey:key,Authorization:'Bearer '+key,Prefer:'count=exact'}},'Administrator count',20000);
+ const raw=r.headers.get('content-range')||'';
+ const count=Number(raw.slice(raw.lastIndexOf('/')+1));
+ if(!r.ok||!Number.isSafeInteger(count)||count<0)throw new AdminOperationError('Exact administrator totals are temporarily unavailable.',503);
+ return count;
 }
 export function parseCampaignIdentifiers(value:unknown):string[]{
  if(typeof value!=='string'||value.length>30000)throw new AdminOperationError('Paste up to 500 Instagram IDs.');
@@ -81,7 +91,19 @@ export async function runAdminOperation(req:any,user:{id:string;email?:string}){
   else {if(!/^auto_[\w-]{4,}$/.test(b.automationId||''))throw new AdminOperationError('Choose a valid automation.');automation={id:b.automationId,status:b.status,version_id:b.versionId};if(operation==='status'&&!['active','paused'].includes(b.status))throw new AdminOperationError('Invalid status.');if(operation==='restore'&&!uuid.test(b.versionId||''))throw new AdminOperationError('Choose a valid version.');}
   return adminDb('rpc/autoreply_admin_edit_automation','POST',{p_actor:user.id,p_email:user.email,p_workspace:workspace,p_operation:operation,p_automation:automation,p_override:b.overrideLimit===true});
  }
- if(action==='admin-campaign-list')return {ok:true,campaigns:await adminDb('autoreply_campaigns?created_by=eq.'+user.id+'&order=created_at.desc&limit=100')};
+ if(action==='admin-health-totals'){
+  const [documents,claims,dmHistory,runtimeContexts,profiles]=await Promise.all([
+    adminExactCount('autoreply_documents'),adminExactCount('autoreply_message_claims'),adminExactCount('autoreply_dm_history'),adminExactCount('autoreply_runtime_context'),adminExactCount('autoreply_profiles')
+  ]);
+  return {ok:true,totals:{documents,claims,dmHistory,runtimeContexts,profiles}};
+ }
+ if(action==='admin-payments'||action==='admin-audit'){
+  const offset=Math.max(0,Math.min(100000,Number(req.query.offset)||0));
+  const collection=action==='admin-payments'?'autoreply_billing_orders':'autoreply_admin_audit_logs';
+  const rows=await adminDb(collection+'?order=created_at.desc&limit=51&offset='+offset);
+  return {ok:true,records:rows.slice(0,50),hasMore:rows.length>50};
+ }
+ if(action==='admin-campaign-list'){const offset=Math.max(0,Math.min(100000,Number(req.query.offset)||0));const rows=await adminDb('autoreply_campaigns?created_by=eq.'+user.id+'&order=created_at.desc,id.desc&limit=101&offset='+offset);return {ok:true,campaigns:rows.slice(0,100),hasMore:rows.length>100};}
  if(action==='admin-campaign-detail'){const campaign=await ownCampaign(String(req.query.id||''),user.id);return {ok:true,campaign,recipients:await adminDb('autoreply_campaign_recipients?campaign_id=eq.'+campaign.id+'&order=identifier&limit=500')};}
  if(action==='admin-campaign-update'){
   const campaign=await ownCampaign(String(b.id||''),user.id);

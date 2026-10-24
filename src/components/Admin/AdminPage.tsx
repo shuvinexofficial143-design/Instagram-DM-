@@ -48,6 +48,7 @@ import { AdminUserOverviewItem, AdminOverviewResponse } from '../../types';
 import { UserAvatar } from '../Common/UserAvatar';
 import { AdminSupportDesk } from '../Support/SupportDesk';
 import { supabase } from '../../lib/supabase';
+import { adminToolsRequest } from '../../lib/adminTools';
 
 const Metric: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
@@ -86,6 +87,24 @@ export const AdminPage: React.FC = () => {
   const [platformData, setPlatformData] = useState<any>(null);
   const [planDrafts, setPlanDrafts] = useState<Record<string, any>>({});
   const [savingPlan, setSavingPlan] = useState<string>('');
+  const [serverTotals,setServerTotals]=useState<{documents:number;claims:number;dmHistory:number;runtimeContexts:number;profiles:number}|null>(null);
+  const [serverTotalsError,setServerTotalsError]=useState('');
+  useEffect(()=>{if(!isAdminAuthenticated)return;let live=true;void adminToolsRequest('admin-health-totals').then(r=>{if(live){setServerTotals(r.totals);setServerTotalsError('');}}).catch((err:any)=>{if(live){setServerTotals(null);setServerTotalsError(err?.message||'Exact counts unavailable.');}});return()=>{live=false;};},[isAdminAuthenticated,firebaseUser?.uid]);
+  const [historyPage,setHistoryPage]=useState(0);
+  const [historyRows,setHistoryRows]=useState<any[]>([]);
+  const [historyHasMore,setHistoryHasMore]=useState(false);
+  const [historyLoading,setHistoryLoading]=useState(false);
+  const [historyError,setHistoryError]=useState('');
+  useEffect(()=>{
+    if(adminSection!=='payments'&&adminSection!=='activity')return;
+    let live=true;setHistoryLoading(true);setHistoryError('');setHistoryRows([]);
+    const action=adminSection==='payments'?'admin-payments':'admin-audit';
+    void adminToolsRequest(action,undefined,{offset:String(historyPage*50)})
+      .then(result=>{if(live){setHistoryRows(result.records||[]);setHistoryHasMore(Boolean(result.hasMore));}})
+      .catch((err:any)=>{if(live)setHistoryError(err?.message||'Could not load more records.');})
+      .finally(()=>{if(live)setHistoryLoading(false);});
+    return()=>{live=false;};
+  },[adminSection,historyPage,firebaseUser?.uid]);
 
   const handleAdminLogout = async () => {
     await supabase.auth.signOut();
@@ -100,7 +119,7 @@ export const AdminPage: React.FC = () => {
     setIsAccessDenied(false);
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token || '';
-    if (!token) return;
+    if (!token) throw new Error('Your administrator session has expired. Sign in again.');
     const res = await fetch('/api/workspace-data?action=admin-overview', {
       headers: { Authorization: `Bearer ${token}` }, cache:'no-store',
     });
@@ -136,12 +155,13 @@ export const AdminPage: React.FC = () => {
         uid: profile.user_id, email: profile.email || '', displayName: profile.display_name || profile.email || 'User', photoURL: profile.avatar_url || '',
         first_login_at: profile.created_at, last_login_at: profile.last_login_at || profile.created_at, last_active_at: profile.last_active_at || profile.updated_at,
         role: profile.role === 'admin' ? 'admin' : 'user',
-        instagram: { username: account.username || null, connected_at: accountRow?.created_at || null, status: accountRow ? 'active' : 'not_connected', followers_count: Number(account.followers_count || 0), profile_pic_url: account.profile_picture_url || account.profile_pic_url || null },
+        instagram: { username: account.username || null, connected_at: accountRow?.created_at || null, status: accountRow && account.status === 'connected' ? 'active' : 'not_connected', followers_count: Number(account.followers_count || 0), profile_pic_url: account.profile_picture_url || account.profile_pic_url || null },
         stats: { total_dms_sent: Number(usage.total_messages || 0), total_automations: automationsByUser.get(profile.user_id) || 0, total_contacts: contactsByUser.get(profile.user_id) || 0, last_activity_time: profile.last_active_at || profile.updated_at || profile.created_at },
       };
     });
     const totalMessages = (result.usageMonthly || []).reduce((sum: number, row: any) => sum + Number(row.total_messages || 0), 0);
-    setData({ success: true, isAdmin: true, requesterEmail: currentEmail, users: realUsers, totalUsers: realUsers.length, totalAutomatedDms: totalMessages, totalAutomations: (result.activeAutomations || []).length, configuredAdmins: [], overviewStats: { totalRegisteredUsers: realUsers.length, totalConnectedInstagram: (result.instagramAccounts || []).length, totalDmsSent: totalMessages, totalActiveAutomations: (result.activeAutomations || []).length } });
+    const connectedAccounts=(result.instagramAccounts || []).filter((row:any)=>row.account?.status==='connected' && row.account?.username);
+    setData({ success: true, isAdmin: true, requesterEmail: currentEmail, users: realUsers, totalUsers: realUsers.length, totalAutomatedDms: totalMessages, totalAutomations: (result.activeAutomations || []).length, configuredAdmins: [], overviewStats: { totalRegisteredUsers: realUsers.length, totalConnectedInstagram: connectedAccounts.length, totalDmsSent: totalMessages, totalActiveAutomations: (result.activeAutomations || []).length } });
     setLastRefreshedAt(new Date());
     setLoading(false);
   };
@@ -164,7 +184,8 @@ export const AdminPage: React.FC = () => {
       if (!res.ok || !result?.ok) throw new Error(result?.error || 'Plan update failed');
       await fetchPlatformData();
       window.dispatchEvent(new Event('autoreply:plan-updated'));
-    } finally { setSavingPlan(''); }
+    } catch(err:any) { setError(err?.message || 'Could not save this plan. No changes were confirmed.'); }
+    finally { setSavingPlan(''); }
   };
 
   // Format Dates nicely
@@ -286,10 +307,13 @@ export const AdminPage: React.FC = () => {
   }, [data?.users, searchQuery, statusFilter, sortBy, sortOrder]);
 
   // Overall Stats calculation
-  const totalRegisteredUsers = platformData?.profiles?.length ?? data?.overviewStats?.totalRegisteredUsers ?? data?.totalUsers ?? (data?.users?.length || 0);
+  const totalRegisteredUsers = serverTotals?.profiles ?? platformData?.profiles?.length ?? data?.overviewStats?.totalRegisteredUsers ?? data?.totalUsers ?? (data?.users?.length || 0);
   const totalConnectedInstagram =
-    platformData?.instagramAccounts?.length ?? data?.overviewStats?.totalConnectedInstagram ??
+    platformData?.instagramAccounts?.filter((row:any)=>row.account?.status==='connected' && row.account?.username)?.length ?? data?.overviewStats?.totalConnectedInstagram ??
     (data?.users || []).filter((u) => u.instagram?.status === 'active' && u.instagram?.username).length;
+  const disconnectedUsers = (data?.users || []).filter(u=>u.instagram?.status!=='active').length;
+  const currentUsageMonth = new Date().toISOString().slice(0,7);
+  const currentMonthUsage = (platformData?.usageMonthly || []).filter((r:any)=>r.month_key === currentUsageMonth);
   const totalDmsSentCombined =
     data?.overviewStats?.totalDmsSent ??
     data?.totalAutomatedDms ??
@@ -318,27 +342,31 @@ export const AdminPage: React.FC = () => {
     ];
 
     const rows = filteredAndSortedUsers.map((u) => [
-      `"${u.email || ''}"`,
-      `"${u.displayName || ''}"`,
-      `"${u.role || 'user'}"`,
-      `"${u.first_login_at || ''}"`,
-      `"${u.last_login_at || ''}"`,
-      `"${u.instagram?.username ? '@' + u.instagram.username : 'Not Connected'}"`,
-      `"${u.instagram?.connected_at || ''}"`,
+      u.email || '',
+      u.displayName || '',
+      u.role || 'user',
+      u.first_login_at || '',
+      u.last_login_at || '',
+      u.instagram?.username ? '@' + u.instagram.username : 'Not Connected',
+      u.instagram?.connected_at || '',
       u.stats?.total_dms_sent || 0,
       u.stats?.total_automations || 0,
-      `"${u.instagram?.status === 'active' && u.instagram?.username ? 'Active' : 'Inactive'}"`,
-      `"${u.uid}"`,
+      u.instagram?.status === 'active' && u.instagram?.username ? 'Active' : 'Inactive',
+      u.uid,
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `autoreply_admin_users_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const csvCell = (value:unknown) => {
+      const raw=String(value ?? '');
+      // Prevent spreadsheet formula injection when exporting untrusted profile fields.
+      const safe=/^[=+@\t\r-]/.test(raw) ? "'" + raw : raw;
+      return '"' + safe.replaceAll('"','""') + '"';
+    };
+    const csvContent='\uFEFF'+[headers.map(csvCell).join(','),...rows.map(r=>r.map(csvCell).join(','))].join('\r\n');
+    const blobUrl=URL.createObjectURL(new Blob([csvContent],{type:'text/csv;charset=utf-8'}));
+    const link=document.createElement('a');
+    link.href=blobUrl;
+    link.download=`autoreply_admin_users_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(blobUrl);
   };
 
   // ----------------------------------------------------
@@ -425,6 +453,7 @@ export const AdminPage: React.FC = () => {
   // ----------------------------------------------------
   return (
     <div className="admin-page p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error} <button className="ml-2 underline" onClick={()=>void fetchPlatformData().catch((err)=>{setError(err?.message || 'Refresh failed');setLoading(false);})}>Retry</button></p>}
       {/* Top Header Card */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 md:p-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -449,7 +478,7 @@ export const AdminPage: React.FC = () => {
 
           <div className="admin-header-actions flex flex-wrap items-center gap-2.5 shrink-0">
             <button
-              onClick={() => void fetchPlatformData()}
+              onClick={() => void fetchPlatformData().catch((err)=>{setError(err?.message || 'Admin refresh failed');setLoading(false);})}
               disabled={loading}
               className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-300 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
               title="Refresh Dashboard Overview"
@@ -515,7 +544,7 @@ export const AdminPage: React.FC = () => {
             ['activity', 'Admin Activity', Activity],
             ['settings', 'Settings', Settings],
           ].map(([id, label, Icon]: any) => (
-            <button key={id} onClick={() => setAdminSection(id)} className={`flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all ${adminSection === id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
+            <button key={id} onClick={() => {setAdminSection(id);setHistoryPage(0);}} className={`flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all ${adminSection === id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
               <Icon className="h-4 w-4" /><span>{label}</span>{id==='handoffs'&&handoffCount>0&&<span className="rounded-full bg-rose-100 px-2 text-rose-700">{handoffCount}</span>}
             </button>
           ))}
@@ -542,17 +571,17 @@ export const AdminPage: React.FC = () => {
             <div className="rounded-2xl bg-indigo-50 p-3 text-indigo-600"><Database className="h-5 w-5" /></div>
           </div>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {adminSection === 'instagram' && <><Metric label="Connected" value={totalConnectedInstagram} /><Metric label="Registered Users" value={totalRegisteredUsers} /><Metric label="Disconnected" value={Math.max(0,totalRegisteredUsers-totalConnectedInstagram)} /><Metric label="Secrets Exposed" value={0} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.instagramAccounts || []).map((row:any)=><div key={row.user_id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-xs"><span><strong>@{row.account?.username || 'instagram'}</strong> · {row.user_id}</span><span className="text-slate-400">{formatDateTime(row.updated_at || row.created_at)}</span></div>)}</div></>}
-            {adminSection === 'ai' && <><Metric label="Monthly standard replies" value={(platformData?.usageMonthly || []).reduce((sum:number,r:any)=>sum+Math.max(0,Number(r.total_messages||0)-Number(r.ai_replies||0)),0)} /><Metric label="Monthly AI Replies" value={(platformData?.usageMonthly || []).reduce((s:number,r:any)=>s+Number(r.ai_replies||0),0)} /><Metric label="DM History Threads" value={platformData?.dmHistory?.length || 0} /><Metric label="Message Claims" value={platformData?.messageClaims?.length || 0} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.usageMonthly || []).map((row:any)=><div key={row.user_id+'-'+row.month_key} className="grid grid-cols-4 rounded-xl border border-slate-200 p-3 text-xs"><span className="col-span-2 truncate">{row.user_id}</span><span>{Math.max(0,Number(row.total_messages||0)-Number(row.ai_replies||0))} standard</span><span>{row.ai_replies || 0} AI</span></div>)}</div></>}
-            {adminSection === 'health' && <><Metric label="Message Claims" value={platformData?.messageClaims?.length || 0} /><Metric label="Stored Documents" value={platformData?.documents?.length || 0} /><Metric label="Runtime Contexts" value={platformData?.runtimeContexts?.length || 0} /><Metric label="DM History Threads" value={platformData?.dmHistory?.length || 0} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.runtimeContexts || []).map((row:any)=><div key={row.ig_user_id} className="rounded-xl border border-slate-200 p-3 text-xs"><strong>{row.automation?.name || row.automation_id || 'Runtime'}</strong> · {row.automation?.status || 'unknown'} · IG {row.ig_user_id}<span className="float-right text-slate-400">{formatDateTime(row.updated_at)}</span></div>)}</div></>}
+            {adminSection === 'instagram' && <><Metric label="Connected" value={totalConnectedInstagram} /><Metric label="Registered Users" value={totalRegisteredUsers} /><Metric label="Disconnected" value={disconnectedUsers} /><Metric label="Secrets Exposed" value={0} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.instagramAccounts || []).map((row:any)=><div key={row.user_id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-xs"><span><strong>@{row.account?.username || 'instagram'}</strong> · {row.user_id}</span><span className="text-slate-400">{formatDateTime(row.updated_at || row.created_at)}</span></div>)}</div></>}
+            {adminSection === 'ai' && <><Metric label="Monthly standard replies" value={currentMonthUsage.reduce((sum:number,r:any)=>sum+Math.max(0,Number(r.total_messages||0)-Number(r.ai_replies||0)),0)} /><Metric label="Monthly AI Replies" value={currentMonthUsage.reduce((s:number,r:any)=>s+Number(r.ai_replies||0),0)} /><Metric label="DM History Threads" value={platformData?.dmHistory?.length || 0} /><Metric label="Message Claims" value={platformData?.messageClaims?.length || 0} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{currentMonthUsage.map((row:any)=><div key={row.user_id+'-'+row.month_key} className="grid grid-cols-4 rounded-xl border border-slate-200 p-3 text-xs"><span className="col-span-2 truncate">{row.user_id}</span><span>{Math.max(0,Number(row.total_messages||0)-Number(row.ai_replies||0))} standard</span><span>{row.ai_replies || 0} AI</span></div>)}</div></>}
+            {adminSection === 'health' && <>{serverTotalsError&&<p role="alert" className="sm:col-span-2 lg:col-span-4 text-rose-700">{serverTotalsError}</p>}<Metric label="Message Claims" value={serverTotals?.claims ?? '—'} /><Metric label="Stored Documents" value={serverTotals?.documents ?? '—'} /><Metric label="Runtime Contexts" value={serverTotals?.runtimeContexts ?? '—'} /><Metric label="DM History Threads" value={serverTotals?.dmHistory ?? '—'} /><div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.runtimeContexts || []).map((row:any)=><div key={row.ig_user_id} className="rounded-xl border border-slate-200 p-3 text-xs"><strong>{row.automation?.name || row.automation_id || 'Runtime'}</strong> · {row.automation?.status || 'unknown'} · IG {row.ig_user_id}<span className="float-right text-slate-400">{formatDateTime(row.updated_at)}</span></div>)}</div></>}
             {adminSection === 'plans' && <div className="sm:col-span-2 lg:col-span-4 grid gap-4 lg:grid-cols-2">{(platformData?.plans || []).map((plan:any) => { const p=planDrafts[plan.id] || plan; const field=(key:string,label:string)=><label className="text-xs font-bold text-slate-600">{label}<input type="number" value={p[key] ?? ''} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,[key]:e.target.value}}))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"/></label>; return <div key={plan.id} className="rounded-2xl border border-slate-200 p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-lg font-black text-slate-900">{p.name}</p><p className="text-xs text-slate-400">{plan.id}</p></div><label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={Boolean(p.is_active)} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,is_active:e.target.checked}}))}/> Active</label></div><label className="mb-3 block text-xs font-bold text-slate-600">Display name<input value={p.name||''} onChange={e=>setPlanDrafts((d:any)=>({...d,[plan.id]:{...p,name:e.target.value}}))} maxLength={64} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"/></label><div className="grid grid-cols-2 gap-3">{field('price_inr','Price ₹')}{field('billing_days','Billing days')}{field('total_messages','Standard replies · DM/comment/story')}{field('ai_replies','AI replies (separate)')}{field('instagram_accounts','Instagram accounts')}{field('automations_limit','Automations (blank = unlimited)')}</div><p className="my-3 text-xs text-slate-500">Standard and AI monthly reply quotas are independent. Price changes apply to new Cashfree orders; existing orders keep their original amount.</p><button onClick={()=>savePlan(p)} disabled={savingPlan===plan.id} className="mt-4 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">{savingPlan===plan.id?'Saving...':'Save Plan'}</button></div>})}</div>}
-            {adminSection === 'activity' && <div className="sm:col-span-2 lg:col-span-4 space-y-2">{(platformData?.auditLogs || []).length ? platformData.auditLogs.map((log:any)=><div key={log.id} className="flex justify-between rounded-xl border border-slate-200 p-3 text-xs"><span><strong>{log.action}</strong> · {log.entity_type} {log.entity_id || ''}</span><span className="text-slate-400">{formatDateTime(log.created_at)}</span></div>) : <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">No admin changes recorded yet.</div>}</div>}
+            {adminSection === 'activity' && <div className="sm:col-span-2 lg:col-span-4 space-y-2">{historyError&&<p role="alert" className="text-rose-700">{historyError}</p>}{historyLoading?<p>Loading audit records…</p>:historyRows.length ? historyRows.map((log:any)=><div key={log.id} className="flex justify-between rounded-xl border border-slate-200 p-3 text-xs"><span><strong>{log.action}</strong> · {log.entity_type} {log.entity_id || ''}</span><span className="text-slate-400">{formatDateTime(log.created_at)}</span></div>) : <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">No admin changes recorded on this page.</div>}{!historyLoading&&<div className="flex gap-3"><button disabled={historyPage===0} onClick={()=>setHistoryPage(p=>Math.max(0,p-1))}>Previous</button><span>Page {historyPage+1}</span><button disabled={!historyHasMore} onClick={()=>setHistoryPage(p=>p+1)}>Next</button></div>}</div>}
             {adminSection === 'support' && <div className="sm:col-span-2 lg:col-span-4"><AdminSupportDesk /></div>}
             {adminSection === 'payments' && <div className="sm:col-span-2 lg:col-span-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-5">
               <h3 className="text-base font-bold text-slate-950">Verified payment orders</h3>
               <p className="mt-1 text-xs text-slate-500">Only Cashfree-verified paid orders can activate a subscription. Pending orders do not grant access.</p>
-              <table className="mt-4 w-full min-w-[690px] text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="p-3">Date</th><th className="p-3">Plan</th><th className="p-3">Amount</th><th className="p-3">Order status</th><th className="p-3">Activation</th><th className="p-3">Order reference</th></tr></thead><tbody>{(platformData?.billingOrders||[]).map((o:any)=><tr key={o.order_id} className="border-t border-slate-100"><td className="p-3">{formatDateTime(o.created_at)}</td><td className="p-3 font-semibold">{o.plan_id}</td><td className="p-3">₹{Number(o.amount_inr).toLocaleString('en-IN')}</td><td className="p-3">{o.status}</td><td className="p-3">{o.activation_status}</td><td className="p-3 font-mono text-[11px]">{o.order_id}</td></tr>)}</tbody></table>
-              {!(platformData?.billingOrders||[]).length&&<p className="py-8 text-center text-sm text-slate-500">No payment orders yet.</p>}
+              <table className="mt-4 w-full min-w-[690px] text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="p-3">Date</th><th className="p-3">Plan</th><th className="p-3">Amount</th><th className="p-3">Order status</th><th className="p-3">Activation</th><th className="p-3">Order reference</th></tr></thead><tbody>{historyRows.map((o:any)=><tr key={o.order_id} className="border-t border-slate-100"><td className="p-3">{formatDateTime(o.created_at)}</td><td className="p-3 font-semibold">{o.plan_id}</td><td className="p-3">₹{Number(o.amount_inr).toLocaleString('en-IN')}</td><td className="p-3">{o.status}</td><td className="p-3">{o.activation_status}</td><td className="p-3 font-mono text-[11px]">{o.order_id}</td></tr>)}</tbody></table>
+              {historyError&&<p role="alert" className="p-3 text-rose-700">{historyError}</p>}{historyLoading?<p className="p-3">Loading payment orders…</p>:!historyRows.length&&<p className="py-8 text-center text-sm text-slate-500">No payment orders on this page.</p>}<div className="flex items-center gap-3 p-3"><button disabled={historyPage===0} onClick={()=>setHistoryPage(p=>Math.max(0,p-1))}>Previous</button><span>Page {historyPage+1}</span><button disabled={!historyHasMore} onClick={()=>setHistoryPage(p=>p+1)}>Next</button></div>
             </div>}
             {adminSection === 'settings' && <div className="sm:col-span-2 lg:col-span-4"><AdminEmailPreferences/></div>}
           </div>

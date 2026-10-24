@@ -262,19 +262,24 @@ function ensureOwner(userId: string) {
 async function readCollection<T extends { id?: string }>(userId: string, collection: string): Promise<T[]> {
   ensureOwner(userId);
   if(collection==='inbox_messages')return (await fetchInboxPage(userId)).messages as unknown as T[];
-  // Catalogs can exceed PostgREST's default 1,000-row response cap.
-  if(['catalogs','catalog_products'].includes(collection)){
+  // Contacts and catalogs must be fully paginated; a partial 1,000-row
+  // response must never be reported as a complete customer ledger.
+  if(['catalogs','catalog_products','contacts'].includes(collection)){
     const rows:any[]=[];
-    for(let offset=0;offset<10000;offset+=500){
-      const {data,error}=await supabase.from('autoreply_documents').select('id,data').eq('user_id',userId).eq('collection',collection).order('id',{ascending:true}).range(offset,offset+499);
-      if(error)throw error;rows.push(...(data||[]));if((data||[]).length<500)return rows.map(row=>({...row.data,id:row.id} as T));
+    for(let offset=0;offset<100000;offset+=500){
+      const {data,error}=await supabase.from('autoreply_documents')
+        .select('id,data,created_at,updated_at').eq('user_id',userId).eq('collection',collection)
+        .order('id',{ascending:true}).range(offset,offset+499);
+      if(error)throw error;
+      rows.push(...(data||[]));
+      if((data||[]).length<500)return rows.map((row:any)=>({...row.data,id:row.id,created_at:row.data?.created_at||row.created_at,updated_at:row.data?.updated_at||row.updated_at} as T));
     }
-    throw new Error('This workspace has too many catalog records. Please split it into smaller workspaces.');
+    throw new Error('Workspace records exceed the safe 100,000-row read limit. Counts are unavailable rather than partial.');
   }
   const { data, error } = await supabase
-    .from('autoreply_documents').select('id,data').eq('user_id', userId).eq('collection', collection).order('updated_at', { ascending: false });
+    .from('autoreply_documents').select('id,data,created_at,updated_at').eq('user_id', userId).eq('collection', collection).order('updated_at', { ascending: false });
   if (error) throw error;
-  return (data || []).map((row: any) => ({ ...(row.data || {}), id: row.id } as T));
+  return (data || []).map((row: any) => ({ ...(row.data || {}), id: row.id,created_at:row.data?.created_at||row.created_at,updated_at:row.data?.updated_at||row.updated_at } as T));
 }
 
 /** A bounded RLS-protected page; cursor is (message_time,id), not an offset. */
