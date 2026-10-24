@@ -3,6 +3,7 @@ export const adminOperationMethods:Record<string,string>={
  'admin-handoffs':'GET','admin-handoff-detail':'GET','admin-handoff-action':'POST','admin-handoff-reply':'POST',
  'admin-workspaces':'GET','admin-workspace':'GET','admin-automation-save':'POST','admin-automation-status':'POST','admin-automation-delete':'POST','admin-automation-restore':'POST',
  'admin-campaign-preview':'POST','admin-campaign-create':'POST','admin-campaign-list':'GET','admin-campaign-detail':'GET','admin-campaign-action':'POST','admin-campaign-update':'POST',
+ 'admin-payments':'GET','admin-audit':'GET',
 };
 export class AdminOperationError extends Error{constructor(message:string,public status=400){super(message);}}
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
@@ -80,6 +81,12 @@ export async function runAdminOperation(req:any,user:{id:string;email?:string}){
   if(operation==='save')automation=validateAdminAutomation(automation);
   else {if(!/^auto_[\w-]{4,}$/.test(b.automationId||''))throw new AdminOperationError('Choose a valid automation.');automation={id:b.automationId,status:b.status,version_id:b.versionId};if(operation==='status'&&!['active','paused'].includes(b.status))throw new AdminOperationError('Invalid status.');if(operation==='restore'&&!uuid.test(b.versionId||''))throw new AdminOperationError('Choose a valid version.');}
   return adminDb('rpc/autoreply_admin_edit_automation','POST',{p_actor:user.id,p_email:user.email,p_workspace:workspace,p_operation:operation,p_automation:automation,p_override:b.overrideLimit===true});
+ }
+ if(action==='admin-payments'||action==='admin-audit'){
+  const offset=Math.max(0,Math.min(100000,Number(req.query.offset)||0));
+  const collection=action==='admin-payments'?'autoreply_billing_orders':'autoreply_admin_audit_logs';
+  const rows=await adminDb(collection+'?order=created_at.desc&limit=51&offset='+offset);
+  return {ok:true,records:rows.slice(0,50),hasMore:rows.length>50};
  }
  if(action==='admin-campaign-list'){const offset=Math.max(0,Math.min(100000,Number(req.query.offset)||0));const rows=await adminDb('autoreply_campaigns?created_by=eq.'+user.id+'&order=created_at.desc,id.desc&limit=101&offset='+offset);return {ok:true,campaigns:rows.slice(0,100),hasMore:rows.length>100};}
  if(action==='admin-campaign-detail'){const campaign=await ownCampaign(String(req.query.id||''),user.id);return {ok:true,campaign,recipients:await adminDb('autoreply_campaign_recipients?campaign_id=eq.'+campaign.id+'&order=identifier&limit=500')};}
