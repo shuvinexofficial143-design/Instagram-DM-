@@ -29,7 +29,15 @@ function homeData(){return read('src/components/Home/HomePage.tsx')}
 test('the dashboard does not invent zero data when initial reads fail',()=>{
  const home=homeData(),context=read('src/context/AppContext.tsx');
  assert.match(home,/workspaceDataError/);
- assert.match(home,/Metrics are withheld rather than displaying an incorrect zero/);
+ assert.match(home,/Only affected metrics are unavailable/);
+ assert.match(home,/workspaceSourceState\.automations !== 'ready'/);
+ assert.match(home,/workspaceSourceState\.inbox !== 'ready'/);
+ assert.match(home,/workspaceSourceState\.contacts !== 'ready'/);
+ assert.match(home,/Automation history is unavailable/);
+ assert.match(home,/Inbox activity is unavailable/);
+ assert.match(context,/setWorkspaceSourceState\(previous=>\(\{\.\.\.previous,\[kind\]:failed\?'error':'ready'\}\)\)/);
+ assert.match(context,/\[CONTACTS_LOAD_ERROR\]/);
+ assert.doesNotMatch(context,/setWorkspaceDataError\(false\)/);
  assert.match(context,/workspaceDataError/);
 });
 test('real user_ Instagram identifiers are not filtered as fake messages',()=>{

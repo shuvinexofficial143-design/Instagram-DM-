@@ -68,6 +68,8 @@ const tabFromPath = (pathname: string): ActiveTab => {
   return entry?.[0] || 'home';
 };
 
+type WorkspaceSourceState = Record<'automations' | 'inbox' | 'contacts', 'loading' | 'ready' | 'error'>;
+
 interface AppContextType {
   user: UserProfile;
   firebaseUser: User | null;
@@ -76,6 +78,7 @@ interface AppContextType {
   workspaceHydrating: boolean;
   workspaceDataLoading: boolean;
   workspaceDataError: boolean;
+  workspaceSourceState: WorkspaceSourceState;
   isGuestMode: boolean;
   setIsGuestMode: (val: boolean) => void;
   logout: () => Promise<void>;
@@ -226,7 +229,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // has not completed its first authoritative load.
   const [workspaceHydrating,setWorkspaceHydrating]=useState(true);
   const [workspaceDataLoading,setWorkspaceDataLoading]=useState(true);
-  const [workspaceDataError,setWorkspaceDataError]=useState(false);
+  const [workspaceSourceState,setWorkspaceSourceState] = useState<WorkspaceSourceState>({automations:'loading',inbox:'loading',contacts:'loading'});
+  const workspaceDataError = Object.values(workspaceSourceState).some(status=>status==='error');
   const [isGuestMode, setIsGuestModeState] = useState<boolean>(() => {
     try {
       return localStorage.getItem('autoreply_guest_mode') === 'true';
@@ -493,9 +497,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const uid = workspaceId || firebaseUser?.uid;
-    if (firebaseUser?.uid && !workspaceId) {setWorkspaceDataLoading(true);setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);return;}
+    if (firebaseUser?.uid && !workspaceId) {setWorkspaceDataLoading(true);setWorkspaceSourceState({automations:'loading',inbox:'loading',contacts:'loading'});setAutomations([]);setContacts([]);setInboxMessages([]);setLogs([]);return;}
     if (!uid) {
       setWorkspaceDataLoading(false);
+      setWorkspaceSourceState({automations:'loading',inbox:'loading',contacts:'loading'});
       // Guest workspaces use the same secure HttpOnly cookie as Instagram OAuth.
       // Poll the server-side workspace feed so live webhook DMs appear in Inbox
       // and Contacts even without an app login.
@@ -603,11 +608,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }));
 
           setWorkspaceDataLoading(false);
+          setWorkspaceSourceState({automations:'ready',inbox:'ready',contacts:'ready'});
           setInboxMessages(previous=>mergeInboxMessages(previous,filterOutMockMessages(guestMessages)));
           setInboxUnreadCounts(payload.inboxUnreadCounts||{});
 
         } catch (err: any) {
           console.warn('[GUEST_WORKSPACE_LOAD_WARN]', err?.message || err);
+          if (!cancelled) setWorkspaceSourceState({automations:'error',inbox:'error',contacts:'error'});
         }
       };
 
@@ -625,11 +632,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Immediately reset collection state for this session
     let live=true,gotAutomations=false,gotInbox=false;
     setWorkspaceDataLoading(true);
-    setWorkspaceDataError(false);
+    setWorkspaceSourceState({automations:'loading',inbox:'loading',contacts:'loading'});
     const markLoaded=(kind:'automations'|'inbox',failed=false)=>{
       if(!live)return;
       if(kind==='automations')gotAutomations=true;else gotInbox=true;
-      if(failed)setWorkspaceDataError(true);
+      setWorkspaceSourceState(previous=>({...previous,[kind]:failed?'error':'ready'}));
       if(gotAutomations&&gotInbox)setWorkspaceDataLoading(false);
     };
     setAutomations([]);
@@ -691,6 +698,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setPausedAiUsers([...threadControlRecords.current.values()].filter(row=>row.paused===true).flatMap(row=>[String(row.sender_id||row.id||'').toLowerCase(),String(row.username||'').replace(/^@/,'').toLowerCase()]).filter(Boolean));
     });
     const unsubscribeContacts = subscribeToUserCollection<Contact>(uid, 'contacts', (data) => {
+      if(!live)return;
+      setWorkspaceSourceState(previous=>({...previous,contacts:'ready'}));
       if (data) {
         const sanitized: Contact[] = data.map((c) => ({
           ...c,
@@ -722,7 +731,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         setContacts([]);
       }
-    });
+    },(err)=>{console.warn('[CONTACTS_LOAD_ERROR]',err?.message||err);if(live)setWorkspaceSourceState(previous=>({...previous,contacts:'error'}));});
 
     const unsubscribeInbox = subscribeToInbox(uid, (page) => {
       if(!live)return;
@@ -740,7 +749,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           read_at: m.read_at || undefined,
         }));
       setInboxMessages(previous=>mergeInboxMessages(previous,filterOutMockMessages(sanitized)));
-      setWorkspaceDataError(false);markLoaded('inbox');
+      markLoaded('inbox');
     },(message,id)=>{if(live)setInboxMessages(previous=>message?mergeInboxMessages(previous,[message]):previous.filter(item=>item.id!==id));},
     (err)=>{console.warn('[INBOX_LOAD_ERROR]',err?.message||err);markLoaded('inbox',true);});
 
@@ -1354,7 +1363,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         firebaseUser,
         setFirebaseUser,
         authLoading,
-        workspaceHydrating,workspaceDataLoading,workspaceDataError,
+        workspaceHydrating,workspaceDataLoading,workspaceDataError,workspaceSourceState,
         isGuestMode,
         setIsGuestMode,
         logout,
