@@ -339,10 +339,10 @@ export const AdminPage: React.FC = () => {
     const csvCell = (value:unknown) => {
       const raw=String(value ?? '');
       // Prevent spreadsheet formula injection when exporting untrusted profile fields.
-      const safe=/^[=+\\-@\\t\\r]/.test(raw) ? "'" + raw : raw;
+      const safe=/^[=+@\t\r-]/.test(raw) ? "'" + raw : raw;
       return '"' + safe.replaceAll('"','""') + '"';
     };
-    const csvContent='\\uFEFF'+[headers.map(csvCell).join(','),...rows.map(r=>r.map(csvCell).join(','))].join('\\r\\n');
+    const csvContent='\uFEFF'+[headers.map(csvCell).join(','),...rows.map(r=>r.map(csvCell).join(','))].join('\r\n');
     const blobUrl=URL.createObjectURL(new Blob([csvContent],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');
     link.href=blobUrl;
