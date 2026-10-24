@@ -707,8 +707,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ig_username: c.ig_username || c.ig_user_id || 'instagram_user',
           ig_user_id: c.ig_user_id || '',
           avatar_url: c.avatar_url && !c.avatar_url.includes('api.dicebear.com') ? c.avatar_url : '',
-          first_interaction_at: c.first_interaction_at || c.created_at || '',
-          last_interaction_at: c.last_interaction_at || c.updated_at || c.created_at || '',
+          first_interaction_at: c.first_interaction_at || (c as any).created_at || '',
+          last_interaction_at: c.last_interaction_at || (c as any).updated_at || (c as any).created_at || '',
           interactions: {
             comments: Number(c.interactions?.comments) || 0,
             dms: Number(c.interactions?.dms) || 0,
