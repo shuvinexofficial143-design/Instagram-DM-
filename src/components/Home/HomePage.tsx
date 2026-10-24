@@ -22,11 +22,11 @@ export const HomePage: React.FC = () => {
   const [verifiedAi,setVerifiedAi]=useState<{all:number;month:number}|null>(null);
   const [verifiedMessageMetrics,setVerifiedMessageMetrics]=useState<{key:string;outgoing:number;ai:number}|null>(null);
   const [messageMetricsError,setMessageMetricsError]=useState(false);
-  const messageMetricKey=workspaceId+':'+period;
+  const messageMetricKey=(workspaceId || (isGuestMode?'guest':''))+':'+period;
   useEffect(()=>{
     let live=true;setVerifiedMessageMetrics(null);setMessageMetricsError(false);
     const load=async()=>{
-      if(!workspaceId||(!isGuestMode&&!firebaseUser?.uid))return;
+      if((!workspaceId&&!isGuestMode)||(!isGuestMode&&!firebaseUser?.uid))return;
       try{
         const now=new Date();
         const windows:{start:Date;end:Date}[]=[];
@@ -104,13 +104,9 @@ export const HomePage: React.FC = () => {
     }
     return period==='all' ? 0 : Date.now() - (period === '7d' ? 7 : 30) * 24 * 60 * 60 * 1000;
   }, [period]);
-  const periodMessages = useMemo(
-    () => (inboxMessages || []).filter((m) => new Date(m.timestamp || 0).getTime() >= periodStart),
-    [inboxMessages, periodStart]
-  );
   // Both message totals and selected-period AI replies come from the full
   // authenticated server analytics ledger, never just the first Inbox page.
-  const aiReplies:number|null = period==='all' ? (verifiedAi?.all ?? null) : (currentMessageMetrics?.ai ?? null);
+  const aiReplies:number|null = period==='all' ? (verifiedAi?.all ?? currentMessageMetrics?.ai ?? null) : (currentMessageMetrics?.ai ?? null);
   const newLeads = (contacts || []).filter((c) => new Date(c.first_interaction_at || 0).getTime() >= periodStart).length;
 
   const topAutomations = useMemo(
