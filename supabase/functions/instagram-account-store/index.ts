@@ -451,7 +451,7 @@ Deno.serve(async (req: Request) => {
     const pagedAdminRows=async (table:string,columns:string,orderColumn:string)=>{
       const rows:any[]=[];
       for(let offset=0;offset<100000;offset+=500){
-        const {data,error}=await admin.from(table).select(columns).order(orderColumn,{ascending:true}).range(offset,offset+499);
+        const {data,error}=await admin.from(table).select(columns).order("user_id",{ascending:true}).order(orderColumn,{ascending:true}).range(offset,offset+499);
         if(error)throw error;
         rows.push(...(data||[]));
         if((data||[]).length<500)return {data:rows,error:null};
@@ -611,7 +611,7 @@ Deno.serve(async (req: Request) => {
       for(let offset=0;offset<100000;offset+=500){
         const {data:batch,error} = await admin.from("autoreply_documents")
           .select("collection,id,data,created_at,updated_at").eq("user_id",workspaceId)
-          .in("collection",collections).order("id",{ascending:true}).range(offset,offset+499);
+          .in("collection",collections).order("collection",{ascending:true}).order("id",{ascending:true}).range(offset,offset+499);
         if(error){console.error("[WORKSPACE_DATA_LIST_FAILED]",error);return reply(500,{ok:false,error:"Workspace data could not be loaded"});}
         data.push(...(batch||[]));
         if((batch||[]).length<500)break;
