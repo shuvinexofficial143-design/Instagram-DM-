@@ -57,8 +57,8 @@ export const HomePage: React.FC = () => {
           return result.data;
         }));
         const outgoing=results.reduce((sum,result)=>{
-          if(!result?.current)throw Error('Unverified DM count');
-          return sum+Math.max(0,Number(result.current.outgoing||0)-Number(result.current.failed||0));
+          if(!result||!Object.prototype.hasOwnProperty.call(result,'current'))throw Error('Unverified DM count');
+          return sum+Math.max(0,Number(result.current?.outgoing||0)-Number(result.current?.failed||0));
         },0);
         const ai=results.reduce((sum,result)=>sum+Math.max(0,Number(result?.current?.ai||0)-Number(result?.current?.failed_ai||0)),0);
         if(live){setVerifiedMessageMetrics({key:messageMetricKey,outgoing,ai});setMessageMetricsError(false);}
