@@ -447,11 +447,22 @@ Deno.serve(async (req: Request) => {
       return reply(403, { ok: false, error: "Administrator access required" });
     }
 
+    // Admin totals must not silently stop at PostgREST's 1,000-row default.
+    const pagedAdminRows=async (table:string,columns:string,orderColumn:string)=>{
+      const rows:any[]=[];
+      for(let offset=0;offset<100000;offset+=500){
+        const {data,error}=await admin.from(table).select(columns).order(orderColumn,{ascending:true}).range(offset,offset+499);
+        if(error)throw error;
+        rows.push(...(data||[]));
+        if((data||[]).length<500)return {data:rows,error:null};
+      }
+      throw new Error("Administrator overview exceeds the safe 100,000-record retrieval limit.");
+    };
     const [profilesRes, accountsRes, automationsRes, usageRes, plansRes, auditRes, dmHistoryRes, claimsRes, documentsRes, runtimeRes, paymentsRes, contactsRes] = await Promise.all([
-      admin.from("autoreply_profiles").select("user_id,email,display_name,avatar_url,role,last_login_at,last_active_at,created_at,updated_at").order("created_at", { ascending: false }),
-      admin.from("autoreply_instagram_tokens").select("user_id,account,created_at,updated_at"),
-      admin.from("autoreply_active_automations").select("user_id,automation_id,data,updated_at"),
-      admin.from("autoreply_usage_monthly").select("user_id,month_key,total_messages,ai_replies,updated_at"),
+      pagedAdminRows("autoreply_profiles","user_id,email,display_name,avatar_url,role,last_login_at,last_active_at,created_at,updated_at","user_id"),
+      pagedAdminRows("autoreply_instagram_tokens","user_id,account,created_at,updated_at","user_id"),
+      pagedAdminRows("autoreply_active_automations","user_id,automation_id,data,updated_at","automation_id"),
+      pagedAdminRows("autoreply_usage_monthly","user_id,month_key,total_messages,ai_replies,updated_at","user_id"),
       admin.from("autoreply_plans").select("id,name,price_inr,total_messages,ai_replies,instagram_accounts,automations_limit,billing_days,is_active,sort_order,updated_at").order("sort_order"),
       admin.from("autoreply_admin_audit_logs").select("id,admin_email,action,entity_type,entity_id,created_at").order("created_at", { ascending: false }).limit(100),
       admin.from("autoreply_dm_history").select("user_id,sender_id,messages,updated_at").order("updated_at", { ascending: false }).limit(250),
@@ -596,16 +607,15 @@ Deno.serve(async (req: Request) => {
         "contacts",
       ];
 
-      const { data, error } = await admin
-        .from("autoreply_documents")
-        .select("collection,id,data,created_at,updated_at")
-        .eq("user_id", workspaceId)
-        .in("collection", collections)
-        .order("updated_at", { ascending: false });
-
-      if (error) {
-        console.error("[WORKSPACE_DATA_LIST_FAILED]", error);
-        return reply(500, { ok: false, error: "Workspace data could not be loaded" });
+      const data:any[]=[];
+      for(let offset=0;offset<100000;offset+=500){
+        const {data:batch,error} = await admin.from("autoreply_documents")
+          .select("collection,id,data,created_at,updated_at").eq("user_id",workspaceId)
+          .in("collection",collections).order("id",{ascending:true}).range(offset,offset+499);
+        if(error){console.error("[WORKSPACE_DATA_LIST_FAILED]",error);return reply(500,{ok:false,error:"Workspace data could not be loaded"});}
+        data.push(...(batch||[]));
+        if((batch||[]).length<500)break;
+        if(offset+500>=100000)return reply(503,{ok:false,error:"Workspace records exceed the safe retrieval limit."});
       }
 
       const result: Record<string, any[]> = {
