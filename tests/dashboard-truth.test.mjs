@@ -31,7 +31,9 @@ test('the dashboard does not invent zero data when initial reads fail',()=>{
  assert.match(home,/workspaceDataError/);
  assert.match(home,/Only affected metrics are unavailable/);
  assert.match(home,/workspaceSourceState\.automations !== 'ready'/);
- assert.match(home,/workspaceSourceState\.inbox !== 'ready'/);
+ assert.match(home,/currentMessageMetrics\?\.outgoing \?\? null/);
+ assert.match(home,/currentMessageMetrics\?\.ai \?\? null/);
+ assert.match(home,/autoreply_inbox_analytics/);
  assert.match(home,/workspaceSourceState\.contacts !== 'ready'/);
  assert.match(home,/Automation history is unavailable/);
  assert.match(home,/Inbox activity is unavailable/);
@@ -102,4 +104,20 @@ test('Billing loading is neutral and does not flash a warning or fake plan',()=>
  assert.match(hook,/billingUsageCache/);
  assert.match(hook,/ownerId===userId/);
  assert.match(hook,/FRESH_CACHE_MS/);
+});
+
+test('complete contacts are paginated and timestamps come from stored records',()=>{
+ const client=read('src/lib/supabase.ts'),ctx=read('src/context/AppContext.tsx');
+ assert.match(client,/catalog_products','contacts'/);
+ assert.match(client,/offset\+499/);
+ assert.match(client,/row\.data\?\.created_at\|\|row\.created_at/);
+ assert.doesNotMatch(ctx,/c\.first_interaction_at \|\| new Date\(\)\.toISOString\(\)/);
+});
+test('admin history and health have authenticated paginated endpoints',()=>{
+ const ops=read('src/server/adminOperations.ts'),page=read('src/components/Admin/AdminPage.tsx');
+ assert.match(ops,/admin-health-totals/);
+ assert.match(ops,/admin-payments/);
+ assert.match(ops,/admin-audit/);
+ assert.match(page,/historyRows/);
+ assert.match(page,/serverTotals\?\.documents/);
 });
