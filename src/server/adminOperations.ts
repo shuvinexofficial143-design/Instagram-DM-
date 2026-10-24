@@ -81,7 +81,7 @@ export async function runAdminOperation(req:any,user:{id:string;email?:string}){
   else {if(!/^auto_[\w-]{4,}$/.test(b.automationId||''))throw new AdminOperationError('Choose a valid automation.');automation={id:b.automationId,status:b.status,version_id:b.versionId};if(operation==='status'&&!['active','paused'].includes(b.status))throw new AdminOperationError('Invalid status.');if(operation==='restore'&&!uuid.test(b.versionId||''))throw new AdminOperationError('Choose a valid version.');}
   return adminDb('rpc/autoreply_admin_edit_automation','POST',{p_actor:user.id,p_email:user.email,p_workspace:workspace,p_operation:operation,p_automation:automation,p_override:b.overrideLimit===true});
  }
- if(action==='admin-campaign-list')return {ok:true,campaigns:await adminDb('autoreply_campaigns?created_by=eq.'+user.id+'&order=created_at.desc&limit=100')};
+ if(action==='admin-campaign-list'){const offset=Math.max(0,Math.min(100000,Number(req.query.offset)||0));const rows=await adminDb('autoreply_campaigns?created_by=eq.'+user.id+'&order=created_at.desc,id.desc&limit=101&offset='+offset);return {ok:true,campaigns:rows.slice(0,100),hasMore:rows.length>100};}
  if(action==='admin-campaign-detail'){const campaign=await ownCampaign(String(req.query.id||''),user.id);return {ok:true,campaign,recipients:await adminDb('autoreply_campaign_recipients?campaign_id=eq.'+campaign.id+'&order=identifier&limit=500')};}
  if(action==='admin-campaign-update'){
   const campaign=await ownCampaign(String(b.id||''),user.id);
