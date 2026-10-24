@@ -202,7 +202,7 @@ export const ContactsPage: React.FC = () => {
                   // Check the customer's inbound 24-hour window before any
                   // paid AI generation or Instagram send attempt.
                   const recipientId=String(contact.ig_user_id||'').trim();
-                  if(!/^\\d{5,30}$/.test(recipientId))throw Error('No verified Instagram conversation ID for this recipient.');
+                  if(!/^[0-9]{5,30}$/.test(recipientId))throw Error('No verified Instagram conversation ID for this recipient.');
                   const {data:recentInbound,error:windowError}=await supabase.from('autoreply_documents')
                     .select('message_time').eq('user_id',workspaceId).eq('collection','inbox_messages')
                     .eq('data->>from_ig_id',recipientId).eq('data->>direction','in')
