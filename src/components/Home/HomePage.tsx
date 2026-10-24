@@ -12,7 +12,7 @@ type Period = 'today' | '7d' | '30d' | 'all';
 
 export const HomePage: React.FC = () => {
   const {
-    user, instagramAccount, automations, inboxMessages, contacts, workspaceDataLoading, workspaceDataError,
+    user, instagramAccount, automations, inboxMessages, contacts, workspaceDataLoading, workspaceDataError, workspaceSourceState,
     setActiveTab, startInstagramConnection, setIsBuilderOpen,
   } = useApp();
   // Default to verified lifetime totals; otherwise earlier successful AI replies
@@ -64,7 +64,7 @@ export const HomePage: React.FC = () => {
   const taggedAiReplies = periodMessages.filter(m=>m.direction==='out'&&m.is_automated&&m.automation_id&&aiIds.has(m.automation_id)).length;
   const aiReplies:number|null = period==='all'
     ? (verifiedAi?.all ?? null)
-    : workspaceDataLoading||workspaceDataError ? null : taggedAiReplies;
+    : workspaceSourceState.inbox !== 'ready' ? null : taggedAiReplies;
   const newLeads = (contacts || []).filter((c) => new Date(c.first_interaction_at || 0).getTime() >= periodStart).length;
 
   const topAutomations = useMemo(
@@ -90,11 +90,13 @@ export const HomePage: React.FC = () => {
 
   const unread = inboxMessages.filter(m=>m.direction==='in'&&!m.is_read).length;
   const kpis = [
-    { label:'Active Automations', value:workspaceDataLoading||workspaceDataError?null:activeAutomations.length, icon:Zap, tone:'text-violet-600 bg-violet-50' },
-    { label:'DMs Sent', value:workspaceDataLoading||workspaceDataError?null:totalDmsSent, icon:Send, tone:'text-blue-600 bg-blue-50' },
+    { label:'Active Automations', value:workspaceSourceState.automations !== 'ready'?null:activeAutomations.length, icon:Zap, tone:'text-violet-600 bg-violet-50' },
+    { label:'DMs Sent', value:workspaceSourceState.inbox !== 'ready'?null:totalDmsSent, icon:Send, tone:'text-blue-600 bg-blue-50' },
     { label:'AI Replies', value:aiReplies, icon:Bot, tone:'text-pink-600 bg-pink-50' },
-    { label:'New Leads', value:workspaceDataLoading||workspaceDataError?null:newLeads, icon:Users, tone:'text-orange-600 bg-orange-50' },
+    { label:'New Leads', value:workspaceSourceState.contacts !== 'ready'?null:newLeads, icon:Users, tone:'text-orange-600 bg-orange-50' },
   ];
+  const failedSources = ([['automations','Automations'],['inbox','Inbox'],['contacts','Contacts']] as const)
+    .filter(([source])=>workspaceSourceState[source]==='error').map(([,label])=>label);
 
   return (
     <div className="dashboard-premium workspace-overview min-h-full px-4 py-5 sm:px-6 lg:px-8">
@@ -111,7 +113,7 @@ export const HomePage: React.FC = () => {
           </div>
         </header>
 
-        {workspaceDataError && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Some workspace records could not be loaded. Metrics are withheld rather than displaying an incorrect zero. Refresh to retry.</p>}
+        {workspaceDataError && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Could not load: {failedSources.join(', ')}. Only affected metrics are unavailable. Refresh to retry.</p>}
         {isConnected && !accountExpired && automations.length>0 && <div className="dashboard-next-action"><div><strong>{unread>0?`${unread} unread messages`:'Your workspace is ready'}</strong><p>{unread>0?'Check conversations that may need your attention.':'Review your inbox or create another automation.'}</p></div><button onClick={()=>setActiveTab('inbox')}>Open inbox <ArrowRight/></button></div>}
 
         <section className="relative overflow-hidden rounded-[20px] border border-orange-100 bg-gradient-to-br from-white via-[#fffaf3] to-[#f5f3ff] p-4 shadow-[0_8px_28px_rgba(76,88,160,.08)] sm:p-5">
@@ -178,7 +180,7 @@ export const HomePage: React.FC = () => {
             <div><h2 className="flex items-center gap-2 text-base font-bold text-slate-950"><Zap className="h-4.5 w-4.5 text-violet-600" />Top Performing Automations</h2><p className="mt-1 text-xs font-medium text-slate-500">Performance from your existing automation data.</p></div>
             <button onClick={() => setActiveTab('automations')} className="inline-flex min-h-10 items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800">View All <ArrowRight className="h-3.5 w-3.5" /></button>
           </div>
-          {workspaceDataLoading ? <p className="py-8 text-sm text-slate-500">Loading your automation history…</p> : topAutomations.length === 0 ? (
+          {workspaceSourceState.automations === 'loading' ? <p className="py-8 text-sm text-slate-500">Loading your automation history…</p> : workspaceSourceState.automations === 'error' ? <p role="status" className="py-8 text-sm text-amber-800">Automation history is unavailable. Refresh to retry.</p> : topAutomations.length === 0 ? (
             <div className="py-6 text-center">
               <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Zap className="h-5 w-5" /></div>
               <p className="mt-3 text-sm font-bold text-slate-800">No automations yet</p>
@@ -204,15 +206,15 @@ export const HomePage: React.FC = () => {
         </section>
           <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">
             <div className="overview-panel-heading flex items-center justify-between border-b border-slate-100 pb-4"><h2 className="text-base font-bold text-slate-950">Recent Activity</h2><button onClick={() => setActiveTab('inbox')} className="inline-flex min-h-10 items-center gap-1 text-xs font-bold text-indigo-600">View All <ChevronRight className="h-4 w-4" /></button></div>
-            {workspaceDataLoading ? <p className="py-8 text-sm text-slate-500">Loading recent activity…</p> : recentActivity.length === 0 ? <div className="py-8 text-center"><Activity className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-700">No recent activity yet</p><p className="mt-1 text-xs text-slate-500">New Instagram conversations will appear here.</p></div> :
+            {workspaceSourceState.inbox === 'loading' ? <p className="py-8 text-sm text-slate-500">Loading recent activity…</p> : workspaceSourceState.inbox === 'error' ? <p role="status" className="py-8 text-sm text-amber-800">Inbox activity is unavailable. Refresh to retry.</p> : recentActivity.length === 0 ? <div className="py-8 text-center"><Activity className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-700">No recent activity yet</p><p className="mt-1 text-xs text-slate-500">New Instagram conversations will appear here.</p></div> :
               <div className="divide-y divide-slate-100">{recentActivity.map(msg => <div key={msg.id} className="flex items-center gap-3 py-3.5"><UserAvatar src={msg.from_avatar} username={msg.from_username} size="sm" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{msg.direction==='out' ? `DM sent to @${msg.from_username}` : `@${msg.from_username} sent a DM`}</p><p className="truncate text-xs text-slate-500">{msg.message_text}</p></div><span className="shrink-0 text-xs text-slate-400">{relativeTime(msg.timestamp)}</span></div>)}</div>}
           </section>
           <section className="rounded-[20px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_8px_28px_rgba(30,41,59,.05)] sm:p-5">
             <h2 className="border-b border-slate-100 pb-4 text-lg font-semibold text-slate-950">Workspace status</h2>
             <div className="mt-2 divide-y divide-slate-100">
               <StatusRow icon={Instagram} ok={isConnected && !accountExpired} label={accountExpired?'Instagram Connection Expired':'Instagram Connected'} detail={isConnected ? (accountExpired?'Reconnect Instagram':'Account is connected') : 'No account connected'} />
-              <StatusRow icon={Zap} ok={activeAutomations.length > 0} label="Automations Running" detail={activeAutomations.length > 0 ? `${activeAutomations.length} active workflow${activeAutomations.length===1?'':'s'}` : 'No active workflows'} />
-              <StatusRow icon={Bot} ok={activeAutomations.some(a=>a.trigger_type==='dm_ai_conversation')} label="AI Replies Active" detail={activeAutomations.some(a=>a.trigger_type==='dm_ai_conversation') ? 'AI conversation automation active' : 'No active AI conversation automation'} />
+              <StatusRow icon={Zap} ok={workspaceSourceState.automations === 'ready' ? activeAutomations.length > 0 : null} label="Automations Running" detail={workspaceSourceState.automations !== 'ready' ? 'Automation status unavailable' : activeAutomations.length > 0 ? `${activeAutomations.length} active workflow${activeAutomations.length===1?'':'s'}` : 'No active workflows'} />
+              <StatusRow icon={Bot} ok={workspaceSourceState.automations === 'ready' ? activeAutomations.some(a=>a.trigger_type==='dm_ai_conversation') : null} label="AI Replies Active" detail={workspaceSourceState.automations !== 'ready' ? 'AI automation status unavailable' : activeAutomations.some(a=>a.trigger_type==='dm_ai_conversation') ? 'AI conversation automation active' : 'No active AI conversation automation'} />
             </div>
           </section>
         </div>
