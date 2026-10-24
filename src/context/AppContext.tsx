@@ -543,9 +543,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ? contact.avatar_url
                 : '',
             first_interaction_at:
-              contact.first_interaction_at || new Date().toISOString(),
+              contact.first_interaction_at || contact.created_at || '',
             last_interaction_at:
-              contact.last_interaction_at || new Date().toISOString(),
+              contact.last_interaction_at || contact.updated_at || contact.created_at || '',
             interactions: {
               comments: Number(contact.interactions?.comments) || 0,
               dms: Number(contact.interactions?.dms) || 0,
@@ -602,7 +602,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 : '',
             message_text: message.message_text || '',
             direction: message.direction === 'out' ? 'out' : 'in',
-            timestamp: message.timestamp || new Date().toISOString(),
+            timestamp: message.timestamp || message.created_at || '',
             is_read: message.direction === 'out' ? true : Boolean(message.is_read),
             read_at: message.read_at || undefined,
           }));
@@ -707,8 +707,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ig_username: c.ig_username || c.ig_user_id || 'instagram_user',
           ig_user_id: c.ig_user_id || '',
           avatar_url: c.avatar_url && !c.avatar_url.includes('api.dicebear.com') ? c.avatar_url : '',
-          first_interaction_at: c.first_interaction_at || new Date().toISOString(),
-          last_interaction_at: c.last_interaction_at || new Date().toISOString(),
+          first_interaction_at: c.first_interaction_at || c.created_at || '',
+          last_interaction_at: c.last_interaction_at || c.updated_at || c.created_at || '',
           interactions: {
             comments: Number(c.interactions?.comments) || 0,
             dms: Number(c.interactions?.dms) || 0,
@@ -744,7 +744,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           from_avatar: m.from_avatar && !m.from_avatar.includes('api.dicebear.com') ? m.from_avatar : '',
           message_text: m.message_text || '',
           direction: m.direction || 'in',
-          timestamp: m.timestamp || new Date().toISOString(),
+          timestamp: m.timestamp || (m as any).created_at || '',
           is_read: (m.direction || 'in') === 'out' ? true : Boolean(m.is_read),
           read_at: m.read_at || undefined,
         }));
