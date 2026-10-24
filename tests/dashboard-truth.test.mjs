@@ -121,3 +121,44 @@ test('admin history and health have authenticated paginated endpoints',()=>{
  assert.match(page,/historyRows/);
  assert.match(page,/serverTotals\?\.documents/);
 });
+
+test('All Time DM counts are scoped server analytics rather than first page estimates',()=>{
+ const home=read('src/components/Home/HomePage.tsx');
+ assert.match(home,/autoreply_inbox_analytics/);
+ assert.match(home,/currentMessageMetrics\?\.outgoing \?\? null/);
+ assert.match(home,/Number\(result\.current\?\.failed\|\|0\)/);
+ assert.match(home,/hasOwnProperty\.call\(result,'current'\)/);
+});
+test('Bulk DM requires a fresh inbound and checks before paid AI generation',()=>{
+ const contacts=read('src/components/Contacts/ContactsPage.tsx');
+ assert.match(contacts,/data->>direction','in'/);
+ assert.match(contacts,/message_time/);
+ assert.match(contacts,/24\*60\*60\*1000/);
+ assert.ok(contacts.indexOf('recentInbound')<contacts.indexOf("if (bulkMode === 'ai')"));
+});
+test('Admin campaign, payment and audit collections have explicit pages',()=>{
+ const operations=read('src/server/adminOperations.ts');
+ const campaigns=read('src/components/Admin/AdminCampaignCenter.tsx');
+ const admin=read('src/components/Admin/AdminPage.tsx');
+ assert.match(operations,/admin-payments/);
+ assert.match(operations,/admin-audit/);
+ assert.match(operations,/admin-campaign-list/);
+ assert.match(campaigns,/campaignOffset/);
+ assert.match(campaigns,/campaignHasMore/);
+ assert.match(admin,/historyHasMore/);
+});
+test('Admin and guest data readers do not silently truncate at 1000',()=>{
+ const edge=read('supabase/functions/instagram-account-store/index.ts');
+ const client=read('src/lib/supabase.ts');
+ assert.match(edge,/pagedAdminRows/);
+ assert.match(edge,/offset\+=500/);
+ assert.match(client,/catalog_products','contacts'/);
+});
+test('Handoff and automation edit failures are visible rather than false success',()=>{
+ const handoff=read('src/components/Admin/AdminHandoffCenter.tsx');
+ const manager=read('src/components/Admin/AdminWorkspaceManager.tsx');
+ assert.match(handoff,/detailError/);
+ assert.match(handoff,/Retry/);
+ assert.match(manager,/Promise<boolean>/);
+ assert.match(manager,/Change saved, but workspace refresh failed/);
+});
