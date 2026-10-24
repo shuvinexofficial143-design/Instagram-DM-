@@ -760,6 +760,18 @@ Deno.serve(async (req: Request) => {
       const recipients = [...new Set(matches.map((row:any)=>String(row.data?.ig_user_id || row.id || "")).filter((id:string)=>/^\d+$/.test(id)))];
       if (recipients.length !== 1) return reply(409,{ok:false,sent:false,error:"No unique Instagram conversation found for this contact. Ask them to send a new DM first."});
       const recipientId = String(recipients[0]);
+      // The standard Instagram messaging window is opened by the customer's
+      // inbound message, never by the business's last outbound or a comment.
+      // This untagged send path does not claim the HUMAN_AGENT/ads exemption.
+      const {data:inbound,error:windowError}=await admin.from("autoreply_documents")
+        .select("id,message_time").eq("user_id",workspaceId).eq("collection","inbox_messages")
+        .eq("data->>from_ig_id",recipientId).eq("data->>direction","in")
+        .order("message_time",{ascending:false}).limit(1);
+      if(windowError)return reply(503,{ok:false,sent:false,error:"Could not verify the Instagram messaging window. Please retry."});
+      const lastInbound=inbound?.[0]?.message_time?Date.parse(String(inbound[0].message_time)):NaN;
+      if(!Number.isFinite(lastInbound)||lastInbound<Date.now()-24*60*60*1000){
+        return reply(409,{ok:false,sent:false,error:"This customer is outside the standard 24-hour DM window. Ask them to send a fresh message."});
+      }
       // A manual reply is a durable human takeover, even after a reload.
       const {error:pauseError}=await admin.rpc("autoreply_set_thread_control",{p_workspace:workspaceId,p_sender:recipientId,p_paused:true,p_username:username,p_handoff_id:action==="admin_handoff_reply"?payload.handoffId:null});
       if(pauseError) return reply(503,{ok:false,sent:false,error:"Could not pause AI replies for this conversation. Please retry."});
