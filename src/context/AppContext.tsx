@@ -506,7 +506,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // and Contacts even without an app login.
       let cancelled = false;
       let pollTimer: ReturnType<typeof setInterval> | null = null;
-      let profileRefreshRequested = false;
+      let profileRefreshInFlight = false;
+      const guestProfileRetryAt = new Map<string, number>();
 
 
       const loadGuestWorkspace = async () => {
@@ -561,28 +562,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return /^\d{8,}$/.test(username) || !contact.avatar_url;
           });
 
-          if (needsRealProfileRefresh && !profileRefreshRequested) {
-            profileRefreshRequested = true;
-            fetch('/api/instagram/refresh-contacts', {
-              method: 'POST',
-              credentials: 'same-origin',
-            })
-              .then(async (refreshRes) => {
-                const refreshPayload = await refreshRes.json().catch(() => null);
-                if (!refreshRes.ok || !refreshPayload?.ok) {
-                  throw new Error(
-                    refreshPayload?.error || 'Could not refresh Instagram contact profiles'
-                  );
-                }
-                // The regular 4s workspace poll will pick up the real username/photo.
-              })
-              .catch((err) => {
-                console.warn('[IG_CONTACT_PROFILE_REFRESH_WARN]', err?.message || err);
-                // Allow one later retry in this page session.
-                setTimeout(() => {
-                  profileRefreshRequested = false;
-                }, 15000);
-              });
+          if (needsRealProfileRefresh && !profileRefreshInFlight) {
+            const missing = guestContacts.filter(contact => {
+              const username = String(contact.ig_username || '').trim();
+              return /^\d{8,}$/.test(username) || !contact.avatar_url;
+            }).map(contact => String(contact.ig_user_id || contact.id || '')).filter(Boolean);
+            const now = Date.now();
+            const due = missing.filter(id => now >= (guestProfileRetryAt.get(id) || 0));
+            if (due.length) {
+              profileRefreshInFlight = true;
+              // Respect Meta rate limits. A successful request may still return
+              // no profile until this Instagram account becomes eligible.
+              due.forEach(id => guestProfileRetryAt.set(id, now + 15 * 60_000));
+              void fetch('/api/instagram/refresh-contacts', {
+                method: 'POST', credentials: 'same-origin',
+              }).then(async response => {
+                const payload = await response.json().catch(() => null);
+                if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Instagram profile refresh failed');
+              }).catch(error => {
+                if (!cancelled) console.warn('[IG_CONTACT_PROFILE_REFRESH_WARN]', error?.message || error);
+                due.forEach(id => guestProfileRetryAt.set(id, Date.now() + 60_000));
+              }).finally(() => { profileRefreshInFlight = false; });
+            }
           }
 
           const guestMessages: InboxMessage[] = (
@@ -689,7 +690,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // while this protects the page from transient PostgREST/read timeouts.
     void loadAutomationsFromServer();
 
-    let signedInProfileRefreshRequested = false;
+    let signedInProfileRefreshInFlight = false;
+    const signedInProfileRetryAt = new Map<string,number>();
     setCustomerInsights([]);
     const unsubscribeInsights=subscribeToUserCollection<any>(uid,'customer_insights',setCustomerInsights);
     const unsubscribeThreadControls=subscribeToUserCollection<any>(uid,'ai_thread_controls',(rows)=>{
@@ -718,15 +720,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           status: c.status || 'lead',
         }));
         setContacts(filterOutMockContacts(sanitized));
-        if (sanitized.length && !signedInProfileRefreshRequested) {
-          signedInProfileRefreshRequested = true;
-          void (async () => {
-            const token = await auth.currentUser?.getIdToken();
-            if (!token) return;
-            const result = await fetch('/api/instagram/refresh-contacts', { method: 'POST',
-              credentials: 'same-origin', headers: { Authorization: `Bearer ${token}`, 'X-Autoreply-Workspace':uid } });
-            if (!result.ok) console.warn('[IG_CONTACT_PROFILE_REFRESH_WARN]', result.status);
-          })().catch((error) => console.warn('[IG_CONTACT_PROFILE_REFRESH_WARN]', error?.message));
+        // New outbound-only contacts can appear AFTER the initial profile
+        // refresh; retry only unresolved IDs with a bounded per-contact TTL.
+        // Do not assume a successful Meta request includes a public profile.
+        if (!signedInProfileRefreshInFlight) {
+          const missing = sanitized.filter(c => /^\d{8,}$/.test(String(c.ig_username||'')) || !c.avatar_url)
+            .map(c => String(c.ig_user_id || c.id || '')).filter(Boolean);
+          const now = Date.now();
+          const due = missing.filter(id => now >= (signedInProfileRetryAt.get(id) || 0));
+          if (due.length) {
+            signedInProfileRefreshInFlight = true;
+            due.forEach(id => signedInProfileRetryAt.set(id, now + 15 * 60_000));
+            void (async () => {
+              const token = await auth.currentUser?.getIdToken();
+              if (!token) throw new Error('Sign in again to refresh Instagram profiles');
+              const response = await fetch('/api/instagram/refresh-contacts', {
+                method:'POST', credentials:'same-origin',
+                headers:{Authorization:`Bearer ${token}`,'X-Autoreply-Workspace':uid},
+              });
+              const payload = await response.json().catch(() => null);
+              if (!response.ok || !payload?.ok) throw new Error(payload?.error || 'Instagram profile refresh failed');
+            })().catch(error => {
+              if (live) console.warn('[IG_CONTACT_PROFILE_REFRESH_WARN]', error?.message || error);
+              due.forEach(id => signedInProfileRetryAt.set(id, Date.now() + 60_000));
+            }).finally(() => { signedInProfileRefreshInFlight = false; });
+          }
         }
       } else {
         setContacts([]);
