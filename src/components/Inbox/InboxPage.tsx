@@ -57,6 +57,7 @@ function CustomerImage({url,index}:{url:string;index:number}) {
 export const InboxPage: React.FC = () => {
   const {
     workspaceId, inboxMessages, inboxPaging, inboxUnreadCounts, loadInboxMessages, instagramAccount, contacts, firebaseUser, sendManualReply,
+    webhookLogs,
     isAiPausedForUser, toggleAiForUser, deleteInboxThread, markInboxThreadRead, markInboxThreadUnread,
   } = useApp();
 
@@ -157,6 +158,27 @@ export const InboxPage: React.FC = () => {
   const paging=inboxPaging?.[selectedActionKey];
   useEffect(()=>{if(selectedActionKey)void loadInboxMessages(selectedActionKey);},[selectedActionKey,workspaceId]);
   const aiPaused = selectedUser ? isAiPausedForUser(actionKeyFor(selectedUser)) : false;
+  // Explain only observed failed/ignored webhook outcomes, never guess from a
+  // missing AI bubble. A later outgoing message supersedes the failure.
+  const latestInbound = [...selectedSummary.messages].filter(m=>m.direction==='in')
+    .sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp))[0];
+  const hasNewerOutgoing = Boolean(latestInbound && selectedSummary.messages.some(m =>
+    m.direction==='out' && Date.parse(m.timestamp)>=Date.parse(latestInbound.timestamp)));
+  const relevantAliases = threadFor(selectedUser)?.aliases || [];
+  const latestReplyFailure = !latestInbound || hasNewerOutgoing ? undefined :
+    [...(webhookLogs || [])].filter(event =>
+      (event.status==='error'||event.status==='ignored') &&
+      relevantAliases.includes(cleanKey(event.from_username)) &&
+      Date.parse(event.timestamp||'')>=Date.parse(latestInbound.timestamp)
+    ).sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp))[0];
+  const replyFailureText = latestReplyFailure && (
+    latestReplyFailure.status==='error' ||
+    /no matching active automation|monthly_ai_limit|quota_check_failed|human_handoff|ai_limit_reached/i.test(String(latestReplyFailure.reason||''))
+  ) ? (String(latestReplyFailure.reason||'').includes('No matching active automation')
+        ? 'No matching active automation. Check the active AI Conversation rule and Human Takeover.'
+        : /limit_reached/i.test(latestReplyFailure.reason||'') ? 'AI reply allowance was reached. Check billing or continue manually.'
+        : latestReplyFailure.status==='error' ? 'The automation reported a reply failure. Check recent Activity for the specific error.'
+        : 'AI did not reply because the automation was paused or handed to a human.') : '';
 
   useEffect(() => {
     if (selectedUser) void runAction(()=>markInboxThreadRead(actionKeyFor(selectedUser)));
@@ -308,6 +330,7 @@ export const InboxPage: React.FC = () => {
                   </div>
                 </div>
 
+                {replyFailureText && <p role="alert" className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-800">AI reply not sent: {replyFailureText}</p>}
                 {aiPaused&&<p role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Human control is active. AI replies remain paused until you select Resume AI. You can continue replying manually.</p>}
                 {aiControlError && <p role="alert" className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{aiControlError}</p>}
                 {selectedMeta.snooze_until && new Date(selectedMeta.snooze_until).getTime() > Date.now() && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800">Snoozed until {new Date(selectedMeta.snooze_until).toLocaleString()} · <button onClick={() => void runAction(()=>saveMeta({ snooze_until: undefined, status: 'open' }))} className="underline">Unsnooze</button></div>}
