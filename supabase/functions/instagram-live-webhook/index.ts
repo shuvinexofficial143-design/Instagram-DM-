@@ -815,9 +815,17 @@ async function getSenderProfile(
       return { username: senderId, avatar_url: "" };
     }
 
+    // A different messaging ID is never proof of this customer's identity.
+    // Meta may withhold a profile until that customer interacts or the
+    // required Instagram permissions are granted.
+    if (String(payload?.id || "") !== senderId) {
+      console.warn("[LIVE_DM_SENDER_PROFILE_ID_MISMATCH]", senderId);
+      return { username: senderId, avatar_url: "" };
+    }
+    const username = String(payload?.username || "").trim().replace(/^@/, "").toLowerCase();
     return {
-      username: String(payload?.username || senderId),
-      avatar_url: String(payload?.profile_pic || ""),
+      username: /^[a-z0-9._]{1,30}$/.test(username) && !/^\d+$/.test(username) ? username : senderId,
+      avatar_url: String(payload?.profile_pic || payload?.profile_picture_url || "").trim(),
     };
   } catch (err) {
     console.warn("[LIVE_DM_SENDER_PROFILE_ERROR]", err);
