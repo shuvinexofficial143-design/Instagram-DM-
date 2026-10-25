@@ -205,39 +205,39 @@ function looksLikeNumericId(value: unknown) {
 }
 
 async function fetchMessagingUserProfile(accessToken: string, igsid: string) {
+  // A messaging-scoped ID must resolve to its OWN profile; a different ID
+  // must never be used to silently label an unrelated customer.
+  if (!/^\d+$/.test(igsid)) return null;
   const params = new URLSearchParams({
     fields: "id,name,username,profile_pic,follower_count",
     access_token: accessToken,
   });
-
-  const response = await fetch(
-    `https://graph.instagram.com/v25.0/${encodeURIComponent(igsid)}?${params.toString()}`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      signal: AbortSignal.timeout(5000),
-    }
-  );
-
-  const payload: any = await response.json().catch(() => null);
-  if (!response.ok) {
-    console.warn(
-      "[IG_CONTACT_PROFILE_WARN]",
-      igsid,
-      response.status,
-      payload?.error?.message || payload
+  try {
+    const response = await fetch(
+      `https://graph.instagram.com/v25.0/${encodeURIComponent(igsid)}?${params.toString()}`,
+      {headers: {Authorization: `Bearer ${accessToken}`}, signal: AbortSignal.timeout(5000)}
     );
+    const payload: any = await response.json().catch(() => null);
+    if (!response.ok) {
+      console.warn("[IG_CONTACT_PROFILE_WARN]", igsid, response.status, payload?.error?.code || "not_available");
+      return null;
+    }
+    if (String(payload?.id || "") !== igsid) {
+      console.warn("[IG_CONTACT_PROFILE_ID_MISMATCH]", igsid);
+      return null;
+    }
+    const username = String(payload?.username || "").trim().replace(/^@/, "");
+    return {
+      id: igsid,
+      username: /^[a-zA-Z0-9._]{1,30}$/.test(username) && !/^\d+$/.test(username) ? username : "",
+      name: String(payload?.name || "").trim(),
+      profile_pic: String(payload?.profile_pic || payload?.profile_picture_url || "").trim(),
+      follower_count: Number(payload?.follower_count || 0),
+    };
+  } catch (error) {
+    console.warn("[IG_CONTACT_PROFILE_FETCH_WARN]", igsid, error instanceof Error ? error.name : "network");
     return null;
   }
-
-  return {
-    id: String(payload?.id || igsid),
-    username: String(payload?.username || "").trim(),
-    name: String(payload?.name || "").trim(),
-    profile_pic: String(payload?.profile_pic || "").trim(),
-    follower_count: Number(payload?.follower_count || 0),
-  };
 }
 
 async function refreshMissingContactProfiles(
@@ -245,16 +245,21 @@ async function refreshMissingContactProfiles(
   workspaceId: string,
   accessToken: string
 ) {
-  const { data: contacts, error: contactsError } = await admin
-    .from("autoreply_documents")
-    .select("id,data")
-    .eq("user_id", workspaceId)
-    .eq("collection", "contacts")
-    .limit(100);
-
-  if (contactsError) {
-    console.error("[IG_CONTACT_REFRESH_LIST_FAILED]", contactsError);
-    throw new Error("Contacts could not be loaded");
+  // Read the complete workspace-scoped ledger, not just the first 100
+  // contacts. A limited list permanently stranded newer profiles as IDs.
+  const contacts: any[] = [];
+  for (let offset = 0; offset < 100000; offset += 500) {
+    const {data: part, error: contactsError} = await admin
+      .from("autoreply_documents").select("id,data")
+      .eq("user_id", workspaceId).eq("collection", "contacts")
+      .order("id", {ascending: true}).range(offset, offset + 499);
+    if (contactsError) {
+      console.error("[IG_CONTACT_REFRESH_LIST_FAILED]", contactsError);
+      throw new Error("Contacts could not be loaded");
+    }
+    contacts.push(...(part || []));
+    if ((part || []).length < 500) break;
+    if (offset + 500 >= 100000) throw new Error("Contact list exceeds safe refresh limit");
   }
 
   const targets = (contacts || []).filter((row: any) => {

@@ -1,5 +1,6 @@
 import type {InboxPage,InboxCursor} from './inboxPaging';
 import type {InboxMessage} from '../types';
+import { pageRecoveredInbox } from './inboxRecovery';
 import { createClient, type User as SupabaseUser, type Session } from '@supabase/supabase-js';
 
 const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL || 'https://dwgxmmftybxwpurgsxkx.supabase.co').replace(/\/+$/, '');
@@ -286,9 +287,21 @@ async function readCollection<T extends { id?: string }>(userId: string, collect
 export async function fetchInboxPage(userId:string,sender='',cursor:InboxCursor|null=null,limit=50):Promise<InboxPage>{
  ensureOwner(userId);
  const {data,error}=await supabase.rpc('autoreply_inbox_page',{p_workspace:userId,p_sender:sender,p_before_time:cursor?.time||null,p_before_id:cursor?.id||null,p_limit:limit});
- if(error)throw error;
- if(!data||!Array.isArray(data.messages))throw Error('Conversation could not be loaded.');
- return data as InboxPage;
+ if(!error && data && Array.isArray(data.messages))return data as InboxPage;
+ // Preserve the Inbox when a missing, stale or temporarily failing RPC rejects.
+ // RLS still enforces access to the exact active workspace on every row.
+ // A fallback must scan ALL matching documents to give truthful unread counts.
+ console.warn('[INBOX_RPC_RECOVERY]',error?.code||'invalid_page');
+ const rows:Array<{id:string;data:Partial<InboxMessage>|null;created_at?:string|null}>=[];
+ for(let offset=0;offset<100000;offset+=500){
+   const {data:part,error:readError}=await supabase.from('autoreply_documents')
+     .select('id,data,created_at').eq('user_id',userId).eq('collection','inbox_messages')
+     .order('id',{ascending:true}).range(offset,offset+499);
+   if(readError)throw readError;
+   rows.push(...(part||[]));
+   if((part||[]).length<500)return pageRecoveredInbox(rows,sender,cursor,limit);
+ }
+ throw new Error('Inbox exceeds the safe recovery limit. No partial conversation totals were shown.');
 }
 export function subscribeToInbox(userId:string,onPage:(page:InboxPage)=>void,onChange:(message:InboxMessage|null,id:string)=>void,onError:(error:Error)=>void){
  let active=true,running=false,pending=false;
