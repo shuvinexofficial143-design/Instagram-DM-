@@ -207,7 +207,7 @@ function looksLikeNumericId(value: unknown) {
 async function fetchMessagingUserProfile(accessToken: string, igsid: string) {
   // A messaging-scoped ID must resolve to its OWN profile; a different ID
   // must never be used to silently label an unrelated customer.
-  if (!/^\\d+$/.test(igsid)) return null;
+  if (!/^\d+$/.test(igsid)) return null;
   const params = new URLSearchParams({
     fields: "id,name,username,profile_pic,follower_count",
     access_token: accessToken,
@@ -229,7 +229,7 @@ async function fetchMessagingUserProfile(accessToken: string, igsid: string) {
     const username = String(payload?.username || "").trim().replace(/^@/, "");
     return {
       id: igsid,
-      username: /^[a-zA-Z0-9._]{1,30}$/.test(username) && !/^\\d+$/.test(username) ? username : "",
+      username: /^[a-zA-Z0-9._]{1,30}$/.test(username) && !/^\d+$/.test(username) ? username : "",
       name: String(payload?.name || "").trim(),
       profile_pic: String(payload?.profile_pic || payload?.profile_picture_url || "").trim(),
       follower_count: Number(payload?.follower_count || 0),
