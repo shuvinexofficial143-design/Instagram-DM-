@@ -3,10 +3,17 @@ import assert from 'node:assert/strict';
 import { contactIdentity, needsContactProfileRefresh } from '../src/lib/contactIdentity';
 import { latestReplyFailureFor, replyFailureDescription } from '../src/lib/inboxReplyOutcome';
 import { normalizeActivityLog } from '../src/lib/activityLogs';
+import {canonicalContacts} from '../src/lib/canonicalContacts';
 import type { Contact, InboxMessage } from '../src/types';
 const contact: Contact = {id:'row',ig_user_id:'123456789',ig_user_ids:['987654321'],ig_username:'123456789',interactions:{dms:1,comments:0,stories:0},first_interaction_at:'',last_interaction_at:''};
 const message: InboxMessage = {id:'inbound-mid',from_ig_id:'123456789',from_username:'customer',from_avatar:'https://img.example/customer.jpg',direction:'in',message_text:'Price?',timestamp:'2026-10-26T00:00:00Z'};
 const failure = (overrides = {}) => normalizeActivityLog({id:'event:inbound-mid',sender_id:'123456789',status:'failed',send_error:'Missing permission',updated_at:'2026-10-26T00:00:01Z',...overrides});
+test('explicit aliases collapse duplicate contact rows while retaining their real profile',()=>{
+ const saved={...contact,id:'canonical',ig_username:'customer',avatar_url:'data:image/jpeg;base64,/9j/AA==',first_interaction_at:'2026-10-01',last_interaction_at:'2026-10-20'};
+ const duplicate={...contact,id:'second-row',ig_user_id:'987654321',last_interaction_at:'2026-10-26'};
+ const result=canonicalContacts([saved,duplicate]);assert.equal(result.length,1);assert.equal(result[0].id,'canonical');assert.equal(result[0].ig_username,'customer');assert.equal(result[0].avatar_url,saved.avatar_url);assert.equal(result[0].ig_user_id,'987654321');
+ assert.equal(canonicalContacts([{...saved,ig_user_ids:[]},{...saved,id:'other',ig_user_id:'999999999',ig_user_ids:[]}]).length,2);
+});
 
 test('Leads recovers handle and real photo using scoped message identity, including aliases',()=>{
   for (const id of ['123456789','987654321']) {
@@ -16,7 +23,7 @@ test('Leads recovers handle and real photo using scoped message identity, includ
   assert.equal(contactIdentity(contact,[{...message,from_ig_id:'foreign'}]).username,'');
 });
 test('Leads prefers stored verified identity and never labels a numeric ID as an @username',()=>{
-  assert.equal(contactIdentity(contact).label,'Instagram user · 6789');
+  assert.equal(contactIdentity(contact).label,'Instagram profile pending');
   assert.equal(contactIdentity({...contact,full_name:'Customer Name'}).label,'Customer Name');
   assert.equal(contactIdentity({...contact,ig_username:'New_Name'},[message]).label,'@new_name');
   assert.equal(contactIdentity({...contact,avatar_url:'https://api.dicebear.com/fake'},[message]).avatar,message.from_avatar);

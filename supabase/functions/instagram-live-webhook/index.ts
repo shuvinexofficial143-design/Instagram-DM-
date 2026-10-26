@@ -1,3 +1,4 @@
+import {fetchConversationUsernames,cacheInstagramProfilePhoto} from './instagramProfiles.ts';
 import { memorySettings,memoryLogPreview } from './smartMemory.ts';
 import { loadCatalog, buildCatalogPage, extractImageAttachments, generateCatalogReply } from "./catalogRuntime.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -793,8 +794,10 @@ async function logEvent(
 
 async function getSenderProfile(
   senderId: string,
-  accessToken: string
-): Promise<{ username: string; avatar_url: string }> {
+  accessToken: string,
+  businessId = ''
+): Promise<{ username: string; avatar_url: string; avatar_cache?: string }> {
+  const fallback = async () => ({username:(await fetchConversationUsernames(accessToken,businessId,[senderId])).get(senderId)||senderId,avatar_url:''});
   const params = new URLSearchParams({
     fields: "id,name,username,profile_pic,follower_count",
     access_token: accessToken,
@@ -815,7 +818,7 @@ async function getSenderProfile(
         response.status,
         payload?.error?.message || payload
       );
-      return { username: senderId, avatar_url: "" };
+      return fallback();
     }
 
     // A different messaging ID is never proof of this customer's identity.
@@ -823,16 +826,19 @@ async function getSenderProfile(
     // required Instagram permissions are granted.
     if (String(payload?.id || "") !== senderId) {
       console.warn("[LIVE_DM_SENDER_PROFILE_ID_MISMATCH]", senderId);
-      return { username: senderId, avatar_url: "" };
+      return fallback();
     }
     const username = String(payload?.username || "").trim().replace(/^@/, "").toLowerCase();
+    const sourcePhoto = String(payload?.profile_pic || payload?.profile_picture_url || '').trim();
+    const cachedPhoto = await cacheInstagramProfilePhoto(sourcePhoto);
     return {
-      username: /^[a-z0-9._]{1,30}$/.test(username) && !/^\d+$/.test(username) ? username : senderId,
-      avatar_url: String(payload?.profile_pic || payload?.profile_picture_url || "").trim(),
+      username: /^[a-z0-9._]{1,30}$/.test(username) && !/^\d+$/.test(username) ? username : (await fallback()).username,
+      avatar_url: cachedPhoto ? sourcePhoto : '',
+      ...(cachedPhoto.startsWith('data:image/') ? {avatar_cache:cachedPhoto} : {}),
     };
   } catch (err) {
     console.warn("[LIVE_DM_SENDER_PROFILE_ERROR]", err);
-    return { username: senderId, avatar_url: "" };
+    return fallback();
   }
 }
 
@@ -840,7 +846,7 @@ async function persistInboundMessage(
   admin: any,
   workspaceId: string,
   item: any,
-  profile: { username: string; avatar_url: string },
+  profile: { username: string; avatar_url: string; avatar_cache?: string },
   countInteraction = true
 ) {
   const nowIso = new Date(
@@ -870,7 +876,8 @@ async function persistInboundMessage(
   const interactions = { comments: 0, dms: 0, stories: 0 };
   for (const row of matches) for (const key of Object.keys(interactions)) interactions[key] += Number(row.data?.interactions?.[key] || 0);
   const username = canMatchUsername ? verifiedUsername : existing.ig_username || senderId;
-  const avatar = profile.avatar_url || matches.find((row: any) => row.data?.avatar_url)?.data.avatar_url || "";
+  const savedAvatar = matches.find((row: any) => row.data?.avatar_url)?.data.avatar_url || "";
+  const avatar = profile.avatar_cache || (savedAvatar.startsWith("data:image/") ? savedAvatar : "") || profile.avatar_url || savedAvatar;
   const aliases = [...new Set([senderId, ...matches.flatMap((row: any) => [row.id, row.data?.ig_user_id, ...(row.data?.ig_user_ids || [])])].filter(Boolean))];
 
   const contact = {
@@ -902,7 +909,7 @@ async function persistInboundMessage(
     id: messageId,
     from_ig_id: item.senderId,
     from_username: username,
-    from_avatar: avatar,
+    from_avatar: profile.avatar_url || (avatar.startsWith('data:image/') ? '' : avatar),
     message_text: item.text,
     ...(item.images?.length ? { image_urls: item.images } : {}),
     direction: "in",
@@ -945,8 +952,8 @@ async function persistInboundMessage(
 
   if (!contactResult.error) {
     if (!countInteraction && canMatchUsername) {
-      const {error} = await admin.rpc("autoreply_enrich_instagram_contact", {
-        p_workspace:workspaceId,p_sender:senderId,p_username:username,p_avatar:avatar,
+      const {error} = await admin.rpc("autoreply_refresh_instagram_profile", {
+        p_workspace:workspaceId,p_sender:senderId,p_profile:{username,avatar_url:avatar,avatar_source_url:profile.avatar_url},
       });
       if(error)console.warn("[INBOUND_CONTACT_ENRICH_FAILED]",error.code);
     }
@@ -1550,10 +1557,10 @@ Deno.serve(async (req: Request) => {
       if (!data.duplicate && data.workspace_id) runInBackground((async () => {
         const {data: connection} = await admin.from("autoreply_instagram_tokens").select("account").eq("user_id",data.workspace_id).maybeSingle();
         if (!connection?.account?.access_token) return;
-        const profile = await getSenderProfile(item.recipientId, connection.account.access_token);
+        const profile = await getSenderProfile(item.recipientId, connection.account.access_token, String(connection.account.ig_user_id || ''));
         if (/^\d+$/.test(profile.username)) return;
-        const {error: enrichmentError} = await admin.rpc("autoreply_enrich_instagram_contact", {
-          p_workspace:data.workspace_id,p_sender:item.recipientId,p_username:profile.username,p_avatar:profile.avatar_url,
+        const {error: enrichmentError} = await admin.rpc("autoreply_refresh_instagram_profile", {
+          p_workspace:data.workspace_id,p_sender:item.recipientId,p_profile:{username:profile.username,avatar_url:profile.avatar_cache||profile.avatar_url,avatar_source_url:profile.avatar_url},
         });
         if (enrichmentError) console.warn("[OUTBOUND_CONTACT_ENRICH_FAILED]", enrichmentError.code);
       })());
@@ -1725,7 +1732,7 @@ Deno.serve(async (req: Request) => {
     runInBackground((async () => {
       // Serialize enrichment after the base write to avoid overwriting it.
       if (!await inboundSaved) return;
-      senderProfile = await getSenderProfile(item.senderId, accessToken);
+      senderProfile = await getSenderProfile(item.senderId, accessToken, igUserId);
       await persistInboundMessage(admin, workspaceId, item, senderProfile, false);
     })());
 

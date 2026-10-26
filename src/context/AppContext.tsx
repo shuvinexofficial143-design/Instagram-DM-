@@ -7,6 +7,7 @@ import { reconcileAutomationRecords } from '../lib/automationState';
 import { connectedInstagramAccount } from '../lib/instagramConnection';
 import { normalizeActivityLog } from '../lib/activityLogs';
 import { needsContactProfileRefresh } from '../lib/contactIdentity';
+import { canonicalContacts } from '../lib/canonicalContacts';
 import {
   UserProfile,
   InstagramAccount,
@@ -556,7 +557,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             tags: Array.isArray(contact.tags) ? contact.tags : [],
             status: contact.status || 'lead',
           }));
-          setContacts(filterOutMockContacts(guestContacts));
+          setContacts(filterOutMockContacts(canonicalContacts(guestContacts)));
 
           const needsRealProfileRefresh = guestContacts.some(contact => needsContactProfileRefresh(contact));
 
@@ -715,7 +716,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           tags: Array.isArray(c.tags) ? c.tags : [],
           status: c.status || 'lead',
         }));
-        setContacts(filterOutMockContacts(sanitized));
+        setContacts(filterOutMockContacts(canonicalContacts(sanitized)));
         // New outbound-only contacts can appear AFTER the initial profile
         // refresh; retry only unresolved IDs with a bounded per-contact TTL.
         // Do not assume a successful Meta request includes a public profile.

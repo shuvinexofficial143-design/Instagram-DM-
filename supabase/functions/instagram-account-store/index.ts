@@ -1,3 +1,4 @@
+import {fetchConversationUsernames,cacheInstagramProfilePhoto} from '../instagram-live-webhook/instagramProfiles.ts';
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -240,41 +241,6 @@ async function fetchMessagingUserProfile(accessToken: string, igsid: string) {
   }
 }
 
-/** The Conversations API can disclose a verified handle even when the separate
- * User Profile API withholds the photo until the person grants messaging consent.
- * Match only an exact scoped ID in a conversation containing this business. */
-async function fetchConversationUsernames(accessToken: string, businessId: string, requestedIds: string[]) {
-  const names = new Map<string, string>();
-  if (!/^\d+$/.test(businessId) || !requestedIds.length) return names;
-  const wanted = new Set(requestedIds.filter(id => /^\d+$/.test(id) && id !== businessId));
-  const seen = new Set<string>();
-  let after = '';
-  const deadline = Date.now() + 12000;
-  for (let page = 0; page < 10 && Date.now() < deadline; page++) {
-    const params = new URLSearchParams({platform:'instagram',fields:'id,participants',limit:'100',...(after?{after}:{})});
-    try {
-      const response = await fetch(`https://graph.instagram.com/v25.0/${encodeURIComponent(businessId)}/conversations?${params}`, {
-        headers:{Authorization:`Bearer ${accessToken}`},signal:AbortSignal.timeout(Math.min(5000, Math.max(1, deadline-Date.now()))),
-      });
-      const payload: any = await response.json().catch(() => null);
-      if (!response.ok) { console.warn('[IG_CONVERSATION_PROFILE_WARN]',response.status,payload?.error?.code||'unavailable'); break; }
-      for (const conversation of Array.isArray(payload?.data) ? payload.data : []) {
-        const people = Array.isArray(conversation?.participants?.data) ? conversation.participants.data : [];
-        if (!people.some((person:any) => String(person.id) === businessId)) continue;
-        for (const person of people) {
-          const id=String(person.id||''), username=String(person.username||'').trim().replace(/^@/,'').toLowerCase();
-          if(wanted.has(id) && !names.has(id) && /^[a-z0-9._]{1,30}$/.test(username) && !/^\d+$/.test(username)) names.set(id,username);
-        }
-      }
-      if ([...wanted].every(id=>names.has(id))) break;
-      // Never follow a provider-supplied URL with credentials or a foreign host.
-      const cursor=String(payload?.paging?.cursors?.after||'');
-      if(!payload?.paging?.next || !cursor || seen.has(cursor)) break;
-      seen.add(cursor); after=cursor;
-    } catch(error) { console.warn('[IG_CONVERSATION_PROFILE_FETCH_WARN]',error instanceof Error?error.name:'network'); break; }
-  }
-  return names;
-}
 
 async function refreshMissingContactProfiles(
   admin: any,
@@ -325,27 +291,18 @@ async function refreshMissingContactProfiles(
 
         const fetched = await fetchMessagingUserProfile(accessToken, igsid);
         const profile = fetched || {id:igsid,username:'',name:'',profile_pic:'',follower_count:0};
-        profile.username = profile.username || conversationNames.get(igsid) || '';
+        const savedUsername=String(row?.data?.ig_username||'').trim().replace(/^@/,'');
+        profile.username = profile.username || conversationNames.get(igsid) || (/^[a-zA-Z0-9._]{1,30}$/.test(savedUsername)&&!/^\d+$/.test(savedUsername)?savedUsername:'');
+        const sourcePhoto = profile.profile_pic || String(row?.data?.avatar_source_url || row?.data?.avatar_url || '');
+        profile.profile_pic = await cacheInstagramProfilePhoto(sourcePhoto);
         if (!profile?.username && !profile?.profile_pic && !profile?.name) return;
 
-        const nextContact = {
-          ...(row?.data || {}),
-          id: row.id,
-          ig_user_id: igsid,
-          ig_username: profile.username || row?.data?.ig_username || igsid,
-          avatar_url: profile.profile_pic || row?.data?.avatar_url || "",
-          profile_refreshed_at: new Date().toISOString(),
-          full_name: profile.name || row?.data?.full_name || "",
-          follower_count:
-            profile.follower_count || Number(row?.data?.follower_count || 0),
-        };
-
-        const { error: contactUpdateError } = await admin
-          .from("autoreply_documents")
-          .update({ data: nextContact })
-          .eq("user_id", workspaceId)
-          .eq("collection", "contacts")
-          .eq("id", row.id);
+        // Merge identity fields in the database under the same per-sender lock
+        // as native outgoing capture. Never rewrite a stale contact snapshot:
+        // new interactions, tags and human changes may have arrived during Meta I/O.
+        const { error: contactUpdateError } = await admin.rpc('autoreply_refresh_instagram_profile', {
+          p_workspace:workspaceId,p_sender:igsid,p_profile:{username:profile.username,avatar_url:profile.profile_pic,avatar_source_url:sourcePhoto,full_name:profile.name,...(fetched?{follower_count:profile.follower_count}:{})},
+        });
 
         if (contactUpdateError) {
           console.warn(
@@ -355,12 +312,6 @@ async function refreshMissingContactProfiles(
           );
           return;
         }
-
-        const {error: enrichmentError} = await admin.rpc("autoreply_enrich_instagram_contact", {
-          p_workspace: workspaceId, p_sender: igsid, p_username: profile.username,
-          p_avatar: profile.profile_pic,
-        });
-        if (enrichmentError) console.warn("[IG_CONTACT_ENRICH_FAILED]", enrichmentError.code);
 
         refreshed += 1;
       })
