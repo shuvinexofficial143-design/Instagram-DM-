@@ -10,7 +10,7 @@ const owner='12345678-1234-4234-8234-123456789012';
 const scoped='28000000000000001', professional='17840000000000001', customer='770000000000001';
 function fixture(options={}) {
   let handler;
-  const calls=[];
+  const calls=[],rpcCalls=[];
   const tables={
     autoreply_human_handoffs:options.handoff?[{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',workspace_id:owner,sender_id:customer,status:options.resumed?'resumed':'waiting'}]:[],
     autoreply_admin_audit_logs:[],
@@ -20,9 +20,11 @@ function fixture(options={}) {
   };
   if(options.noContacts) tables.autoreply_documents=[];
   if(options.foreignContact) tables.autoreply_documents[0].user_id='another-workspace';
+  if(options.refreshContacts) tables.autoreply_documents=options.refreshContacts.map(data=>({user_id:owner,collection:'contacts',id:data.ig_user_id,data}));
   const admin={
     auth:{getUser:async token=>token==='session'?{data:{user:{id:owner,...(options.adminSession?{email:'admin@example.test',email_confirmed_at:'2026-10-19'}:{})}}}:{data:null,error:{message:'Unauthorized'}}},
     rpc:async(name,args)=>{
+      rpcCalls.push({name,args});
       if(name==='autoreply_connect_instagram_account'){
         assert.equal(args.p_owner_id,owner);assert.equal(args.p_account.ig_user_id,professional);assert.equal(args.p_account.ig_scoped_id,scoped);
         const account=args.p_account, safe={...account};delete safe.access_token;
@@ -39,8 +41,9 @@ function fixture(options={}) {
       }
       return {data:{accounts:5},error:null};
     },
-    from(table){let filters={},sets={},mutation,update;
+    from(table){let filters={},sets={},mutation,update,start=0,end=Infinity;
       const q={select(){return q;},eq(k,v){filters[k]=v;return q;},in(k,v){sets[k]=v;return q;},
+        order(){return q;},range(a,b){start=a;end=b;return q;},
         insert(value){mutation=value;return q;},upsert(value){mutation=value;return q;},update(value){update=value;return q;},
         maybeSingle(){return Promise.resolve(result(true));},then(resolve,reject){return Promise.resolve(result(false)).then(resolve,reject);}};
       function result(single){const rows=tables[table]||[];
@@ -51,7 +54,7 @@ function fixture(options={}) {
           const key=table==='autoreply_instagram_memberships'?'workspace_id':table==='autoreply_instagram_tokens'?'user_id':'id';
           const existing=rows.find(row=>row[key]===mutation[key]&&(key!=='id'||row.collection===mutation.collection&&row.user_id===mutation.user_id));
           if(existing)Object.assign(existing,mutation);else rows.push({...mutation});return {data:null,error:null};}
-        return {data:single?matches[0]||null:matches,error:null,count:matches.length};
+        return {data:single?matches[0]||null:matches.slice(start,end+1),error:null,count:matches.length};
       }return q;
     }
   };
@@ -60,13 +63,27 @@ function fixture(options={}) {
     fetch:async(url,init)=>{calls.push({url:String(url),init});
       if(String(url).includes('/me?'))return Response.json({id:scoped,user_id:professional,username:'business'});
       if(String(url).includes('subscribed_apps'))return Response.json({success:true});
+      if(String(url).includes('/conversations?'))return Response.json({data:options.conversations||[]});
+      if(options.refreshContacts)return Response.json(options.profileBody||{error:{code:230,message:'User consent is required to access user profile'}},{status:options.profileBody?200:500});
       if(options.timeout)throw new Error('timeout');
       return Response.json(options.metaBody||{message_id:'meta-confirmed',recipient_id:customer},{status:options.metaStatus||200});
     },
     Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service',INSTAGRAM_APP_SECRET:'oauth-secret'})[key]},serve:value=>handler=value}});
   vm.runInContext(compiled,context);
-  return {tables,calls,async post(body,headers={Authorization:'Bearer session'}){const r=await handler(new Request('https://example.supabase.co/functions/v1/instagram-account-store',{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)}));return {status:r.status,body:await r.json()};}};
+  return {tables,calls,rpcCalls,async post(body,headers={Authorization:'Bearer session'}){const r=await handler(new Request('https://example.supabase.co/functions/v1/instagram-account-store',{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)}));return {status:r.status,body:await r.json()};}};
 }
+test('consent-denied outbound contact recovers its real handle from the exact business conversation',async()=>{
+ const f=fixture({refreshContacts:[{ig_user_id:customer,ig_username:customer,avatar_url:''}],conversations:[{participants:{data:[{id:scoped,username:'business'},{id:customer,username:'real_customer'}]}}]});
+ const r=await f.post({action:'refresh_contact_profiles',workspaceId:owner});
+ assert.equal(r.status,200);assert.equal(r.body.refreshed,1);assert.equal(f.tables.autoreply_documents[0].data.ig_username,'real_customer');assert.equal(f.tables.autoreply_documents[0].data.avatar_url,'');
+ assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_enrich_instagram_contact'&&c.args.p_sender===customer&&c.args.p_username==='real_customer'));
+ assert.ok(f.calls.every(c=>!c.init.method||c.init.method==='GET'));
+});
+test('profile fallback rejects foreign conversations, wrong scoped IDs and mismatched profile responses',async()=>{
+ const f=fixture({refreshContacts:[{ig_user_id:customer,ig_username:customer,avatar_url:''}],profileBody:{id:'different',username:'wrong_profile',profile_pic:'https://wrong.example/photo'},conversations:[{participants:{data:[{id:'foreign_business',username:'business'},{id:customer,username:'wrong_conversation'}]}},{participants:{data:[{id:scoped,username:'business'},{id:'another_person',username:'wrong_person'}]}}]});
+ const r=await f.post({action:'refresh_contact_profiles',workspaceId:owner});
+ assert.equal(r.body.refreshed,0);assert.equal(f.tables.autoreply_documents[0].data.ig_username,customer);assert.equal(f.tables.autoreply_documents[0].data.avatar_url,'');
+});
 const send={action:'send_dm',workspaceId:owner,recipientUsername:'@customer',messageText:'Reply'};
 test('registration uses verified professional ID and reuses the legacy scoped-ID workspace',async()=>{
   const f=fixture();const r=await f.post({action:'save',workspaceId:owner,ownerId:owner,accessToken:'new-private-token'},{'x-autoreply-oauth-secret':'oauth-secret'});

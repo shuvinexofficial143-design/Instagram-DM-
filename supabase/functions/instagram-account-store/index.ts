@@ -240,10 +240,47 @@ async function fetchMessagingUserProfile(accessToken: string, igsid: string) {
   }
 }
 
+/** The Conversations API can disclose a verified handle even when the separate
+ * User Profile API withholds the photo until the person grants messaging consent.
+ * Match only an exact scoped ID in a conversation containing this business. */
+async function fetchConversationUsernames(accessToken: string, businessId: string, requestedIds: string[]) {
+  const names = new Map<string, string>();
+  if (!/^\d+$/.test(businessId) || !requestedIds.length) return names;
+  const wanted = new Set(requestedIds.filter(id => /^\d+$/.test(id) && id !== businessId));
+  const seen = new Set<string>();
+  let after = '';
+  const deadline = Date.now() + 12000;
+  for (let page = 0; page < 10 && Date.now() < deadline; page++) {
+    const params = new URLSearchParams({platform:'instagram',fields:'id,participants',limit:'100',...(after?{after}:{})});
+    try {
+      const response = await fetch(`https://graph.instagram.com/v25.0/${encodeURIComponent(businessId)}/conversations?${params}`, {
+        headers:{Authorization:`Bearer ${accessToken}`},signal:AbortSignal.timeout(Math.min(5000, Math.max(1, deadline-Date.now()))),
+      });
+      const payload: any = await response.json().catch(() => null);
+      if (!response.ok) { console.warn('[IG_CONVERSATION_PROFILE_WARN]',response.status,payload?.error?.code||'unavailable'); break; }
+      for (const conversation of Array.isArray(payload?.data) ? payload.data : []) {
+        const people = Array.isArray(conversation?.participants?.data) ? conversation.participants.data : [];
+        if (!people.some((person:any) => String(person.id) === businessId)) continue;
+        for (const person of people) {
+          const id=String(person.id||''), username=String(person.username||'').trim().replace(/^@/,'').toLowerCase();
+          if(wanted.has(id) && !names.has(id) && /^[a-z0-9._]{1,30}$/.test(username) && !/^\d+$/.test(username)) names.set(id,username);
+        }
+      }
+      if ([...wanted].every(id=>names.has(id))) break;
+      // Never follow a provider-supplied URL with credentials or a foreign host.
+      const cursor=String(payload?.paging?.cursors?.after||'');
+      if(!payload?.paging?.next || !cursor || seen.has(cursor)) break;
+      seen.add(cursor); after=cursor;
+    } catch(error) { console.warn('[IG_CONVERSATION_PROFILE_FETCH_WARN]',error instanceof Error?error.name:'network'); break; }
+  }
+  return names;
+}
+
 async function refreshMissingContactProfiles(
   admin: any,
   workspaceId: string,
-  accessToken: string
+  accessToken: string,
+  businessId = ''
 ) {
   // Read the complete workspace-scoped ledger, not just the first 100
   // contacts. A limited list permanently stranded newer profiles as IDs.
@@ -273,6 +310,9 @@ async function refreshMissingContactProfiles(
   });
 
   let refreshed = 0;
+  const unresolvedIds = targets.filter((row:any) => !/^[a-zA-Z0-9._]{1,30}$/.test(String(row.data?.ig_username||'')) || /^\d+$/.test(String(row.data?.ig_username||'')))
+    .map((row:any)=>String(row.data?.ig_user_id||row.id||''));
+  const conversationNames = await fetchConversationUsernames(accessToken,businessId,unresolvedIds);
 
   // Small batches avoid hammering Meta while still fixing the UI quickly.
   for (let offset = 0; offset < targets.length; offset += 5) {
@@ -283,7 +323,9 @@ async function refreshMissingContactProfiles(
         const igsid = String(row?.data?.ig_user_id || row?.id || "").trim();
         if (!igsid) return;
 
-        const profile = await fetchMessagingUserProfile(accessToken, igsid);
+        const fetched = await fetchMessagingUserProfile(accessToken, igsid);
+        const profile = fetched || {id:igsid,username:'',name:'',profile_pic:'',follower_count:0};
+        profile.username = profile.username || conversationNames.get(igsid) || '';
         if (!profile?.username && !profile?.profile_pic && !profile?.name) return;
 
         const nextContact = {
@@ -594,7 +636,8 @@ Deno.serve(async (req: Request) => {
       const refreshed = await refreshMissingContactProfiles(
         admin,
         workspaceId,
-        accessToken
+        accessToken,
+        String(account?.ig_user_id || '')
       );
 
       return reply(200, { ok: true, refreshed });

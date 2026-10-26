@@ -33,9 +33,12 @@ const historyCache = new Map<
   { expiresAt: number; messages: any[] }
 >();
 
-function runInBackground(task: Promise<unknown>) {
+function runInBackground(task: PromiseLike<unknown>) {
   const runtime = (globalThis as any).EdgeRuntime;
-  const safeTask = task.catch((err) => console.warn("[BACKGROUND_TASK_WARN]", err instanceof Error ? err.message : String(err)));
+  // Supabase RPC builders are lazy thenables: they do not implement .catch().
+  // Assimilate them before registering a real Promise with the Edge runtime.
+  // A failed maintenance dispatch must never reject durable inbound storage.
+  const safeTask = Promise.resolve(task).catch((err) => console.warn("[BACKGROUND_TASK_WARN]", err instanceof Error ? err.message : String(err)));
   if (runtime?.waitUntil) runtime.waitUntil(safeTask);
 }
 

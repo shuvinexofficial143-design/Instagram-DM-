@@ -116,6 +116,12 @@ function fixture(automations = [ai], options = {}) {
       return { data: {}, error: null };
     },
   };
+  // PostgrestBuilder is a lazy PromiseLike with .then(), not a native Promise.
+  // Model the real SDK here so background dispatch cannot be hidden by async mocks.
+  const nativeRpc = admin.rpc.bind(admin);
+  admin.rpc = (name, args) => name === 'autoreply_dispatch_memory_worker'
+    ? { then(resolve, reject) { return nativeRpc(name, args).then(resolve, reject); } }
+    : nativeRpc(name, args);
   let handler;
   const context = vm.createContext({
     console: { log() {}, warn() {}, error() {} }, Request, Response, URL, TextEncoder, AbortController, AbortSignal, setTimeout: options.setTimeout || setTimeout, clearTimeout: options.clearTimeout || clearTimeout, performance, crypto: globalThis.crypto,
