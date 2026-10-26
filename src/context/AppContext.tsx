@@ -1283,8 +1283,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const messageIds = new Set(thread?.messages.map(message => message.id) || []);
     if(!uid)return;
     const scope=workspaceScope.current;
-    if(isGuestMode){const response=await fetch('/api/workspace-data?action=inbox-read',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:clean,read})});if(!response.ok)throw Error('Read status could not be saved.');}
-    else {const {error}=await supabase.rpc('autoreply_mark_inbox_read',{p_workspace:uid,p_sender:clean,p_read:read});if(error)throw error;}
+    const token=isGuestMode ? '' : await auth.currentUser?.getIdToken();
+    if(!isGuestMode && !token)throw Error('Sign in again to save read status.');
+    const response=await fetch('/api/workspace-data?action=inbox-read',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`,'X-Autoreply-Workspace':uid}:{})},body:JSON.stringify({sender:clean,read})});
+    const result=await response.json().catch(()=>null);
+    if(!response.ok || !result?.ok)throw Error(result?.error || 'Read status could not be saved.');
     if(workspaceScope.current!==scope)return;
     setInboxMessages(previous=>previous.map(message=>message.direction==='in'&&messageIds.has(message.id)?{...message,is_read:read,read_at:read?now:undefined}:message));
     if(read)setInboxUnreadCounts(previous=>{const next={...previous};for(const alias of thread?.aliases||[clean])delete next[alias];return next;});

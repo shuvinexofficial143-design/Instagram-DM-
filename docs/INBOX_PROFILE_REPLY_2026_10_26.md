@@ -8,7 +8,7 @@ Reply diagnostics now correlate a failure to the latest incoming Meta message ID
 
 ## Production boundary
 
-The earlier timestamp EXECUTE repair remains in `supabase/migrations/20261025_authenticated_inbox_message_time_permission.sql`. It grants only the pure timestamp parser to `authenticated` and keeps anonymous and private campaign RPC access restricted. This change does not replace that required database migration.
+The earlier timestamp EXECUTE repair remains in `supabase/migrations/20261025_authenticated_inbox_message_time_permission.sql`. It grants only the pure timestamp parser to `authenticated` and keeps anonymous and private campaign RPC access restricted. Mark-read now uses the existing account-store Edge route, with authenticated workspace selection and a second ownership check at the Edge boundary. This avoids calculating the generated timestamp under the browser's restricted database role. The underlying database migration is still required for other authenticated writes.
 
 During this execution the Supabase connector denied access to project `dwgxmmftybxwpurgsxkx`; its connected project list did not include this project. Backend SQL execution, Edge deployments and inspection of the screenshot's actual incoming message therefore remain unverified. Vercel project `instagram-dm` was listed under `team_jN4pWc8SGA3NOfKJdcR3b9vw`, but project inspection returned 403 requiring a team access grant.
 

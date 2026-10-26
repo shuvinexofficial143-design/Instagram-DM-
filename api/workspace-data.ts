@@ -4,7 +4,7 @@ import threadControl from '../src/server/threadControl.js';
 import supportHandler from '../src/server/support.js';
 import lifecycleHandler from '../src/server/customerLifecycle.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../src/server/supabaseConfig.js';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, authenticatedWorkspace } from '../src/server/supabaseConfig.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
@@ -55,17 +55,23 @@ export default async function handler(req: any, res: any) {
   }
 
   if(['inbox-page','inbox-analytics','inbox-read'].includes(String(req.query?.action||''))){
-    const action=String(req.query.action),workspaceId=getCookie(req,GUEST_COOKIE);
-    if(!isWorkspaceId(workspaceId))return res.status(401).json({ok:false,error:'Workspace session required.'});
+    const action=String(req.query.action);
     if(req.method!==(action==='inbox-read'?'POST':'GET'))return res.status(405).json({ok:false,error:'Method Not Allowed'});
     try{
-      const response=await fetchWithTimeout(SUPABASE_URL+'/functions/v1/instagram-account-store',{method:'POST',headers:{'Content-Type':'application/json',...guestStoreHeaders()},body:JSON.stringify({
+      // The Edge service validates the session/workspace again before calling
+      // its service-role RPC. This also permits mark-read while the pure
+      // generated-timestamp helper's authenticated EXECUTE repair is pending.
+      const authorization=String(req.headers?.authorization || '').trim();
+      const identity=authorization ? await authenticatedWorkspace(req) : null;
+      const workspaceId=authorization ? identity?.id || '' : getCookie(req,GUEST_COOKIE);
+      if(!workspaceId || (!identity && !isWorkspaceId(workspaceId)))return res.status(401).json({ok:false,error:'Workspace session required.'});
+      const response=await fetchWithTimeout(SUPABASE_URL+'/functions/v1/instagram-account-store',{method:'POST',headers:{'Content-Type':'application/json',...guestStoreHeaders(),...(identity?{Authorization:authorization}:{})},body:JSON.stringify({
         action:action==='inbox-page'?'list_inbox_page':action==='inbox-analytics'?'inbox_analytics':'mark_inbox_read',workspaceId,
         sender:action==='inbox-read'?req.body?.sender:String(req.query.sender||''),read:req.body?.read,
         before_time:req.query.before_time||null,before_id:req.query.before_id||null,start:req.query.start,end:req.query.end,timezone:req.query.timezone,
       })});
       const data=await response.json();res.setHeader('Cache-Control','private, no-store');return res.status(response.status).json(data);
-    }catch{return res.status(503).json({ok:false,error:'Inbox service unavailable.'});}
+    }catch(error:any){return res.status(error?.status===403?403:503).json({ok:false,error:error?.status===403?'This Instagram account does not belong to your login.':'Inbox service unavailable.'});}
   }
 
   if (req.method !== 'GET') {
