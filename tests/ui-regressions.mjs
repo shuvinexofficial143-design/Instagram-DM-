@@ -9,6 +9,8 @@ import { renderToPipeableStream, renderToStaticMarkup } from 'react-dom/server';
 import { Writable } from 'node:stream';
 
 const root = path.resolve(import.meta.dirname, '..');
+// Keep date-bucket render fixtures independent of the runner's DST timezone.
+process.env.TZ = 'UTC';
 const tmp = await mkdtemp(path.join(root,'node_modules','.ui-regressions-'));
 const originalWindow = globalThis.window;
 const originalFetch = globalThis.fetch;
@@ -102,14 +104,19 @@ try {
   assert.ok(inboxHtml.includes('Original customer question')&&inboxHtml.includes('Native Instagram opening message'));checks++;
   globalThis.__uiFixture=fixture({contacts:[{...inboxContact,ig_username:'77000000002'}],inboxMessages:[]});
   const unknownHtml=renderToStaticMarkup(React.createElement(ui.InboxPage));
-  assert.ok(unknownHtml.includes('Instagram user · 0002')&&!unknownHtml.includes('@77000000002'));checks++;
+  assert.ok(unknownHtml.includes('Instagram profile pending')&&!unknownHtml.includes('@77000000002'));checks++;
   const unknownContactsHtml=renderToStaticMarkup(React.createElement(ui.ContactsPage));
-  assert.ok(unknownContactsHtml.includes('Instagram user · 0002')&&!unknownContactsHtml.includes('@77000000002'));checks++;
+  assert.ok(unknownContactsHtml.includes('Instagram profile pending')&&!unknownContactsHtml.includes('@77000000002'));checks++;
   globalThis.__uiFixture=fixture({contacts:[{...inboxContact,ig_username:'77000000002',full_name:'Customer Name'}],inboxMessages:[{id:'profile',from_ig_id:'77000000002',from_username:'verified_customer',from_avatar:'https://img.example/customer.jpg',message_text:'Hello',direction:'in',timestamp:'2026-10-26T00:00:00Z'}]});
   const verifiedContactsHtml=renderToStaticMarkup(React.createElement(ui.ContactsPage));
   assert.ok(verifiedContactsHtml.includes('@verified_customer')&&verifiedContactsHtml.includes('Customer Name')&&verifiedContactsHtml.includes('https://img.example/customer.jpg')&&!verifiedContactsHtml.includes('@77000000002'));checks++;
   const verifiedCrmHtml=renderToStaticMarkup(React.createElement(ui.CrmPage));
   assert.ok(verifiedCrmHtml.includes('@verified_customer')&&!verifiedCrmHtml.includes('@77000000002'));checks++;
+  globalThis.__uiFixture=fixture({contacts:[{...inboxContact,avatar_url:'data:image/jpeg;base64,/9j/4AECAw=='}],inboxMessages:[]});
+  for(const Component of [ui.InboxPage,ui.ContactsPage]){
+    const cachedHtml=renderToStaticMarkup(React.createElement(Component));
+    assert.ok(cachedHtml.includes('src="data:image/jpeg;base64,/9j/4AECAw=="'),'real cached thumbnails render in Inbox and Leads without a CDN request');checks++;
+  }
   for (const [route,heading] of [
     ['/','More conversations.'],['/help','Help Center'],['/help/faq','Frequently Asked Questions'],
     ['/help/billing','Billing &amp; Payment Help'],['/about','About'],['/privacy','Privacy Policy'],['/terms','Terms of Service'],

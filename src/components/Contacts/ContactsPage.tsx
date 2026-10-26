@@ -60,7 +60,6 @@ export const ContactsPage: React.FC = () => {
       uname.includes('940977') ||
       uname.startsWith('user_940977') ||
       uname === 'webhook_test_user' ||
-      uname.startsWith('user_') ||
       uname.includes('test_user')
     ) {
       return false;

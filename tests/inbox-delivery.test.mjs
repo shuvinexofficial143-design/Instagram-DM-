@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import {transform} from 'esbuild';
 import {createHmac} from 'node:crypto';
-const source = (await fs.readFile('supabase/functions/instagram-account-store/index.ts','utf8')).replace(/^import .*;\n/gm,'');
+const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/instagramProfiles.ts', import.meta.url), 'utf8')).replace(/^export /gm, '') + '\n' + (await fs.readFile('supabase/functions/instagram-account-store/index.ts','utf8')).replace(/^import .*;\n/gm,'');
 const compiled = (await transform(source,{loader:'ts',format:'esm'})).code;
 const owner='12345678-1234-4234-8234-123456789012';
 const scoped='28000000000000001', professional='17840000000000001', customer='770000000000001';
@@ -25,6 +25,11 @@ function fixture(options={}) {
     auth:{getUser:async token=>token==='session'?{data:{user:{id:owner,...(options.adminSession?{email:'admin@example.test',email_confirmed_at:'2026-10-19'}:{})}}}:{data:null,error:{message:'Unauthorized'}}},
     rpc:async(name,args)=>{
       rpcCalls.push({name,args});
+      if(name==='autoreply_refresh_instagram_profile'){
+        const row=tables.autoreply_documents.find(r=>r.user_id===args.p_workspace&&r.collection==='contacts'&&r.data.ig_user_id===args.p_sender);
+        if(row){row.data={...row.data,ig_username:args.p_profile.username||row.data.ig_username,avatar_url:args.p_profile.avatar_url||row.data.avatar_url};}
+        return {data:{ok:Boolean(row)},error:null};
+      }
       if(name==='autoreply_connect_instagram_account'){
         assert.equal(args.p_owner_id,owner);assert.equal(args.p_account.ig_user_id,professional);assert.equal(args.p_account.ig_scoped_id,scoped);
         const account=args.p_account, safe={...account};delete safe.access_token;
@@ -58,7 +63,7 @@ function fixture(options={}) {
       }return q;
     }
   };
-  const context=vm.createContext({Request,Response,URLSearchParams,AbortSignal,TextEncoder,Uint8Array,crypto:globalThis.crypto,console:{log(){},warn(){},error(){}},
+  const context=vm.createContext({Request,Response,URL,URLSearchParams,btoa,AbortSignal,TextEncoder,Uint8Array,crypto:globalThis.crypto,console:{log(){},warn(){},error(){}},
     createClient:()=>admin,
     fetch:async(url,init)=>{calls.push({url:String(url),init});
       if(String(url).includes('/me?'))return Response.json({id:scoped,user_id:professional,username:'business'});
@@ -76,7 +81,7 @@ test('consent-denied outbound contact recovers its real handle from the exact bu
  const f=fixture({refreshContacts:[{ig_user_id:customer,ig_username:customer,avatar_url:''}],conversations:[{participants:{data:[{id:scoped,username:'business'},{id:customer,username:'real_customer'}]}}]});
  const r=await f.post({action:'refresh_contact_profiles',workspaceId:owner});
  assert.equal(r.status,200);assert.equal(r.body.refreshed,1);assert.equal(f.tables.autoreply_documents[0].data.ig_username,'real_customer');assert.equal(f.tables.autoreply_documents[0].data.avatar_url,'');
- assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_enrich_instagram_contact'&&c.args.p_sender===customer&&c.args.p_username==='real_customer'));
+ assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_refresh_instagram_profile'&&c.args.p_sender===customer&&c.args.p_profile.username==='real_customer'));
  assert.ok(f.calls.every(c=>!c.init.method||c.init.method==='GET'));
 });
 test('profile fallback rejects foreign conversations, wrong scoped IDs and mismatched profile responses',async()=>{

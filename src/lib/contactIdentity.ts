@@ -2,7 +2,7 @@ import type { Contact, InboxMessage } from '../types';
 
 export function instagramHandle(value: unknown): string {
   const name = String(value || '').trim().replace(/^@/, '').toLowerCase();
-  return /^[a-z0-9._]{1,30}$/.test(name) && !/^\d+$/.test(name) && !name.startsWith('user_') && name !== 'instagram_user' ? name : '';
+  return /^[a-z0-9._]{1,30}$/.test(name) && !/^\d+$/.test(name) && name !== 'instagram_user' && name !== 'webhook_test_user' ? name : '';
 }
 
 /** Message identity is usable only when its scoped sender ID belongs to this contact. */
@@ -14,7 +14,7 @@ export function contactIdentity(contact: Contact, messages: InboxMessage[] = [])
   const name = String(contact.full_name || '').trim();
   const fullName = name && !/^\d+$/.test(name) ? name : '';
   const avatar = (contact.avatar_url && !contact.avatar_url.includes('api.dicebear.com') ? contact.avatar_url : '') || history.find(m => m.from_avatar && !m.from_avatar.includes('api.dicebear.com'))?.from_avatar || '';
-  return { username, fullName, avatar, label: username ? '@' + username : fullName || 'Instagram user · ' + String(contact.ig_user_id || contact.id).slice(-4) };
+  return { username, fullName, avatar, label: username ? '@' + username : fullName || 'Instagram profile pending' };
 }
 
 /** Re-fetch expired CDN photos as well as missing identity. The caller applies its retry TTL. */

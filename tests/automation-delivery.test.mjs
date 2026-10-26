@@ -5,8 +5,8 @@ import vm from 'node:vm';
 import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
-const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog };', { loader: 'ts', format: 'esm' });
+const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/instagramProfiles.ts', import.meta.url), 'utf8')).replace(/^export /gm, '') + '\n' + (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { getSenderProfile, extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
@@ -124,7 +124,7 @@ function fixture(automations = [ai], options = {}) {
     : nativeRpc(name, args);
   let handler;
   const context = vm.createContext({
-    console: { log() {}, warn() {}, error() {} }, Request, Response, URL, TextEncoder, AbortController, AbortSignal, setTimeout: options.setTimeout || setTimeout, clearTimeout: options.clearTimeout || clearTimeout, performance, crypto: globalThis.crypto,
+    console: { log() {}, warn() {}, error() {} }, Request, Response, URL, URLSearchParams, btoa, TextEncoder, AbortController, AbortSignal, setTimeout: options.setTimeout || setTimeout, clearTimeout: options.clearTimeout || clearTimeout, performance, crypto: globalThis.crypto,
     createClient: () => admin,
     EdgeRuntime: { waitUntil: task => tasks.push(task) },
     Deno: { env: { get: key => ({ SUPABASE_URL: 'https://project.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'service', INSTAGRAM_APP_SECRET: 'relay-secret', OPENAI_API_KEY: options.noAI ? '' : 'ai-key' })[key] }, serve: value => { handler = value; } },
@@ -146,7 +146,8 @@ function fixture(automations = [ai], options = {}) {
         if (body.sender_action === 'typing_on' && options.typingFailure && apiCalls.filter(c=>c.body.sender_action==='typing_on').length===1) return Response.json({error:{message:'Temporary error'}},{status:options.typingFailure});
         if (body.message) { options.onSend?.(); if (options.sendGate) await options.sendGate; return Response.json({ message_id: 'out-' + apiCalls.length }); }
         if (String(url).endsWith('/replies')) return Response.json({ id: 'public-reply' });
-        return Response.json({ username: 'customer' });
+        if(String(url).includes('/conversations?'))return Response.json({data:options.profileConversations||[]});
+        return Response.json(options.senderProfile||{username:'customer'},{status:options.profileHttpStatus||200});
       }
       throw new Error('Unexpected network request ' + url);
     },
@@ -176,6 +177,12 @@ function fixture(automations = [ai], options = {}) {
 const dm = (id = 'm1', text = 'price?', extras = {}) => ({ object: 'instagram', entry: [{ id: 'business', time: Date.now(), messaging: [
   { sender: { id: 'customer' }, recipient: { id: 'business' }, timestamp: Date.now(), message: { mid: id, text, ...extras } },
 ] }] });
+test('a new outbound recipient gets its real handle from the verified conversation without waiting for dashboard refresh',async()=>{
+ const f=fixture([ai],{senderProfile:{error:{code:230,message:'User consent required'}},profileHttpStatus:500,profileConversations:[{participants:{data:[{id:'17840000000000001',username:'business'},{id:'770000000000001',username:'new_real_customer'}]}}]});
+ const profile=await f.helpers.getSenderProfile('770000000000001','test-token','17840000000000001');
+ assert.equal(profile.username,'new_real_customer');assert.equal(profile.avatar_url,'');
+ assert.equal(f.apiCalls.filter(call=>call.body.message).length,0);
+});
 const comment = (media = 'post1', text = 'price') => ({ object: 'instagram', entry: [{ id: 'business', time: Date.now(), changes: [
   { field: 'comments', value: { id: 'comment1', text, from: { id: 'customer' }, media: { id: media } } },
 ] }] });
@@ -285,8 +292,9 @@ test('comments send one private reply by comment_id before the public reply', as
   rule.actions.unshift({ type: 'reply_comment', comment_reply_text: 'Sent you a DM' });
   const f = fixture([ai, rule]); const r = await f.post(comment());
   assert.equal(r.body.sent, 1); assert.equal(f.aiInputs.length, 0);
-  assert.equal(f.apiCalls[0].body.recipient.comment_id, 'comment1');
-  assert.equal(f.apiCalls[1].body.message, 'Sent you a DM');
+  const sends=f.apiCalls.filter(c=>c.body.message||c.body.sender_action);
+  assert.equal(sends[0].body.recipient.comment_id, 'comment1');
+  assert.equal(sends[1].body.message, 'Sent you a DM');
   assert.ok(f.apiCalls.every(c => c.signal instanceof AbortSignal));
 });
 test('comment media and keyword mismatches send nothing', async () => {
@@ -298,7 +306,7 @@ test('failed private reply cannot publish a false sent-you-a-DM comment', async 
   const rule = staticRule('comment'); rule.actions.push({ type: 'reply_comment', comment_reply_text: 'Sent you a DM' });
   const f = fixture([rule], { sendFails: true }); const r = await f.post(comment());
   assert.equal(r.body.sent, 0); assert.equal(r.body.results[0].reason, 'automation_action_failed');
-  assert.equal(f.apiCalls.length, 1);
+  assert.equal(f.apiCalls.filter(c=>c.body.message||c.body.sender_action).length, 1);
   assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_finish_delivery_quota' && c.args.p_sent===false),'confirmed provider rejection releases its standard quota slot');
 });
 test('definitive AI send rejection returns the AI quota reservation',async()=>{
@@ -313,7 +321,7 @@ test('preparation or quota failure blocks send before typing and returns an erro
 });
 test('exhausted AI quota never starts typing', async () => {
   const f = fixture([ai], { aiUsed: 1500 }); const r = await f.post(dm());
-  assert.equal(r.body.results[0].reason, 'monthly_ai_limit_reached'); assert.equal(f.apiCalls.length, 0);
+  assert.equal(r.body.results[0].reason, 'monthly_ai_limit_reached'); assert.equal(f.apiCalls.filter(c=>c.body.message||c.body.sender_action).length, 0);
 });
 test('standard allowance exhaustion does not stop separately purchased AI replies',async()=>{
  const f=fixture([ai],{quotaUsed:1500});const r=await f.post(dm());
@@ -343,7 +351,7 @@ test('two customers using identical words are never mistaken for an echo', async
 test('oversized configured delay fails visibly without holding the request open', async () => {
   const rule = staticRule('dm'); rule.actions.unshift({ type: 'add_delay', delay_seconds: 3600 });
   const f = fixture([rule]); const r = await f.post(dm());
-  assert.equal(r.body.results[0].reason, 'configured_delay_exceeds_20_seconds'); assert.equal(f.apiCalls.length, 0);
+  assert.equal(r.body.results[0].reason, 'configured_delay_exceeds_20_seconds'); assert.equal(f.apiCalls.filter(c=>c.body.message||c.body.sender_action).length, 0);
 });
 test('a legacy unsupported auto-like cannot prevent the comment DM from sending', async () => {
   const rule = staticRule('comment'); rule.actions.unshift({ type: 'auto_like_comment' });
@@ -744,4 +752,14 @@ test('verified business recipient aliases still accept a real customer inbound D
  const f=fixture([ai],{ownSenderIds:['business-scoped']});const event=dm('scoped-recipient','How does it work?');
  event.entry[0].messaging[0].recipient.id='business-scoped';
  const r=await f.post(event);assert.equal(r.body.sent,1);assert.equal(f.aiInputs.length,1);
+});
+
+
+test('inbound profile refresh retains a cached photo when a new CDN URL cannot be cached', async () => {
+  const cached='data:image/jpeg;base64,/9j/2Q==';
+  const f=fixture([], {contacts:[{id:'123456789',data:{ig_user_id:'123456789',ig_username:'customer',avatar_url:cached,interactions:{dms:7}}}]});
+  const saved=await f.persist({senderId:'123456789',messageId:'cache-preserved',text:'Hello',timestamp:Date.now(),triggerType:'dm'},{username:'customer',avatar_url:'https://scontent.cdninstagram.com/expired.jpg'});
+  assert.equal(saved.contact.avatar_url,cached);
+  assert.equal(saved.contact.interactions.dms,8);
+  assert.equal(saved.inbox.from_avatar,'https://scontent.cdninstagram.com/expired.jpg');
 });

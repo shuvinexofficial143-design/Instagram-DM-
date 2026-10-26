@@ -27,7 +27,7 @@ test('a username change keeps the same conversation key and older handle searcha
  assert.equal(old.key,next.key);assert.equal(next.label,'@new_handle');assert.ok(next.aliases.includes('old_handle'));
 });
 test('numeric IDs are shown as an honest unavailable profile, never a fake @handle',()=>{
- const c=contact('12345','12345');assert.equal(buildInboxThreads([], [c])[0].label,'Instagram user · 2345');
+ const c=contact('12345','12345');assert.equal(buildInboxThreads([], [c])[0].label,'Instagram profile pending');
  c.full_name='Customer Name';assert.equal(buildInboxThreads([], [c])[0].label,'Customer Name');
 });
 test('optimistic manual replies stay in their selected numeric-ID conversation',()=>{
@@ -40,4 +40,8 @@ test('legacy username-only messages attach only to an unambiguous known contact'
 
 test('messages with no username still keep their sender ID and history',()=>{
  const threads=buildInboxThreads([msg('1','12345','')],[]);assert.equal(threads.length,1);assert.equal(threads[0].messages.length,1);
+});
+test('legitimate user_ handles remain visible, while synthetic names never appear as a real account',()=>{
+ assert.equal(buildInboxThreads([msg('1','12345','user_real_shop')],[contact('12345','user_real_shop')])[0].label,'@user_real_shop');
+ assert.equal(buildInboxThreads([msg('2','67890','instagram_user')],[contact('67890','instagram_user')])[0].label,'Instagram profile pending');
 });
