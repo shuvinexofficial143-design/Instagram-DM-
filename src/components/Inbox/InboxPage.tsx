@@ -11,6 +11,7 @@ import {CustomerBadges,CustomerInsightPanel} from '../Common/CustomerInsight';
 import {customerStages} from '../../lib/customerInsights';
 import { buildInboxThreads } from '../../lib/inboxIdentity';
 import { UserAvatar } from '../Common/UserAvatar';
+import { latestReplyFailureFor, replyFailureDescription } from '../../lib/inboxReplyOutcome';
 
 type ThreadStatus = 'open' | 'pending' | 'resolved';
 type Priority = 'normal' | 'high';
@@ -160,25 +161,9 @@ export const InboxPage: React.FC = () => {
   const aiPaused = selectedUser ? isAiPausedForUser(actionKeyFor(selectedUser)) : false;
   // Explain only observed failed/ignored webhook outcomes, never guess from a
   // missing AI bubble. A later outgoing message supersedes the failure.
-  const latestInbound = [...selectedSummary.messages].filter(m=>m.direction==='in')
-    .sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp))[0];
-  const hasNewerOutgoing = Boolean(latestInbound && selectedSummary.messages.some(m =>
-    m.direction==='out' && Date.parse(m.timestamp)>=Date.parse(latestInbound.timestamp)));
   const relevantAliases = threadFor(selectedUser)?.aliases || [];
-  const latestReplyFailure = !latestInbound || hasNewerOutgoing ? undefined :
-    [...(webhookLogs || [])].filter(event =>
-      (event.status==='error'||event.status==='ignored') &&
-      relevantAliases.includes(cleanKey(event.from_username)) &&
-      Date.parse(event.timestamp||'')>=Date.parse(latestInbound.timestamp)
-    ).sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp))[0];
-  const replyFailureText = latestReplyFailure && (
-    latestReplyFailure.status==='error' ||
-    /no matching active automation|monthly_ai_limit|quota_check_failed|human_handoff|ai_limit_reached/i.test(String(latestReplyFailure.reason||''))
-  ) ? (String(latestReplyFailure.reason||'').includes('No matching active automation')
-        ? 'No matching active automation. Check the active AI Conversation rule and Human Takeover.'
-        : /limit_reached/i.test(latestReplyFailure.reason||'') ? 'AI reply allowance was reached. Check billing or continue manually.'
-        : latestReplyFailure.status==='error' ? 'The automation reported a reply failure. Check recent Activity for the specific error.'
-        : 'AI did not reply because the automation was paused or handed to a human.') : '';
+  const latestReplyFailure = latestReplyFailureFor(selectedSummary.messages, relevantAliases, webhookLogs || []);
+  const replyFailureText = replyFailureDescription(latestReplyFailure);
 
   useEffect(() => {
     if (selectedUser) void runAction(()=>markInboxThreadRead(actionKeyFor(selectedUser)));

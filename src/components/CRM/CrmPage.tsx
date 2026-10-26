@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { auth, saveUserDocument, subscribeToUserCollection } from '../../lib/supabase';
 import { Contact } from '../../types';
 import { UserAvatar } from '../Common/UserAvatar';
+import { contactIdentity } from '../../lib/contactIdentity';
 
 type Stage = 'new' | 'qualified' | 'follow_up' | 'won' | 'lost';
 type Priority = 'low' | 'normal' | 'high';
@@ -48,6 +49,8 @@ const emptyRecord = (id: string): CrmRecord => ({
 
 export const CrmPage: React.FC = () => {
   const { contacts, inboxMessages, setActiveTab } = useApp();
+  const identities = useMemo(() => new Map((contacts || []).map(contact => [contact.id, contactIdentity(contact, inboxMessages || [])])), [contacts, inboxMessages]);
+  const identityFor = (contact: Contact) => identities.get(contact.id) || contactIdentity(contact);
   const [records, setRecords] = useState<CrmRecord[]>([]);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<Stage | 'all'>('all');
@@ -73,7 +76,7 @@ export const CrmPage: React.FC = () => {
   })), [usableContacts, recordMap]);
 
   const filtered = merged.filter(({ contact, record }) => {
-    const haystack = [contact.ig_username, contact.ig_user_id, record.phone, record.email, record.company, record.owner, ...(contact.tags || [])].join(' ').toLowerCase();
+    const haystack = [identityFor(contact).label, identityFor(contact).fullName, contact.ig_username, contact.ig_user_id, record.phone, record.email, record.company, record.owner, ...(contact.tags || [])].join(' ').toLowerCase();
     return (!search.trim() || haystack.includes(search.toLowerCase())) && (stageFilter === 'all' || record.stage === stageFilter);
   });
 
@@ -157,9 +160,9 @@ export const CrmPage: React.FC = () => {
                     return (
                       <button key={contact.id} onClick={() => setSelectedId(contact.id)} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md">
                         <div className="flex items-start gap-2.5">
-                          <UserAvatar src={contact.avatar_url} username={contact.ig_username || contact.ig_user_id} size="sm" />
+                          <UserAvatar src={identityFor(contact).avatar} username={identityFor(contact).username} size="sm" />
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2"><p className="truncate text-xs font-bold text-slate-900">@{contact.ig_username || contact.ig_user_id}</p>{record.priority === 'high' && <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-xs font-bold text-rose-600">HIGH</span>}</div>
+                            <div className="flex items-center justify-between gap-2"><p className="truncate text-xs font-bold text-slate-900">{identityFor(contact).label}</p>{record.priority === 'high' && <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-xs font-bold text-rose-600">HIGH</span>}</div>
                             <p className="mt-1 truncate text-xs text-slate-500">{record.company || record.phone || last?.message_text || 'No CRM details yet'}</p>
                             <div className="mt-2 flex items-center justify-between"><span className="text-xs font-bold text-indigo-600">₹{Number(record.deal_value || 0).toLocaleString('en-IN')}</span><ChevronRight className="h-3.5 w-3.5 text-slate-300" /></div>
                           </div>
@@ -179,7 +182,7 @@ export const CrmPage: React.FC = () => {
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onClick={() => setSelectedId('')}>
           <aside className="h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-2xl sm:p-7" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3"><UserAvatar src={selected.contact.avatar_url} username={selected.contact.ig_username || selected.contact.ig_user_id} size="lg" /><div><h2 className="text-xl font-bold text-slate-950">@{selected.contact.ig_username || selected.contact.ig_user_id}</h2><p className="mt-1 text-xs text-slate-500">{selected.contact.tags?.join(' · ') || 'Instagram lead'}</p></div></div>
+              <div className="flex items-center gap-3"><UserAvatar src={identityFor(selected.contact).avatar} username={identityFor(selected.contact).username} size="lg" /><div><h2 className="text-xl font-bold text-slate-950">{identityFor(selected.contact).label}</h2><p className="mt-1 text-xs text-slate-500">{selected.contact.tags?.join(' · ') || 'Instagram lead'}</p></div></div>
               <button onClick={() => setSelectedId('')} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600">Close</button>
             </div>
 

@@ -1713,7 +1713,7 @@ Deno.serve(async (req: Request) => {
         if (!saved) {
           stopTyping();
           runInBackground(logEvent(admin, workspaceId, item.messageId, {
-            status: "failed", reason: "inbox_save_failed", inbound_save_ms: inboundSaveMs,
+            status: "failed", reason: "inbox_save_failed", sender_id: item.senderId, inbound_save_ms: inboundSaveMs,
           }));
         }
         return saved;
@@ -1750,7 +1750,7 @@ Deno.serve(async (req: Request) => {
           trigger_type: item.triggerType,
           sender_id: item.senderId,
           incoming_text: item.text,
-          reason: "No matching active automation",
+          reason: context.thread_human_handoff === true ? "human_handoff" : context.thread_ai_paused === true ? "thread_ai_paused" : "No matching active automation",
           context_ms: contextMs,
         })
       );
@@ -1802,7 +1802,7 @@ Deno.serve(async (req: Request) => {
       .reduce((sum: number, a: any) => sum + Number(a.delay_seconds || 0), 0);
     if (!Number.isFinite(extraDelay) || extraDelay < 0 || extraDelay > 20) {
       await inboundSaved;
-      runInBackground(logEvent(admin, workspaceId, item.messageId, { status: "failed", reason: "configured_delay_exceeds_20_seconds" }));
+      runInBackground(logEvent(admin, workspaceId, item.messageId, { status: "failed", reason: "configured_delay_exceeds_20_seconds", sender_id: item.senderId }));
       results.push({ messageId: item.messageId, ok: false, reason: "configured_delay_exceeds_20_seconds" });
       continue;
     }
@@ -1971,6 +1971,7 @@ Instagram DM style rules:
       if(!slot.allowed) {
         if(slot.reason==="ai_limit_reached")await requestHumanHandoff(admin,workspaceId,item,automation,{reason:"ai_limit_reached",summary:"AI reply allowance reached. A human must continue this conversation."},context.thread_control_version);
         stopTyping();
+        runInBackground(logEvent(admin,workspaceId,item.messageId,{status:"ignored",reason:slot.reason||"monthly_ai_limit_reached",sender_id:item.senderId,automation_id:automation.id,trigger_type:item.triggerType}));
         results.push({messageId:item.messageId,ok:true,ignored:true,reason:slot.reason||"monthly_ai_limit_reached"});
         continue;
       }
@@ -2090,6 +2091,7 @@ Instagram DM style rules:
         logEvent(admin, workspaceId, item.messageId || crypto.randomUUID(), {
           status: "failed",
           trigger_type: "dm_ai_conversation",
+          reason: "instagram_send_failed",
           automation_id: automation.id,
           automation_name: automation.name,
           sender_id: item.senderId,

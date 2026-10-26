@@ -265,10 +265,10 @@ async function refreshMissingContactProfiles(
   const targets = (contacts || []).filter((row: any) => {
     const data = row?.data || {};
     return (
-      looksLikeNumericId(data?.ig_username) ||
-      !String(data?.ig_username || "").trim() ||
+      !/^[a-zA-Z0-9._]{1,30}$/.test(String(data?.ig_username || "").trim().replace(/^@/, "")) ||
+      /^\d+$/.test(String(data?.ig_username || "").trim().replace(/^@/, "")) ||
       !String(data?.avatar_url || "").trim() ||
-      !data?.profile_refreshed_at || Date.now() - Date.parse(data.profile_refreshed_at) > 24 * 60 * 60 * 1000
+      !Number.isFinite(Date.parse(data?.profile_refreshed_at || "")) || Date.now() - Date.parse(data.profile_refreshed_at) >= 24 * 60 * 60 * 1000
     );
   });
 
@@ -284,7 +284,7 @@ async function refreshMissingContactProfiles(
         if (!igsid) return;
 
         const profile = await fetchMessagingUserProfile(accessToken, igsid);
-        if (!profile?.username && !profile?.profile_pic) return;
+        if (!profile?.username && !profile?.profile_pic && !profile?.name) return;
 
         const nextContact = {
           ...(row?.data || {}),

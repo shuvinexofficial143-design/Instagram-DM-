@@ -39,6 +39,8 @@ try {
     stdin:{contents:`export {default as App} from './src/App';
       export {Sidebar} from './src/components/Sidebar';
       export {InboxPage} from './src/components/Inbox/InboxPage';
+      export {ContactsPage} from './src/components/Contacts/ContactsPage';
+      export {CrmPage} from './src/components/CRM/CrmPage';
       export {BillingUsagePage} from './src/components/Billing/BillingUsagePage';
       export {SettingsPage} from './src/components/Settings/SettingsPage';
       export {AdminEmailPreferences} from './src/components/Admin/AdminEmailPreferences';
@@ -101,6 +103,13 @@ try {
   globalThis.__uiFixture=fixture({contacts:[{...inboxContact,ig_username:'77000000002'}],inboxMessages:[]});
   const unknownHtml=renderToStaticMarkup(React.createElement(ui.InboxPage));
   assert.ok(unknownHtml.includes('Instagram user · 0002')&&!unknownHtml.includes('@77000000002'));checks++;
+  const unknownContactsHtml=renderToStaticMarkup(React.createElement(ui.ContactsPage));
+  assert.ok(unknownContactsHtml.includes('Instagram user · 0002')&&!unknownContactsHtml.includes('@77000000002'));checks++;
+  globalThis.__uiFixture=fixture({contacts:[{...inboxContact,ig_username:'77000000002',full_name:'Customer Name'}],inboxMessages:[{id:'profile',from_ig_id:'77000000002',from_username:'verified_customer',from_avatar:'https://img.example/customer.jpg',message_text:'Hello',direction:'in',timestamp:'2026-10-26T00:00:00Z'}]});
+  const verifiedContactsHtml=renderToStaticMarkup(React.createElement(ui.ContactsPage));
+  assert.ok(verifiedContactsHtml.includes('@verified_customer')&&verifiedContactsHtml.includes('Customer Name')&&verifiedContactsHtml.includes('https://img.example/customer.jpg')&&!verifiedContactsHtml.includes('@77000000002'));checks++;
+  const verifiedCrmHtml=renderToStaticMarkup(React.createElement(ui.CrmPage));
+  assert.ok(verifiedCrmHtml.includes('@verified_customer')&&!verifiedCrmHtml.includes('@77000000002'));checks++;
   for (const [route,heading] of [
     ['/','More conversations.'],['/help','Help Center'],['/help/faq','Frequently Asked Questions'],
     ['/help/billing','Billing &amp; Payment Help'],['/about','About'],['/privacy','Privacy Policy'],['/terms','Terms of Service'],

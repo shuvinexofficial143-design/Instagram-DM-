@@ -119,6 +119,7 @@ export interface ContactInteraction {
 export interface Contact {
   ig_user_ids?: string[];
   full_name?: string;
+  profile_refreshed_at?: string;
   customer_insight?: import('./lib/customerInsights').CustomerInsight;
   id: string;
   ig_username: string;

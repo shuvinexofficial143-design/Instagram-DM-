@@ -6,6 +6,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useRef,
 import { reconcileAutomationRecords } from '../lib/automationState';
 import { connectedInstagramAccount } from '../lib/instagramConnection';
 import { normalizeActivityLog } from '../lib/activityLogs';
+import { needsContactProfileRefresh } from '../lib/contactIdentity';
 import {
   UserProfile,
   InstagramAccount,
@@ -557,16 +558,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }));
           setContacts(filterOutMockContacts(guestContacts));
 
-          const needsRealProfileRefresh = guestContacts.some((contact) => {
-            const username = String(contact.ig_username || '').trim();
-            return /^\d{8,}$/.test(username) || !contact.avatar_url;
-          });
+          const needsRealProfileRefresh = guestContacts.some(contact => needsContactProfileRefresh(contact));
 
           if (needsRealProfileRefresh && !profileRefreshInFlight) {
-            const missing = guestContacts.filter(contact => {
-              const username = String(contact.ig_username || '').trim();
-              return /^\d{8,}$/.test(username) || !contact.avatar_url;
-            }).map(contact => String(contact.ig_user_id || contact.id || '')).filter(Boolean);
+            const missing = guestContacts.filter(contact => needsContactProfileRefresh(contact))
+              .map(contact => String(contact.ig_user_id || contact.id || '')).filter(Boolean);
             const now = Date.now();
             const due = missing.filter(id => now >= (guestProfileRetryAt.get(id) || 0));
             if (due.length) {
@@ -724,7 +720,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // refresh; retry only unresolved IDs with a bounded per-contact TTL.
         // Do not assume a successful Meta request includes a public profile.
         if (!signedInProfileRefreshInFlight) {
-          const missing = sanitized.filter(c => /^\d{8,}$/.test(String(c.ig_username||'')) || !c.avatar_url)
+          const missing = sanitized.filter(c => needsContactProfileRefresh(c))
             .map(c => String(c.ig_user_id || c.id || '')).filter(Boolean);
           const now = Date.now();
           const due = missing.filter(id => now >= (signedInProfileRetryAt.get(id) || 0));
@@ -1287,8 +1283,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const messageIds = new Set(thread?.messages.map(message => message.id) || []);
     if(!uid)return;
     const scope=workspaceScope.current;
-    if(isGuestMode){const response=await fetch('/api/workspace-data?action=inbox-read',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:clean,read})});if(!response.ok)throw Error('Read status could not be saved.');}
-    else {const {error}=await supabase.rpc('autoreply_mark_inbox_read',{p_workspace:uid,p_sender:clean,p_read:read});if(error)throw error;}
+    const token=isGuestMode ? '' : await auth.currentUser?.getIdToken();
+    if(!isGuestMode && !token)throw Error('Sign in again to save read status.');
+    const response=await fetch('/api/workspace-data?action=inbox-read',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`,'X-Autoreply-Workspace':uid}:{})},body:JSON.stringify({sender:clean,read})});
+    const result=await response.json().catch(()=>null);
+    if(!response.ok || !result?.ok)throw Error(result?.error || 'Read status could not be saved.');
     if(workspaceScope.current!==scope)return;
     setInboxMessages(previous=>previous.map(message=>message.direction==='in'&&messageIds.has(message.id)?{...message,is_read:read,read_at:read?now:undefined}:message));
     if(read)setInboxUnreadCounts(previous=>{const next={...previous};for(const alias of thread?.aliases||[clean])delete next[alias];return next;});

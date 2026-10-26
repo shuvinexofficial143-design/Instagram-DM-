@@ -674,6 +674,15 @@ test('campaign and keyword automation cannot interrupt a handed-over conversatio
   const f=fixture(rules,{handoffPaused:true,campaignAutomation:campaign});const r=await f.post(dm());assert.equal(r.body.sent,0);assert.equal(f.aiInputs.length,0);
  }
 });
+test('paused and refused AI replies record the exact inbound ID and actual stop reason',async()=>{
+ for(const [options,reason] of [[{handoffPaused:true},'human_handoff'],[{threadPausedAtPrepare:true},'thread_ai_paused'],[{controlChanged:true},'conversation_control_changed'],[{sendFails:true},'instagram_send_failed']]){
+  const f=fixture([ai],options);await f.post(dm('diagnosed-mid'));
+  const event=f.writes.find(w=>w.collection==='webhook_events'&&w.id==='diagnosed-mid');
+  assert.ok(event);assert.equal(event.data.sender_id,'customer');assert.equal(event.data.reason,reason);
+  if(options.sendFails)assert.equal(event.data.send_error,'Missing permission');
+  assert.equal(f.writes.filter(w=>w.collection==='inbox_messages'&&w.data.direction==='out').length,0);
+ }
+});
 test('a manual pause and resume during generation invalidates the old AI answer and handoff decision',async()=>{
  const options={onAIStart:()=>{options.controlChanged=true;}};const f=fixture([ai],options);
  assert.equal((await f.post(dm())).body.results[0].reason,'conversation_control_changed');assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
