@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
   Search,
@@ -27,9 +27,12 @@ import {CustomerBadges,CustomerInsightPanel} from '../Common/CustomerInsight';
 import {customerStages} from '../../lib/customerInsights';
 import { Contact } from '../../types';
 import { UserAvatar } from '../Common/UserAvatar';
+import { contactIdentity } from '../../lib/contactIdentity';
 
 export const ContactsPage: React.FC = () => {
-  const { workspaceId, contacts, deleteContact, deleteContactsBulk, sendManualReply } = useApp();
+  const { workspaceId, contacts, inboxMessages, deleteContact, deleteContactsBulk, sendManualReply } = useApp();
+  const identities = useMemo(() => new Map((contacts || []).map(contact => [contact.id, contactIdentity(contact, inboxMessages || [])])), [contacts, inboxMessages]);
+  const identityFor = (contact: Contact) => identities.get(contact.id) || contactIdentity(contact);
   const [stageFilter,setStageFilter]=useState('all');
   const [priorityFilter,setPriorityFilter]=useState('all');
   useEffect(()=>{setActiveContact(null);setSelectedContactIds([]);},[workspaceId]);
@@ -62,7 +65,8 @@ export const ContactsPage: React.FC = () => {
     ) {
       return false;
     }
-    const matchesSearch = uname.includes(search.toLowerCase());
+    const identity = identityFor(c);
+    const matchesSearch = [uname, identity.username, identity.fullName, c.ig_user_id].some(value => String(value || '').toLowerCase().includes(search.toLowerCase().replace(/^@/, '')));
     const matchesTag = !selectedTag || (Array.isArray(c.tags) && c.tags.includes(selectedTag));
     return matchesSearch && matchesTag && (stageFilter==='all'||(c.customer_insight?.stage||'new')===stageFilter) && (priorityFilter==='all'||(c.customer_insight?.priority||'normal')===priorityFilter);
   }).sort((a,b)=>({high:0,normal:1,low:2}[a.customer_insight?.priority||'normal']-({high:0,normal:1,low:2}[b.customer_insight?.priority||'normal'])));
@@ -86,10 +90,10 @@ export const ContactsPage: React.FC = () => {
   };
 
   const handleRemoveSingle = async (contact: Contact) => {
-    const uname = contact.ig_username || contact.ig_user_id || 'user';
+    const uname = identityFor(contact).label;
     if (
       window.confirm(
-        `Are you sure you want to permanently remove @${uname}? This will delete the contact and all associated chat history from the database.`
+        `Are you sure you want to permanently remove ${uname}? This will delete the contact and all associated chat history from the database.`
       )
     ) {
       await deleteContact(contact.id, contact.ig_username);
@@ -119,11 +123,12 @@ export const ContactsPage: React.FC = () => {
   };
 
   const exportCsv = () => {
-    const headers = 'IG Username,First Interaction,Last Interaction,Comments,DMs,Stories,Status\n';
+    const csvCell = (value: unknown) => '"' + String(value ?? '').replace(/^[=+\-@]/, "'$&").replace(/"/g, '""') + '"';
+    const headers = 'IG Username,Full Name,Instagram ID,First Interaction,Last Interaction,Comments,DMs,Stories,Status\n';
     const rows = (contacts || [])
       .map(
         (c) =>
-          `@${c.ig_username || c.ig_user_id || 'unknown'},${c.first_interaction_at || ''},${c.last_interaction_at || ''},${c.interactions?.comments || 0},${c.interactions?.dms || 0},${c.interactions?.stories || 0},${c.status || 'lead'}`
+          [identityFor(c).username, identityFor(c).fullName, c.ig_user_id, c.first_interaction_at, c.last_interaction_at, c.interactions?.comments || 0, c.interactions?.dms || 0, c.interactions?.stories || 0, c.status || 'lead'].map(csvCell).join(',')
       )
       .join('\n');
 
@@ -375,12 +380,13 @@ export const ContactsPage: React.FC = () => {
                       <td className="p-4">
                         <div className="flex items-center gap-3">
                           <UserAvatar
-                            src={contact.avatar_url}
-                            username={contact.ig_username}
+                            src={identityFor(contact).avatar}
+                            username={identityFor(contact).username}
                             size="md"
                           />
                           <div>
-                            <div className="font-bold text-slate-950">@{contact.ig_username}</div>
+                            <div className="font-bold text-slate-950">{identityFor(contact).label}</div>
+                            {identityFor(contact).username && identityFor(contact).fullName && <p className="text-xs text-slate-500">{identityFor(contact).fullName}</p>}
                             <CustomerBadges insight={contact.customer_insight}/><p className="mt-1 max-w-52 truncate text-[11px] text-slate-500" title={contact.customer_insight?.reason}>{contact.customer_insight?.reason}</p>
                           </div>
                         </div>
@@ -445,12 +451,12 @@ export const ContactsPage: React.FC = () => {
               <div className="text-center mb-6">
                 <div className="flex justify-center mb-2">
                   <UserAvatar
-                    src={activeContact.avatar_url}
-                    username={activeContact.ig_username}
+                    src={identityFor(activeContact).avatar}
+                    username={identityFor(activeContact).username}
                     size="2xl"
                   />
                 </div>
-                <h4 className="font-bold text-slate-900 text-lg">@{activeContact.ig_username}</h4>
+                <h4 className="font-bold text-slate-900 text-lg">{identityFor(activeContact).label}</h4>
                 <p className="text-xs text-slate-500">Instagram User • Captured Contact</p>
               </div>
 

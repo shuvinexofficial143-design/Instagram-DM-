@@ -6,6 +6,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useRef,
 import { reconcileAutomationRecords } from '../lib/automationState';
 import { connectedInstagramAccount } from '../lib/instagramConnection';
 import { normalizeActivityLog } from '../lib/activityLogs';
+import { needsContactProfileRefresh } from '../lib/contactIdentity';
 import {
   UserProfile,
   InstagramAccount,
@@ -557,16 +558,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }));
           setContacts(filterOutMockContacts(guestContacts));
 
-          const needsRealProfileRefresh = guestContacts.some((contact) => {
-            const username = String(contact.ig_username || '').trim();
-            return /^\d{8,}$/.test(username) || !contact.avatar_url;
-          });
+          const needsRealProfileRefresh = guestContacts.some(contact => needsContactProfileRefresh(contact));
 
           if (needsRealProfileRefresh && !profileRefreshInFlight) {
-            const missing = guestContacts.filter(contact => {
-              const username = String(contact.ig_username || '').trim();
-              return /^\d{8,}$/.test(username) || !contact.avatar_url;
-            }).map(contact => String(contact.ig_user_id || contact.id || '')).filter(Boolean);
+            const missing = guestContacts.filter(contact => needsContactProfileRefresh(contact))
+              .map(contact => String(contact.ig_user_id || contact.id || '')).filter(Boolean);
             const now = Date.now();
             const due = missing.filter(id => now >= (guestProfileRetryAt.get(id) || 0));
             if (due.length) {
@@ -724,7 +720,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // refresh; retry only unresolved IDs with a bounded per-contact TTL.
         // Do not assume a successful Meta request includes a public profile.
         if (!signedInProfileRefreshInFlight) {
-          const missing = sanitized.filter(c => /^\d{8,}$/.test(String(c.ig_username||'')) || !c.avatar_url)
+          const missing = sanitized.filter(c => needsContactProfileRefresh(c))
             .map(c => String(c.ig_user_id || c.id || '')).filter(Boolean);
           const now = Date.now();
           const due = missing.filter(id => now >= (signedInProfileRetryAt.get(id) || 0));
