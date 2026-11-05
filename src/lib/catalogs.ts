@@ -1,16 +1,16 @@
 import { safeImageUrl } from '../../supabase/functions/instagram-live-webhook/catalogRuntime';
 export { safeImageUrl as safeCatalogUrl };
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { auth, supabase, subscribeToUserCollection } from './supabase';
-export type Catalog = { id:string; name:string; description:string; active:boolean };
-export type CatalogProduct = { id:string; catalog_id?:string; name:string; price:string; description:string; url:string; active:boolean; images?:string[] };
+import { Catalog, CatalogProduct, CatalogSnapshot, defaultCatalog, initialCatalogSnapshot, resolveCatalogs, watchCatalogs } from './catalogState';
+export { defaultCatalog, resolveCatalogs };
+export type { Catalog, CatalogProduct };
 export const CATALOG_BUCKET = 'catalog-images';
-export const defaultCatalog:Catalog = {id:'default',name:'Main Catalog',description:'Your product collection',active:true};
 export function catalogCards(products:CatalogProduct[]) {
  return products.filter(p=>p.active).flatMap(p=>(p.images||[]).map(image=>({image,title:p.name,subtitle:[p.price,p.description].filter(Boolean).join(' · '),url:p.url})));
 }
 export function catalogProblem(catalog:Catalog|undefined, products:CatalogProduct[], ai=false) {
- if(!catalog) return 'This catalog no longer exists.';
+ if(!catalog||catalog.deleted) return 'This catalog no longer exists.';
  if(!catalog.active) return 'Activate this catalog before using it.';
  const active=products.filter(p=>p.active);
  if(!active.length) return 'Add an active product first.';
@@ -19,13 +19,20 @@ export function catalogProblem(catalog:Catalog|undefined, products:CatalogProduc
  if(active.some(p=>(p.images||[]).some(url=>!safeImageUrl(url))||p.url&&!safeImageUrl(p.url))) return 'Use secure HTTPS image and product links.';
  return '';
 }
-export function useCatalogs(workspaceId:string) {
- const [catalogs,setCatalogs]=useState<Catalog[]>([]),[products,setProducts]=useState<CatalogProduct[]>([]);
- useEffect(()=>{setCatalogs([]);setProducts([]);const id=workspaceId||auth.currentUser?.uid;if(!id)return;
-  const a=subscribeToUserCollection<Catalog>(id,'catalogs',setCatalogs),b=subscribeToUserCollection<CatalogProduct>(id,'catalog_products',setProducts);
-  return()=>{a?.();b?.();};
- },[workspaceId]);
- return {catalogs:[catalogs.find(c=>c.id==='default')||defaultCatalog,...catalogs.filter(c=>c.id!=='default')],products};
+export type CatalogData = CatalogSnapshot & {refresh:()=>void};
+export function useCatalogs(workspaceId:string,enabled=true):CatalogData {
+ const scope=workspaceId||auth.currentUser?.uid||'';
+ const [revision,setRevision]=useState(0);
+ const key=enabled?scope+':'+revision:'';
+ const [state,setState]=useState<{key:string;data:CatalogSnapshot}>(()=>({key:'',data:initialCatalogSnapshot()}));
+ const refresh=useCallback(()=>setRevision(value=>value+1),[]);
+ useEffect(()=>{
+  if(!enabled){setState({key:'',data:initialCatalogSnapshot()});return;}
+  setState({key,data:initialCatalogSnapshot()});
+  if(!scope||!auth.currentUser?.uid){setState({key,data:{catalogs:[],products:[],loading:false,error:'Sign in to load your catalogs.'}});return;}
+  return watchCatalogs(scope,subscribeToUserCollection,data=>setState({key,data}));
+ },[scope,enabled,key]);
+ return {...(state.key===key&&enabled?state.data:initialCatalogSnapshot()),refresh};
 }
 export async function uploadCatalogImages(workspaceId:string,catalogId:string,files:File[]) {
  if(files.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024||!file.size)) throw Error('Choose JPG, PNG or WebP images, up to 5 MB each.');

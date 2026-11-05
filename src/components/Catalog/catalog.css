@@ -163,3 +163,15 @@
 }
 @media(max-width:350px){.catalog-page{padding:20px 12px}.catalog-product-grid{grid-template-columns:1fr}.catalog-heading>.catalog-button{padding:10px 8px;font-size:11px!important}.catalog-heading p{max-width:150px}}
 @media(prefers-reduced-motion:reduce){.catalog-page *,.catalog-dialog *{animation:none!important;transition:none!important}}
+
+.catalog-management-actions{display:flex;align-items:center;gap:6px}
+.catalog-delete-button{color:#b24e64;background:#fff7f8;border-color:#f3e1e5;min-height:38px;padding:8px 10px;font-size:11px!important}
+.catalog-delete-button:hover:not(:disabled){background:#fff0f2;border-color:#e8bbc6}
+.catalog-destructive{background:#bf3955;color:#fff}
+.catalog-destructive:hover:not(:disabled){background:#a62c46}
+.catalog-delete-confirm{text-align:center;padding:6px 6px 12px}
+.catalog-delete-symbol{display:flex;align-items:center;justify-content:center;width:60px;height:60px;margin:0 auto 18px;border-radius:18px;background:#fff0f3;color:#bd4560}
+.catalog-delete-confirm h3{font-size:20px;font-weight:700;overflow-wrap:anywhere;margin:0 0 12px}
+.catalog-delete-confirm p{font-size:14px;color:#7e8292;margin:10px 0;line-height:1.7}
+.catalog-delete-confirm .catalog-alert{margin-top:18px;text-align:left}
+@media(max-width:600px){.catalog-management-actions{gap:2px}.catalog-delete-button{min-height:40px;padding:8px;font-size:10px!important}.catalog-products-title h2{font-size:17px}.catalog-delete-confirm h3{font-size:18px}}
