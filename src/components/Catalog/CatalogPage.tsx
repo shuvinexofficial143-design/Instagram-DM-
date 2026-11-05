@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronRight, Eye, ImageIcon, Package, Plus, Search, Settings2, Sparkles, X } from 'lucide-react';
+import { Check, CheckCircle2, ChevronRight, Eye, ImageIcon, Package, Plus, Search, Settings2, Sparkles, Trash2, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { auth, removeUserDocument, saveUserDocument, subscribeToUserCollection } from '../../lib/supabase';
-import { Catalog, CatalogProduct, catalogProblem, defaultCatalog, safeCatalogUrl } from '../../lib/catalogs';
+import { Catalog, CatalogProduct, catalogProblem, resolveCatalogs, safeCatalogUrl } from '../../lib/catalogs';
 import { CatalogPreview } from './CatalogPicker';
 import { CatalogDialog } from './CatalogDialog';
 import { CatalogEditor, ProductEditor } from './CatalogEditors';
+import { CatalogDeleteDialog } from './CatalogDeleteDialog';
+import { deleteCatalogRecords } from '../../lib/catalogManagement';
 import './catalog.css';
 
-type Panel = { type: 'new' | 'settings' | 'preview' } | { type: 'product'; product?: CatalogProduct };
+type Panel = { type: 'new' | 'settings' | 'preview' | 'delete' } | { type: 'product'; product?: CatalogProduct };
 type Filter = 'all' | 'active' | 'hidden';
 const DEFAULT_ID = 'default';
 
@@ -53,9 +55,9 @@ export const CatalogPage: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  const allCatalogs = useMemo(() => [catalogs.find(c => c.id === DEFAULT_ID) || defaultCatalog, ...catalogs.filter(c => c.id !== DEFAULT_ID)], [catalogs]);
+  const allCatalogs = useMemo(() => resolveCatalogs(catalogs), [catalogs]);
   const current = allCatalogs.find(c => c.id === selected) || allCatalogs[0];
-  const visible = products.filter(p => (p.catalog_id || DEFAULT_ID) === current.id);
+  const visible = current ? products.filter(p => (p.catalog_id || DEFAULT_ID) === current.id) : [];
   const activeCount = visible.filter(p => p.active).length;
   const photoCount = visible.filter(p => p.active).reduce((count, p) => count + (p.images?.length || 0), 0);
   const problem = catalogProblem(current, visible, true);
@@ -66,7 +68,7 @@ export const CatalogPage: React.FC = () => {
     const row = collectionRow.current;
     const card = row?.querySelector<HTMLElement>('[aria-current="true"]');
     if (row && card) row.scrollTo({ left: Math.max(0, card.offsetLeft - row.offsetLeft - 2), behavior: 'auto' });
-  }, [current.id, loaded, allCatalogs.length]);
+  }, [current?.id, loaded, allCatalogs.length]);
   const chooseCatalog = (id: string) => { setSelected(id); setQuery(''); setFilter('all'); };
 
   const saveCatalog = async (catalog: Catalog) => {
@@ -95,17 +97,17 @@ export const CatalogPage: React.FC = () => {
     setProducts(previous => previous.filter(p => p.id !== product.id)); setPanel(null); setNotice('Product deleted');
   };
   const deleteCatalog = async () => {
-    if (!scope || current.id === DEFAULT_ID) throw Error('The main catalog cannot be deleted.');
-    // Keep the catalog available if any product removal fails, so the owner can retry.
-    for (const product of visible) await removeUserDocument(scope, 'catalog_products', product.id);
-    await removeUserDocument(scope, 'catalogs', current.id);
+    if (!current) return;
+    const removedId=current.id;
+    const marker=await deleteCatalogRecords(scope,current,products,{remove:removeUserDocument,save:saveUserDocument});
     if (currentScope.current !== scope) return;
-    setProducts(previous => previous.filter(p => (p.catalog_id || DEFAULT_ID) !== current.id));
-    setCatalogs(previous => previous.filter(c => c.id !== current.id)); chooseCatalog(DEFAULT_ID);
+    setProducts(previous => previous.filter(p => (p.catalog_id || DEFAULT_ID) !== removedId));
+    setCatalogs(previous => [...previous.filter(c => c.id !== removedId),...(marker?[marker]:[])]);
+    chooseCatalog(allCatalogs.find(c=>c.id!==removedId)?.id||'');
     setPanel(null); setNotice('Catalog deleted');
   };
   const useInAi = () => {
-    if (problem || !ready) return;
+    if (!current || problem || !ready) return;
     sessionStorage.setItem('autoreply:prefill-catalog', current.id);
     sessionStorage.setItem('autoreply:prefill-ai-prompt', 'Help customers choose products from the selected catalog. Use its current saved product details for prices, descriptions and links. Never invent price, stock or variants. Send only requested product photos. Ask a short clarifying question if a customer image does not clearly identify one product.');
     setActiveTab('automations'); setIsBuilderOpen(true);
@@ -128,9 +130,9 @@ export const CatalogPage: React.FC = () => {
           <div className="catalog-collection-bottom"><span>{items.length} product{items.length === 1 ? '' : 's'}{!c.active && ' · Paused'}</span><span className="catalog-photo-stack" aria-hidden="true">{photos.map((url, i) => <img key={i} src={url} alt="" loading="lazy" />)}</span></div>
         </button>;
       })}</nav>
-      <section className="catalog-products" aria-label={`Products in ${current.name}`}>
+      {current ? <section className="catalog-products" aria-label={`Products in ${current.name}`}>
         <div className="catalog-products-heading">
-          <div className="catalog-products-title"><h2>Products <span>{visible.length}</span></h2><button className="catalog-icon-button" aria-label="Catalog settings" title="Catalog settings" disabled={!ready} onClick={() => setPanel({ type: 'settings' })}><Settings2 size={18} /></button></div>
+          <div className="catalog-products-title"><h2>Products <span>{visible.length}</span></h2><div className="catalog-management-actions"><button className="catalog-icon-button" aria-label="Catalog settings" title="Catalog settings" disabled={!ready} onClick={() => setPanel({ type: 'settings' })}><Settings2 size={18} /></button><button className="catalog-button catalog-delete-button" disabled={!ready} onClick={() => setPanel({type:'delete'})}><Trash2 size={15}/>Delete catalog</button></div></div>
           <div className="catalog-product-actions"><button className="catalog-button catalog-secondary" disabled={!ready || !photoCount} onClick={() => setPanel({ type: 'preview' })}><Eye size={17} />Preview</button><button className="catalog-button catalog-primary" disabled={!ready} onClick={() => setPanel({ type: 'product' })}><Plus size={18} />Add product</button></div>
         </div>
         {visible.length > 0 && <div className="catalog-toolbar">
@@ -149,12 +151,13 @@ export const CatalogPage: React.FC = () => {
           </button><button className="catalog-product-edit" disabled={!ready} onClick={() => setPanel({ type: 'product', product })}>Edit product<ChevronRight size={15} /></button>
         </article>)}</div>}
         {visible.length > 0 && <div className="catalog-ai-bar"><span className="catalog-ai-icon"><Sparkles size={20} /></span><div><strong>{!current.active ? 'This catalog is paused' : problem ? 'Your catalog needs attention' : 'Ready for your AI assistant'}</strong><p>{problem || `${activeCount} active product${activeCount === 1 ? '' : 's'} · Current prices, details and photos`}</p></div><button className="catalog-button catalog-secondary" disabled={!ready || !!problem} title={problem || 'Set up an AI reply with this catalog'} onClick={useInAi}><Sparkles size={16} />Use in AI<ChevronRight size={15} /></button></div>}
-      </section>
+      </section> : <section className="catalog-products catalog-empty"><span className="catalog-collection-icon"><Package size={22}/></span><h3>No catalogs yet</h3><p>Create a collection to start adding your products.</p><button className="catalog-button catalog-primary" disabled={!ready} onClick={()=>setPanel({type:'new'})}><Plus size={18}/>Create catalog</button></section>}
       <details className="catalog-help"><summary>How catalogs work</summary><p>Add products here, then select this catalog in a DM reply or AI automation. AI uses your saved details. Photo replies appear as swipeable cards, with up to 10 photos per message.</p></details>
     </>}
+    {current && panel?.type === 'delete' && <CatalogDeleteDialog name={current.name} productCount={visible.length} onClose={()=>setPanel(null)} onDelete={deleteCatalog}/>}
     {panel?.type === 'new' && <CatalogEditor key={scope + ':new'} onClose={() => setPanel(null)} onSave={saveCatalog} />}
-    {panel?.type === 'settings' && <CatalogEditor key={scope + current.id} catalog={current} productCount={visible.length} onClose={() => setPanel(null)} onSave={saveCatalog} onDelete={current.id !== DEFAULT_ID ? deleteCatalog : undefined} />}
-    {panel?.type === 'product' && <ProductEditor key={scope + ':' + (panel.product?.id || 'new')} workspaceId={scope} catalog={current} product={panel.product} onClose={() => setPanel(null)} onSave={saveProduct} onDelete={deleteProduct} />}
-    {panel?.type === 'preview' && <CatalogDialog title="Customer preview" subtitle={current.name} onClose={() => setPanel(null)}><div className="catalog-preview-content"><CatalogPreview products={visible} /></div></CatalogDialog>}
+    {current && panel?.type === 'settings' && <CatalogEditor key={scope + current.id} catalog={current} productCount={visible.length} onClose={() => setPanel(null)} onSave={saveCatalog} onDelete={()=>setPanel({type:'delete'})} />}
+    {current && panel?.type === 'product' && <ProductEditor key={scope + ':' + (panel.product?.id || 'new')} workspaceId={scope} catalog={current} product={panel.product} onClose={() => setPanel(null)} onSave={saveProduct} onDelete={deleteProduct} />}
+    {current && panel?.type === 'preview' && <CatalogDialog title="Customer preview" subtitle={current.name} onClose={() => setPanel(null)}><div className="catalog-preview-content"><CatalogPreview products={visible} /></div></CatalogDialog>}
   </div></div>;
 };

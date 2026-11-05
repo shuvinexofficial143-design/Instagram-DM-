@@ -45,7 +45,7 @@ export function ProductEditor({ workspaceId, catalog, product, onClose, onSave, 
 }
 
 export function CatalogEditor({ catalog, productCount = 0, onClose, onSave, onDelete }: {
-  catalog?: Catalog; productCount?: number; onClose: () => void; onSave: (c: Catalog) => Promise<void>; onDelete?: () => Promise<void>;
+  catalog?: Catalog; productCount?: number; onClose: () => void; onSave: (c: Catalog) => Promise<void>; onDelete?: () => void;
 }) {
   const [initial] = useState<Catalog>(() => catalog ? { ...catalog } : { id: recordId('catalog'), name: '', description: '', active: true });
   const [draft, setDraft] = useState(initial), [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -66,7 +66,7 @@ export function CatalogEditor({ catalog, productCount = 0, onClose, onSave, onDe
         <label>Description {optional}<textarea maxLength={500} rows={2} value={draft.description} onChange={e => setDraft(p => ({ ...p, description: e.target.value }))} placeholder="What belongs in this collection?" /></label>
         <label className="catalog-toggle-row"><span><strong>Active catalog</strong><span>Available for your automations</span></span><input type="checkbox" role="switch" checked={draft.active} onChange={e => setDraft(p => ({ ...p, active: e.target.checked }))} /></label>
       </fieldset>
-      {onDelete && <div className="catalog-delete-section"><div><strong>Delete catalog</strong><p>Removes this catalog and {productCount} product{productCount === 1 ? '' : 's'}.</p></div><button type="button" className="catalog-icon-button catalog-danger" aria-label="Delete catalog" disabled={busy} onClick={() => { if (window.confirm(`Delete “${catalog?.name}” and its ${productCount} products? This cannot be undone.`)) void run(onDelete); }}><Trash2 size={18} /></button></div>}
+      {onDelete && <div className="catalog-delete-section"><div><strong>Delete catalog</strong><p>Removes this catalog and {productCount} product{productCount === 1 ? '' : 's'}.</p></div><button type="button" className="catalog-icon-button catalog-danger" aria-label="Delete catalog" disabled={busy} onClick={onDelete}><Trash2 size={18} /></button></div>}
     </form>
   </CatalogDialog>;
 }
