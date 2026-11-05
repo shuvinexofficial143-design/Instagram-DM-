@@ -1,69 +1,160 @@
-import { mergeCatalogProducts } from '../../lib/catalogDrafts';
-import React,{useEffect,useMemo,useState,useRef}from'react';
-import{CheckCircle2,ChevronRight,FolderPlus,Package,Plus,Save,Sparkles,Trash2,X}from'lucide-react';
-import{useApp}from'../../context/AppContext';
-import{auth,removeUserDocument,saveUserDocument,subscribeToUserCollection}from'../../lib/supabase';
-
-import { ProductImages } from './ProductImages';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, CheckCircle2, ChevronRight, Eye, ImageIcon, Package, Plus, Search, Settings2, Sparkles, X } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
+import { auth, removeUserDocument, saveUserDocument, subscribeToUserCollection } from '../../lib/supabase';
+import { Catalog, CatalogProduct, catalogProblem, defaultCatalog, safeCatalogUrl } from '../../lib/catalogs';
 import { CatalogPreview } from './CatalogPicker';
-import { catalogProblem, safeCatalogUrl } from '../../lib/catalogs';
+import { CatalogDialog } from './CatalogDialog';
+import { CatalogEditor, ProductEditor } from './CatalogEditors';
+import './catalog.css';
 
-type Catalog={id:string;name:string;description:string;active:boolean;updated_at?:string};
-type Product={images?:string[];id:string;catalog_id?:string;name:string;price:string;description:string;url:string;active:boolean;updated_at?:string};
-const DEFAULT_ID='default';
+type Panel = { type: 'new' | 'settings' | 'preview' } | { type: 'product'; product?: CatalogProduct };
+type Filter = 'all' | 'active' | 'hidden';
+const DEFAULT_ID = 'default';
 
-export const CatalogPage:React.FC=()=>{
- const{setActiveTab,setIsBuilderOpen,workspaceId}=useApp();
- const[catalogs,setCatalogs]=useState<Catalog[]>([]);
- const[products,setProducts]=useState<Product[]>([]);
- const[selected,setSelected]=useState(DEFAULT_ID);
- const[newCatalog,setNewCatalog]=useState(false);
- const[catalogName,setCatalogName]=useState('');
- const[catalogDesc,setCatalogDesc]=useState('');
- const[draft,setDraft]=useState<Omit<Product,'id'>>({catalog_id:DEFAULT_ID,name:'',price:'',description:'',url:'',active:true});
- const[saving,setSaving]=useState(false);
- const[uploading,setUploading]=useState(false),[error,setError]=useState('');
- const uploadKeys=useRef(new Set<string>());const uploadBusy=(key:string,busy:boolean)=>{busy?uploadKeys.current.add(key):uploadKeys.current.delete(key);setUploading(uploadKeys.current.size>0);};
- const productEdits=useRef(new Map<string,number>());const currentScope=useRef('');currentScope.current=workspaceId||auth.currentUser?.uid||'';
- const editProduct=(id:string,updates:Partial<Product>)=>{productEdits.current.set(id,(productEdits.current.get(id)||0)+1);setProducts(previous=>previous.map(p=>p.id===id?{...p,...updates}:p));};
- const run=async(action:()=>Promise<void>)=>{const scope=currentScope.current;setError('');try{await action();}catch(e){if(currentScope.current===scope)setError(e instanceof Error?e.message:'Could not save. Please retry.');}};
+export const CatalogPage: React.FC = () => {
+  const { setActiveTab, setIsBuilderOpen, workspaceId } = useApp();
+  const scope = workspaceId || auth.currentUser?.uid || '';
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
+  const collectionRow = useRef<HTMLElement>(null);
+  const [catalogs, setCatalogs] = useState<Catalog[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [selected, setSelected] = useState(DEFAULT_ID);
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [retry, setRetry] = useState(0);
 
- useEffect(()=>{productEdits.current.clear();uploadKeys.current.clear();setUploading(false);setCatalogs([]);setProducts([]);setSelected(DEFAULT_ID);setDraft({catalog_id:DEFAULT_ID,name:'',price:'',description:'',url:'',active:true});const uid=workspaceId||auth.currentUser?.uid;if(!uid)return;const a=subscribeToUserCollection<Catalog>(uid,'catalogs',setCatalogs);const b=subscribeToUserCollection<Product>(uid,'catalog_products',saved=>setProducts(previous=>mergeCatalogProducts(saved,previous,productEdits.current)));return()=>{a?.();b?.()}},[workspaceId]);
- const allCatalogs=useMemo(()=>[catalogs.find(c=>c.id===DEFAULT_ID)||{id:DEFAULT_ID,name:'Main Catalog',description:'Your default product collection',active:true} as Catalog,...catalogs.filter(x=>x.id!==DEFAULT_ID)],[catalogs]);
- const current=allCatalogs.find(x=>x.id===selected)||allCatalogs[0];
- const visible=products.filter(p=>(p.catalog_id||DEFAULT_ID)===selected);
+  useEffect(() => {
+    setCatalogs([]); setProducts([]); setSelected(DEFAULT_ID); setPanel(null);
+    setLoaded(false); setError(''); setNotice(''); setQuery(''); setFilter('all');
+    if (!scope) { setError('Sign in to load your catalogs.'); return; }
+    let alive = true;
+    let catalogsReady = false, productsReady = false;
+    const failed = (e: Error) => { if (alive) setError(e.message || 'Could not load catalogs. Please retry.'); };
+    const a = subscribeToUserCollection<Catalog>(scope, 'catalogs', saved => {
+      if (!alive) return;
+      setCatalogs(saved); catalogsReady = true; setLoaded(productsReady);
+    }, failed);
+    const b = subscribeToUserCollection<CatalogProduct>(scope, 'catalog_products', saved => {
+      if (!alive) return;
+      setProducts(saved); productsReady = true; setLoaded(catalogsReady);
+    }, failed);
+    return () => { alive = false; a?.(); b?.(); };
+  }, [scope, retry]);
 
- const createCatalog=async()=>{const uid=workspaceId||auth.currentUser?.uid;const name=catalogName.trim();if(!uid||!name)return;const item={id:'catalog_'+Date.now(),name,description:catalogDesc.trim(),active:true,updated_at:new Date().toISOString()};await saveUserDocument(uid,'catalogs',item);if(currentScope.current!==uid)return;setSelected(item.id);setDraft(p=>({...p,catalog_id:item.id}));setCatalogName('');setCatalogDesc('');setNewCatalog(false)};
- const addProduct=async()=>{const uid=workspaceId||auth.currentUser?.uid;if(!uid||!draft.name.trim())return;if(draft.url&&!safeCatalogUrl(draft.url))throw Error('Use an HTTPS product link.');setSaving(true);try{await saveUserDocument(uid,'catalog_products',{id:'product_'+Date.now(),...draft,catalog_id:selected,name:draft.name.trim(),updated_at:new Date().toISOString()});if(currentScope.current!==uid)return;setDraft({catalog_id:selected,name:'',price:'',description:'',url:'',active:true})}finally{setSaving(false)}};
- const saveProduct=async(p:Product)=>{if(!p.name.trim())throw Error('Active products need a name.');if(p.url&&!safeCatalogUrl(p.url))throw Error('Use an HTTPS product link.');const uid=workspaceId||auth.currentUser?.uid,version=productEdits.current.get(p.id);if(uid){await saveUserDocument(uid,'catalog_products',{...p,catalog_id:p.catalog_id||DEFAULT_ID,updated_at:new Date().toISOString()});if(currentScope.current===uid&&productEdits.current.get(p.id)===version)productEdits.current.delete(p.id);}};
- const removeProduct=async(p:Product)=>{const uid=workspaceId||auth.currentUser?.uid;if(uid&&window.confirm('Delete '+p.name+'?'))await removeUserDocument(uid,'catalog_products',p.id)};
- const deleteCatalog=async()=>{const uid=workspaceId||auth.currentUser?.uid;if(!uid||selected===DEFAULT_ID)return;if(!window.confirm('Delete this catalog? Products inside it will also be deleted.'))return;for(const p of visible)await removeUserDocument(uid,'catalog_products',p.id);await removeUserDocument(uid,'catalogs',selected);if(currentScope.current!==uid)return;setSelected(DEFAULT_ID);setDraft(d=>({...d,catalog_id:DEFAULT_ID}))};
- const useInAi=()=>{sessionStorage.setItem('autoreply:prefill-catalog',selected);sessionStorage.setItem('autoreply:prefill-ai-prompt','Help customers choose products from the selected catalog. Use its current saved product details for prices, descriptions and links. Never invent price, stock or variants. Send only requested product photos. Ask a short clarifying question if a customer image does not clearly identify one product.');setActiveTab('automations');setIsBuilderOpen(true)};
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(''), 4500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
- return <div className="min-h-full bg-[#F7FAFF] px-4 py-6 sm:px-6 lg:px-8"><div className="mx-auto max-w-6xl space-y-6">
-  <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-indigo-600">Instagram product catalogs</p><h1 className="mt-1 text-2xl font-bold text-slate-950 sm:text-3xl">Catalogs</h1><p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Create separate catalogs for different businesses, categories or campaigns. Upload product photos and details, then share swipeable catalogs through DM Reply or AI DM Conversation. AI uses current product details and sends selected photos. Large catalogs are split into pages of up to 10 photos.</p></div><button disabled={uploading||saving} onClick={()=>setNewCatalog(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white"><FolderPlus className="h-4 w-4"/>New catalog</button></header>
+  const allCatalogs = useMemo(() => [catalogs.find(c => c.id === DEFAULT_ID) || defaultCatalog, ...catalogs.filter(c => c.id !== DEFAULT_ID)], [catalogs]);
+  const current = allCatalogs.find(c => c.id === selected) || allCatalogs[0];
+  const visible = products.filter(p => (p.catalog_id || DEFAULT_ID) === current.id);
+  const activeCount = visible.filter(p => p.active).length;
+  const photoCount = visible.filter(p => p.active).reduce((count, p) => count + (p.images?.length || 0), 0);
+  const problem = catalogProblem(current, visible, true);
+  const search = query.trim().toLocaleLowerCase();
+  const results = visible.filter(p => (!search || [p.name, p.description, p.price].some(v => (v || '').toLocaleLowerCase().includes(search))) && (filter === 'all' || (filter === 'active' ? p.active : !p.active)));
+  const ready = loaded && !error;
+  useEffect(() => {
+    const row = collectionRow.current;
+    const card = row?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (row && card) row.scrollTo({ left: Math.max(0, card.offsetLeft - row.offsetLeft - 2), behavior: 'auto' });
+  }, [current.id, loaded, allCatalogs.length]);
+  const chooseCatalog = (id: string) => { setSelected(id); setQuery(''); setFilter('all'); };
 
-  {error&&<p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-600">{error}</p>}
-  <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{allCatalogs.map(c=>{const count=products.filter(p=>(p.catalog_id||DEFAULT_ID)===c.id).length;const on=selected===c.id;return <button key={c.id} disabled={uploading||saving} onClick={()=>{setSelected(c.id);setDraft({catalog_id:c.id,name:'',price:'',description:'',url:'',active:true,images:[]})}} className={`rounded-2xl border p-4 text-left transition ${on?'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-100':'border-slate-200 bg-white hover:border-indigo-200'}`}><div className="flex items-start justify-between"><span className={`flex h-10 w-10 items-center justify-center rounded-xl ${on?'bg-indigo-600 text-white':'bg-slate-50 text-slate-500'}`}><Package className="h-5 w-5"/></span><ChevronRight className="h-4 w-4 text-slate-300"/></div><h3 className="mt-3 text-sm font-bold text-slate-900">{c.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{c.description||'Product collection'}</p><p className="mt-3 text-xs font-bold text-indigo-600">{count} product{count===1?'':'s'}</p></button>})}</section>
+  const saveCatalog = async (catalog: Catalog) => {
+    if (!scope) throw Error('Sign in to save a catalog.');
+    await saveUserDocument(scope, 'catalogs', { ...catalog, updated_at: new Date().toISOString() });
+    if (currentScope.current !== scope) return;
+    setCatalogs(previous => [...previous.filter(c => c.id !== catalog.id), catalog]);
+    chooseCatalog(catalog.id); setPanel(null); setNotice(panel?.type === 'new' ? 'Catalog created' : 'Catalog updated');
+  };
+  const saveProduct = async (product: CatalogProduct) => {
+    if (!scope) throw Error('Sign in to save a product.');
+    if (!product.name.trim()) throw Error('Enter a product name.');
+    if (product.url && !safeCatalogUrl(product.url)) throw Error('Use a secure HTTPS product link.');
+    const catalogId = product.catalog_id || DEFAULT_ID;
+    if (!allCatalogs.some(c => c.id === catalogId)) throw Error('This catalog was removed. Close this form and choose another catalog.');
+    const saved = { ...product, name: product.name.trim(), catalog_id: catalogId, updated_at: new Date().toISOString() };
+    await saveUserDocument(scope, 'catalog_products', saved);
+    if (currentScope.current !== scope) return;
+    setProducts(previous => previous.some(p => p.id === saved.id) ? previous.map(p => p.id === saved.id ? saved : p) : [...previous, saved]);
+    setPanel(null); setNotice(panel?.type === 'product' && panel.product ? 'Product updated' : 'Product added');
+  };
+  const deleteProduct = async (product: CatalogProduct) => {
+    if (!scope) throw Error('Sign in to delete a product.');
+    await removeUserDocument(scope, 'catalog_products', product.id);
+    if (currentScope.current !== scope) return;
+    setProducts(previous => previous.filter(p => p.id !== product.id)); setPanel(null); setNotice('Product deleted');
+  };
+  const deleteCatalog = async () => {
+    if (!scope || current.id === DEFAULT_ID) throw Error('The main catalog cannot be deleted.');
+    // Keep the catalog available if any product removal fails, so the owner can retry.
+    for (const product of visible) await removeUserDocument(scope, 'catalog_products', product.id);
+    await removeUserDocument(scope, 'catalogs', current.id);
+    if (currentScope.current !== scope) return;
+    setProducts(previous => previous.filter(p => (p.catalog_id || DEFAULT_ID) !== current.id));
+    setCatalogs(previous => previous.filter(c => c.id !== current.id)); chooseCatalog(DEFAULT_ID);
+    setPanel(null); setNotice('Catalog deleted');
+  };
+  const useInAi = () => {
+    if (problem || !ready) return;
+    sessionStorage.setItem('autoreply:prefill-catalog', current.id);
+    sessionStorage.setItem('autoreply:prefill-ai-prompt', 'Help customers choose products from the selected catalog. Use its current saved product details for prices, descriptions and links. Never invent price, stock or variants. Send only requested product photos. Ask a short clarifying question if a customer image does not clearly identify one product.');
+    setActiveTab('automations'); setIsBuilderOpen(true);
+  };
 
-  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Selected catalog</p><h2 className="mt-1 text-lg font-bold text-slate-950">{current.name}</h2><p className="mt-1 text-xs text-slate-500">Products below are only part of this catalog.</p></div><div className="flex gap-2">{selected!==DEFAULT_ID&&<button onClick={()=>void run(deleteCatalog)} className="h-10 rounded-xl border border-rose-200 px-3 text-xs font-bold text-rose-600">Delete catalog</button>}<button disabled={Boolean(catalogProblem(current,visible,true))} onClick={useInAi} className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-xs font-bold text-white disabled:opacity-40"><Sparkles className="h-4 w-4"/>Use in AI</button></div></div></section>
-
-  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="grid gap-3 sm:grid-cols-[1fr_auto]"><label className="text-xs font-semibold text-slate-700">Catalog name<input key={current.id+current.name} defaultValue={current.name} maxLength={80} onBlur={e=>{const name=e.target.value.trim();if(name&&name!==current.name)void run(()=>saveUserDocument(workspaceId,'catalogs',{...current,name,updated_at:new Date().toISOString()}));}} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label><label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={current.active} onChange={e=>void run(()=>saveUserDocument(workspaceId,'catalogs',{...current,active:e.target.checked,updated_at:new Date().toISOString()}))}/>Active catalog</label></div><p className="mt-3 text-xs text-slate-500">Each photo becomes one swipeable card. Photos are optional for AI product knowledge. AI can send specific photos or catalog pages; each message has up to 10 cards. Card titles and descriptions show up to 80 characters.</p>{catalogProblem(current,visible,true)?<p className="mt-3 text-xs text-amber-700">{catalogProblem(current,visible,true)}</p>:<div className="mt-5"><CatalogPreview products={visible}/></div>}</section>
-  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-    <h2 className="text-lg font-semibold text-slate-900">Add a product</h2>
-    <p className="mt-1 text-sm text-slate-500">Add approved details to {current.name}. Leave price blank when you do not want AI to quote it.</p>
-    <ProductImages key={workspaceId+selected} workspaceId={workspaceId} catalogId={selected} images={draft.images||[]} onChange={images=>setDraft(p=>({...p,images}))} onBusy={busy=>uploadBusy('draft',busy)}/>
-    <div className="mt-4 grid gap-4 md:grid-cols-2">
-      <label className="text-sm font-medium text-slate-700">Product name<input maxLength={150} value={draft.name} onChange={e=>setDraft(p=>({...p,name:e.target.value}))} placeholder="Example: Heart photo frame" className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
-      <label className="text-sm font-medium text-slate-700">Price <span className="font-normal text-slate-500">(optional)</span><input maxLength={200} value={draft.price} onChange={e=>setDraft(p=>({...p,price:e.target.value}))} placeholder="Example: ₹399" className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
-      <label className="text-sm font-medium text-slate-700 md:col-span-2">Description & variants<textarea maxLength={4000} value={draft.description} onChange={e=>setDraft(p=>({...p,description:e.target.value}))} placeholder="Available shapes, customization and confirmed stock information" rows={3} className="mt-2 w-full rounded-xl border border-slate-200 p-3 text-sm"/></label>
-      <label className="text-sm font-medium text-slate-700">Product link <span className="font-normal text-slate-500">(optional)</span><input value={draft.url} onChange={e=>setDraft(p=>({...p,url:e.target.value}))} placeholder="https://your-store.com/product" className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
-      <button onClick={()=>void run(addProduct)} disabled={saving||uploading||!draft.name.trim()} className="inline-flex h-11 items-center justify-center gap-2 self-end rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4"/>{saving?'Saving…':'Add product'}</button>
-    </div>
-  </section>
-
-  <section className="grid gap-4 md:grid-cols-2">{visible.length?visible.map(item=><article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><Package className="h-4 w-4"/></span><label className="flex items-center gap-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={item.active} onChange={e=>editProduct(item.id,{active:e.target.checked})}/>Active</label></div><ProductImages key={workspaceId+item.id} workspaceId={workspaceId} catalogId={selected} images={item.images||[]} onChange={images=>setProducts(prev=>prev.map(p=>p.id===item.id?{...p,images}:p))} onBusy={busy=>uploadBusy(item.id,busy)}/><input aria-label="Product name" maxLength={150} value={item.name} onChange={e=>editProduct(item.id,{name:e.target.value})} className="mt-4 w-full text-base font-bold text-slate-900 outline-none"/><input aria-label="Product price" maxLength={200} value={item.price} onChange={e=>editProduct(item.id,{price:e.target.value})} placeholder="Price" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/><textarea aria-label="Product description" maxLength={4000} value={item.description} onChange={e=>editProduct(item.id,{description:e.target.value})} rows={3} className="mt-2 w-full rounded-lg border border-slate-200 p-3 text-sm"/><input aria-label="Product link" value={item.url} onChange={e=>editProduct(item.id,{url:e.target.value})} placeholder="Product URL" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/><div className="mt-4 flex gap-2"><button disabled={uploading} onClick={()=>void run(()=>saveProduct(item))} className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-xs font-bold text-white"><Save className="h-4 w-4"/>Save</button><button aria-label={'Delete '+item.name} onClick={()=>void run(()=>removeProduct(item))} className="flex h-10 w-10 items-center justify-center rounded-xl border border-rose-200 text-rose-600"><Trash2 className="h-4 w-4"/></button></div></article>):<div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500 md:col-span-2">No products yet. Add your first product above, then use this catalog in your AI setup.</div>}</section>
-
-  {newCatalog&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">New collection</p><h3 className="mt-1 text-lg font-bold text-slate-950">Create catalog</h3></div><button aria-label="Close new catalog" onClick={()=>setNewCatalog(false)} className="rounded-lg border border-slate-200 p-2 text-slate-500"><X className="h-4 w-4"/></button></div><input autoFocus value={catalogName} onChange={e=>setCatalogName(e.target.value)} placeholder="Catalog name" className="mt-4 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/><textarea value={catalogDesc} onChange={e=>setCatalogDesc(e.target.value)} placeholder="What is this catalog for?" rows={3} className="mt-3 w-full rounded-xl border border-slate-200 p-3 text-sm"/><button onClick={()=>void run(createCatalog)} disabled={!catalogName.trim()} className="mt-4 h-11 w-full rounded-xl bg-indigo-600 text-xs font-bold text-white disabled:opacity-50">Create catalog</button></div></div>}
- </div></div>
+  return <div className="catalog-page"><div className="catalog-container">
+    <header className="catalog-heading">
+      <div><span className="catalog-eyebrow"><Package size={15} />PRODUCT LIBRARY</span><h1>Catalogs</h1><p>Your products, ready for every conversation.</p></div>
+      <button className="catalog-button catalog-primary" disabled={!ready} onClick={() => setPanel({ type: 'new' })}><Plus size={18} /><span>New catalog</span></button>
+    </header>
+    {error && <div role="alert" className="catalog-alert"><span>{error}</span><button onClick={() => setRetry(n => n + 1)}>Retry</button></div>}
+    <div role="status" aria-live="polite" className={notice ? 'catalog-toast' : 'catalog-sr-only'}>{notice && <><CheckCircle2 size={18} />{notice}</>}</div>
+    {!loaded && !error ? <div className="catalog-loading" role="status"><span className="catalog-sr-only">Loading catalogs</span><div /><div /><div /></div> : <>
+      <nav ref={collectionRow} className="catalog-collections" aria-label="Your catalogs">{allCatalogs.map(c => {
+        const items = products.filter(p => (p.catalog_id || DEFAULT_ID) === c.id);
+        const photos = items.flatMap(p => p.images || []).slice(0, 3);
+        return <button key={c.id} className={`catalog-collection ${current.id === c.id ? 'is-selected' : ''}`} aria-current={current.id === c.id ? 'true' : undefined} disabled={!ready} onClick={() => chooseCatalog(c.id)}>
+          <div className="catalog-collection-top"><span className="catalog-collection-icon"><Package size={20} /></span>{current.id === c.id ? <span className="catalog-selection"><Check size={13} />Selected</span> : <ChevronRight size={17} className="catalog-muted" />}</div>
+          <strong title={c.name}>{c.name}</strong>
+          <div className="catalog-collection-bottom"><span>{items.length} product{items.length === 1 ? '' : 's'}{!c.active && ' · Paused'}</span><span className="catalog-photo-stack" aria-hidden="true">{photos.map((url, i) => <img key={i} src={url} alt="" loading="lazy" />)}</span></div>
+        </button>;
+      })}</nav>
+      <section className="catalog-products" aria-label={`Products in ${current.name}`}>
+        <div className="catalog-products-heading">
+          <div className="catalog-products-title"><h2>Products <span>{visible.length}</span></h2><button className="catalog-icon-button" aria-label="Catalog settings" title="Catalog settings" disabled={!ready} onClick={() => setPanel({ type: 'settings' })}><Settings2 size={18} /></button></div>
+          <div className="catalog-product-actions"><button className="catalog-button catalog-secondary" disabled={!ready || !photoCount} onClick={() => setPanel({ type: 'preview' })}><Eye size={17} />Preview</button><button className="catalog-button catalog-primary" disabled={!ready} onClick={() => setPanel({ type: 'product' })}><Plus size={18} />Add product</button></div>
+        </div>
+        {visible.length > 0 && <div className="catalog-toolbar">
+          <div className="catalog-search"><Search size={18} /><input aria-label="Search products" placeholder="Search products…" value={query} onChange={e => setQuery(e.target.value)} />{query && <button className="catalog-icon-button" aria-label="Clear search" onClick={() => setQuery('')}><X size={16} /></button>}</div>
+          <div className="catalog-filters" role="group" aria-label="Filter products">{(['all', 'active', 'hidden'] as Filter[]).map(value => <button key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value === 'all' ? 'All' : value === 'active' ? 'Active' : 'Hidden'}<span>{value === 'all' ? visible.length : value === 'active' ? activeCount : visible.length - activeCount}</span></button>)}</div>
+        </div>}
+        {visible.length === 0 ? <div className="catalog-empty">
+          <div className="catalog-empty-visual" aria-hidden="true"><span /><span /><span><ImageIcon size={32} /><i><Plus size={14} /></i></span></div>
+          <h3>Your first product starts here</h3><p>Add a photo and a few details.<br />Bring your collection to life in Instagram DMs.</p>
+          <button className="catalog-button catalog-primary" disabled={!ready} onClick={() => setPanel({ type: 'product' })}><Plus size={18} />Add your first product</button>
+          <span className="catalog-empty-note">Photos optional · Add more details anytime</span>
+        </div> : results.length === 0 ? <div className="catalog-no-results"><Search size={28} /><h3>No matching products</h3><p>Try another search or filter.</p><button className="catalog-button catalog-secondary" onClick={() => { setQuery(''); setFilter('all'); }}>Show all products</button></div> : <div className="catalog-product-grid">{results.map(product => <article key={product.id} className="catalog-product-card">
+          <button className="catalog-product-open" disabled={!ready} onClick={() => setPanel({ type: 'product', product })} aria-label={`Edit ${product.name}`}>
+            <div className="catalog-product-photo">{product.images?.[0] ? <img src={product.images[0]} alt={product.name} loading="lazy" /> : <div className="catalog-product-placeholder"><Package size={32} /><span>No photo</span></div>}<span className={`catalog-product-status ${product.active ? 'is-active' : ''}`}><i />{product.active ? 'Active' : 'Hidden'}</span>{(product.images?.length || 0) > 1 && <span className="catalog-image-count"><ImageIcon size={13} />{product.images!.length}</span>}</div>
+            <div className="catalog-product-info"><h3>{product.name}</h3><p className={product.price ? 'catalog-price' : 'catalog-no-price'}>{product.price || 'Price not set'}</p><p className="catalog-product-description">{product.description || 'Add a description'}</p></div>
+          </button><button className="catalog-product-edit" disabled={!ready} onClick={() => setPanel({ type: 'product', product })}>Edit product<ChevronRight size={15} /></button>
+        </article>)}</div>}
+        {visible.length > 0 && <div className="catalog-ai-bar"><span className="catalog-ai-icon"><Sparkles size={20} /></span><div><strong>{!current.active ? 'This catalog is paused' : problem ? 'Your catalog needs attention' : 'Ready for your AI assistant'}</strong><p>{problem || `${activeCount} active product${activeCount === 1 ? '' : 's'} · Current prices, details and photos`}</p></div><button className="catalog-button catalog-secondary" disabled={!ready || !!problem} title={problem || 'Set up an AI reply with this catalog'} onClick={useInAi}><Sparkles size={16} />Use in AI<ChevronRight size={15} /></button></div>}
+      </section>
+      <details className="catalog-help"><summary>How catalogs work</summary><p>Add products here, then select this catalog in a DM reply or AI automation. AI uses your saved details. Photo replies appear as swipeable cards, with up to 10 photos per message.</p></details>
+    </>}
+    {panel?.type === 'new' && <CatalogEditor key={scope + ':new'} onClose={() => setPanel(null)} onSave={saveCatalog} />}
+    {panel?.type === 'settings' && <CatalogEditor key={scope + current.id} catalog={current} productCount={visible.length} onClose={() => setPanel(null)} onSave={saveCatalog} onDelete={current.id !== DEFAULT_ID ? deleteCatalog : undefined} />}
+    {panel?.type === 'product' && <ProductEditor key={scope + ':' + (panel.product?.id || 'new')} workspaceId={scope} catalog={current} product={panel.product} onClose={() => setPanel(null)} onSave={saveProduct} onDelete={deleteProduct} />}
+    {panel?.type === 'preview' && <CatalogDialog title="Customer preview" subtitle={current.name} onClose={() => setPanel(null)}><div className="catalog-preview-content"><CatalogPreview products={visible} /></div></CatalogDialog>}
+  </div></div>;
 };
