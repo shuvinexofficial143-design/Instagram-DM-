@@ -1,8 +1,9 @@
 import React, { useId, useRef, useState } from 'react';
-import { Check, Info, Loader2, Trash2 } from 'lucide-react';
+import { Check, Info, Loader2, Trash2, Images, LayoutGrid, Sparkles, MessageSquare } from 'lucide-react';
 import { Catalog, CatalogProduct } from '../../lib/catalogs';
 import { CatalogDialog } from './CatalogDialog';
 import { ProductImages } from './ProductImages';
+import { catalogDeliveryStyles } from '../../lib/catalogState';
 
 const message = (e: unknown) => e instanceof Error ? e.message : 'Could not save. Please retry.';
 const recordId = (kind: string) => kind + '_' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -64,6 +65,7 @@ export function CatalogEditor({ catalog, productCount = 0, onClose, onSave, onDe
       <fieldset disabled={busy} className="catalog-fields">
         <label>Catalog name <span aria-hidden="true" className="catalog-required">*</span><input autoFocus required maxLength={80} value={draft.name} onChange={e => setDraft(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Birthday gifts" /></label>
         <label>Description {optional}<textarea maxLength={500} rows={2} value={draft.description} onChange={e => setDraft(p => ({ ...p, description: e.target.value }))} placeholder="What belongs in this collection?" /></label>
+        <fieldset className="catalog-style-picker"><legend>How should this catalog be sent?</legend><div>{catalogDeliveryStyles.map((style,index)=>{const Icon=[LayoutGrid,MessageSquare,Sparkles,Images][index];return <label key={style.value} className={(draft.delivery_style||'cards')===style.value?'is-selected':''}><input type="radio" name="delivery-style" value={style.value} checked={(draft.delivery_style||'cards')===style.value} onChange={()=>setDraft(p=>({...p,delivery_style:style.value}))}/><Icon size={20}/><span><strong>{style.label}</strong><span>{style.description}</span></span><Check size={16} className="catalog-style-check"/></label>;})}</div></fieldset>
         <label className="catalog-toggle-row"><span><strong>Active catalog</strong><span>Available for your automations</span></span><input type="checkbox" role="switch" checked={draft.active} onChange={e => setDraft(p => ({ ...p, active: e.target.checked }))} /></label>
       </fieldset>
       {onDelete && <div className="catalog-delete-section"><div><strong>Delete catalog</strong><p>Removes this catalog and {productCount} product{productCount === 1 ? '' : 's'}.</p></div><button type="button" className="catalog-icon-button catalog-danger" aria-label="Delete catalog" disabled={busy} onClick={onDelete}><Trash2 size={18} /></button></div>}

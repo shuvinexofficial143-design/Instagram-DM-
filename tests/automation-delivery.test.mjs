@@ -6,7 +6,7 @@ import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/instagramProfiles.ts', import.meta.url), 'utf8')).replace(/^export /gm, '') + '\n' + (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { getSenderProfile, extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog };', { loader: 'ts', format: 'esm' });
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { getSenderProfile, extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog, sendInstagramCatalog };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
@@ -14,6 +14,7 @@ const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, sta
 
 function fixture(automations = [ai], options = {}) {
   const writes = [], apiCalls = [], aiInputs = [], rpcCalls = [], claims = new Set(), history = new Map(), tasks = [], deliveryKeys = new Set();
+  const partLedger=new Map();
   const inbox=new Map((options.initialInbox||[]).map(row=>[row.id,row]));
   const threadRows=sender=>[...inbox.values()].filter(r=>r.data.from_ig_id===sender).sort((a,b)=>Date.parse(a.data.timestamp)-Date.parse(b.data.timestamp)||a.id.localeCompare(b.id));
   const outboundVersion=sender=>JSON.stringify(threadRows(sender).filter(r=>r.data.direction==='out').map(r=>[r.id,r.data.message_text]));
@@ -26,12 +27,14 @@ function fixture(automations = [ai], options = {}) {
         select(value) { columns = value; return query; },
         eq(key, value) { filters[key] = value; return query; },
         or() { return query; }, delete() { mutation = { deleted: true, ...filters }; return query; }, in() { return query; }, order() { return query; }, range() { return query; }, limit() { return query; },
-        upsert(value) { mutation = value; return query; }, update(value) { mutation = value; return query; },
+        insert(value) { mutation = {...value,__insert:true}; return query; }, upsert(value) { mutation = value; return query; }, update(value) { mutation = value; return query; },
         async maybeSingle() { return result(true); },
         then(resolve, reject) { return Promise.resolve(result(false)).then(resolve, reject); },
       };
       async function result(single) {
         if (mutation) {
+          if(mutation.__insert&&partLedger.has(mutation.id))return {data:null,error:{code:'23505'}};
+          if((mutation.collection||filters.collection)==='catalog_delivery_parts'){if(mutation.deleted)partLedger.delete(filters.id);else partLedger.set(mutation.id,mutation);}
           writes.push({ table, ...mutation, ...(mutation.deleted ? filters : {}) });
           if (table === 'autoreply_dm_history') history.set(mutation.sender_id, mutation.messages);
           if(table==='autoreply_documents'&&mutation.collection==='inbox_messages')inbox.set(mutation.id,mutation);
@@ -53,6 +56,7 @@ function fixture(automations = [ai], options = {}) {
           if (options.inboundFails) return { data: null, error: { code: 'database' } };
           return { data: options.contacts || [] };
         }
+        if (table === 'autoreply_documents' && filters.collection === 'catalog_delivery_parts')return {data:partLedger.get(filters.id)||null,error:null};
         if (table === 'autoreply_documents' && filters.collection === 'catalogs') { const c=(options.catalogs||[]).find(c=>c.id===filters.id);return {data:c?{id:c.id,data:c}:null}; }
         if (table === 'autoreply_documents' && filters.collection === 'catalog_products') return {data:(options.products||[]).map(p=>({id:p.id,data:p}))};
         if (table === 'autoreply_documents') return { data: single ? null : [] };
@@ -136,7 +140,7 @@ function fixture(automations = [ai], options = {}) {
         if(options.handoff)return Response.json({choices:[{message:{tool_calls:[{function:{name:'handoff_to_human',arguments:options.malformedHandoff?'{bad-json':JSON.stringify({reason:'customer_requested',summary:'Customer wants a human',workspaceId:'forged-target'})}}]}}]});
         options.onAIStart?.(body);
         if (options.aiFails) return Response.json({ error: { message: 'AI outage' } }, { status: 503 });
-        return Response.json({ choices: [{ message: options.photoSelections ? {tool_calls:[{id:'photos',type:'function',function:{name:'send_product_photos',arguments:JSON.stringify({selections:options.photoSelections})}}]} : options.chooseCatalog ? {tool_calls:[{function:{name:'send_catalog',arguments:JSON.stringify({page:options.catalogPage||1})}}]} : { content: 'AI: ' + body.messages.at(-1).content } }] });
+        return Response.json({ choices: [{ message: options.photoSelections ? {tool_calls:[{id:'photos',type:'function',function:{name:'send_product_photos',arguments:JSON.stringify({selections:options.photoSelections,caption:options.aiCaption||''})}}]} : options.chooseCatalog ? {tool_calls:[{function:{name:'send_catalog',arguments:JSON.stringify({page:options.catalogPage||1,caption:options.aiCaption||''})}}]} : { content: 'AI: ' + body.messages.at(-1).content } }] });
       }
       if (String(url).includes('graph.instagram.com')) {
         apiCalls.push({ url: String(url), body, signal: init.signal });
@@ -144,7 +148,7 @@ function fixture(automations = [ai], options = {}) {
         if (body.sender_action === 'typing_on') options.onTypingAttempt?.(apiCalls.filter(c=>c.body.sender_action==='typing_on').length);
         if (body.sender_action === 'typing_on' && options.typingGate) await options.typingGate;
         if (body.sender_action === 'typing_on' && options.typingFailure && apiCalls.filter(c=>c.body.sender_action==='typing_on').length===1) return Response.json({error:{message:'Temporary error'}},{status:options.typingFailure});
-        if (body.message) { options.onSend?.(); if (options.sendGate) await options.sendGate; return Response.json({ message_id: 'out-' + apiCalls.length }); }
+        if (body.message) { const number=apiCalls.filter(call=>call.body.message).length;options.onMessage?.(number,body);if(options.failMessageAt===number)return Response.json({error:{message:'Rejected part'}},{status:403});if(options.ambiguousMessageAt===number)throw Error('Network timeout');if(options.messageGateAt===number)await options.messageGate;options.onSend?.(); if (options.sendGate) await options.sendGate; return Response.json({ message_id: 'out-' + apiCalls.length }); }
         if (String(url).endsWith('/replies')) return Response.json({ id: 'public-reply' });
         if(String(url).includes('/conversations?'))return Response.json({data:options.profileConversations||[]});
         return Response.json(options.senderProfile||{username:'customer'},{status:options.profileHttpStatus||200});
@@ -154,7 +158,8 @@ function fixture(automations = [ai], options = {}) {
   });
   vm.runInContext(compiled.code, context);
   return {
-    helpers: context.helpers, apiCalls, aiInputs, rpcCalls, writes,
+    helpers: context.helpers, apiCalls, aiInputs, rpcCalls, writes,partLedger,
+    sendCatalog:(catalog,key='test-delivery')=>context.helpers.sendInstagramCatalog('business','customer','test-token',catalog,{admin,workspaceId:'workspace',key}),
     persist: (item, profile, count = true) => context.helpers.persistInboundMessage(admin, "workspace", item, profile, count),
     async post(event, secret = 'relay-secret') {
       const response = await handler(new Request('https://project.supabase.co/functions/v1/instagram-live-webhook', { method: 'POST',
@@ -762,4 +767,31 @@ test('inbound profile refresh retains a cached photo when a new CDN URL cannot b
   assert.equal(saved.contact.avatar_url,cached);
   assert.equal(saved.contact.interactions.dms,8);
   assert.equal(saved.inbox.from_avatar,'https://scontent.cdninstagram.com/expired.jpg');
+});
+
+
+test('plain catalog sends all photos, then details, and keeps one logical AI reservation',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products:photoProducts,chooseCatalog:true});await f.post(dm('plain-gallery','Show catalog'));
+ const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,3);assert.equal(sent[0].body.message.attachment.type,'image');assert.equal(sent[1].body.message.attachment.type,'image');assert.match(sent[2].body.message.text,/Silver watch/);assert.match(sent[2].body.message.text,/₹399/);
+ assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_reserve_context_delivery').length,1);assert.equal(f.partLedger.size,3);
+ assert.equal(f.writes.filter(w=>w.collection==='inbox_messages'&&w.data.direction==='out').length,3);
+ assert.ok(f.apiCalls.findIndex(c=>c.body.sender_action==='typing_off')>f.apiCalls.findLastIndex(c=>c.body.message));
+});
+test('gallery typing remains active while the last text is awaiting acceptance',async()=>{
+ const gate=deferred(),entered=deferred();const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products:photoProducts,chooseCatalog:true,messageGateAt:3,messageGate:gate.promise,onMessage:n=>{if(n===3)entered.resolve();}});
+ const request=f.post(dm('slow-gallery','Show catalog'));try{await withinDeadline(entered.promise);assert.equal(f.apiCalls.some(c=>c.body.sender_action==='typing_off'),false);assert.ok(f.apiCalls.filter(c=>c.body.sender_action==='typing_on').length>=2);}finally{gate.resolve();}await request;assert.equal(f.apiCalls.filter(c=>c.body.sender_action==='typing_off').length,1);
+});
+test('partial gallery failure saves accepted photos and never sends the final summary',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products:photoProducts,chooseCatalog:true,failMessageAt:2});await f.post(dm('partial-gallery','Show catalog'));
+ assert.equal(f.apiCalls.filter(c=>c.body.message).length,2);assert.equal(f.apiCalls.some(c=>c.body.message?.text),false);
+ assert.equal(f.writes.filter(w=>w.collection==='inbox_messages'&&w.data.direction==='out').length,1);assert.equal(f.rpcCalls.some(c=>c.name==='autoreply_finish_delivery_quota'&&c.args.p_sent===false),false);
+ assert.ok(f.apiCalls.some(c=>c.body.sender_action==='typing_off'));
+});
+test('confirmed catalog parts are skipped on replay while uncertain parts block resending',async()=>{
+ const catalog={id:'watches',name:'Watches',delivery_style:'photos_only',products:photoProducts,elements:photoProducts[0].images.map(image_url=>({image_url,title:'Silver watch'}))};
+ const f=fixture([]);await f.sendCatalog(catalog);await f.sendCatalog(catalog);assert.equal(f.apiCalls.filter(c=>c.body.message).length,2);
+ const unknown=fixture([],{ambiguousMessageAt:1});await assert.rejects(unknown.sendCatalog(catalog),/timeout/);await assert.rejects(unknown.sendCatalog(catalog),/unconfirmed/);assert.equal(unknown.apiCalls.filter(c=>c.body.message).length,1);
 });

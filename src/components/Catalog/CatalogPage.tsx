@@ -7,6 +7,7 @@ import { CatalogPreview } from './CatalogPicker';
 import { CatalogDialog } from './CatalogDialog';
 import { CatalogEditor, ProductEditor } from './CatalogEditors';
 import { CatalogDeleteDialog } from './CatalogDeleteDialog';
+import { catalogDeliveryStyles } from '../../lib/catalogState';
 import { deleteCatalogRecords } from '../../lib/catalogManagement';
 import './catalog.css';
 
@@ -130,6 +131,7 @@ export const CatalogPage: React.FC = () => {
           <div className="catalog-collection-bottom"><span>{items.length} product{items.length === 1 ? '' : 's'}{!c.active && ' · Paused'}</span><span className="catalog-photo-stack" aria-hidden="true">{photos.map((url, i) => <img key={i} src={url} alt="" loading="lazy" />)}</span></div>
         </button>;
       })}</nav>
+      {current && <div className="catalog-delivery-setting"><div><Sparkles size={18}/><span><strong>Sending style</strong><span>{catalogDeliveryStyles.find(style=>style.value===(current.delivery_style||'cards'))?.label||'Product cards'}</span></span></div><button className="catalog-button catalog-secondary" disabled={!ready} onClick={()=>setPanel({type:'settings'})}>Change style</button></div>}
       {current ? <section className="catalog-products" aria-label={`Products in ${current.name}`}>
         <div className="catalog-products-heading">
           <div className="catalog-products-title"><h2>Products <span>{visible.length}</span></h2><div className="catalog-management-actions"><button className="catalog-icon-button" aria-label="Catalog settings" title="Catalog settings" disabled={!ready} onClick={() => setPanel({ type: 'settings' })}><Settings2 size={18} /></button><button className="catalog-button catalog-delete-button" disabled={!ready} onClick={() => setPanel({type:'delete'})}><Trash2 size={15}/>Delete catalog</button></div></div>
@@ -158,6 +160,6 @@ export const CatalogPage: React.FC = () => {
     {panel?.type === 'new' && <CatalogEditor key={scope + ':new'} onClose={() => setPanel(null)} onSave={saveCatalog} />}
     {current && panel?.type === 'settings' && <CatalogEditor key={scope + current.id} catalog={current} productCount={visible.length} onClose={() => setPanel(null)} onSave={saveCatalog} onDelete={()=>setPanel({type:'delete'})} />}
     {current && panel?.type === 'product' && <ProductEditor key={scope + ':' + (panel.product?.id || 'new')} workspaceId={scope} catalog={current} product={panel.product} onClose={() => setPanel(null)} onSave={saveProduct} onDelete={deleteProduct} />}
-    {current && panel?.type === 'preview' && <CatalogDialog title="Customer preview" subtitle={current.name} onClose={() => setPanel(null)}><div className="catalog-preview-content"><CatalogPreview products={visible} /></div></CatalogDialog>}
+    {current && panel?.type === 'preview' && <CatalogDialog title="Customer preview" subtitle={current.name} onClose={() => setPanel(null)}><div className="catalog-preview-content"><CatalogPreview products={visible} deliveryStyle={current.delivery_style} name={current.name} /></div></CatalogDialog>}
   </div></div>;
 };
