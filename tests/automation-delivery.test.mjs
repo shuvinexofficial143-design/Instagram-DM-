@@ -770,28 +770,60 @@ test('inbound profile refresh retains a cached photo when a new CDN URL cannot b
 });
 
 
-test('plain catalog sends all photos, then details, and keeps one logical AI reservation',async()=>{
+test('a catalog sends one photo collection followed by details with one logical reservation',async()=>{
  const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
  const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products:photoProducts,chooseCatalog:true});await f.post(dm('plain-gallery','Show catalog'));
- const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,3);assert.equal(sent[0].body.message.attachment.type,'image');assert.equal(sent[1].body.message.attachment.type,'image');assert.match(sent[2].body.message.text,/Silver watch/);assert.match(sent[2].body.message.text,/₹399/);
- assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_reserve_context_delivery').length,1);assert.equal(f.partLedger.size,3);
- assert.equal(f.writes.filter(w=>w.collection==='inbox_messages'&&w.data.direction==='out').length,3);
- assert.ok(f.apiCalls.findIndex(c=>c.body.sender_action==='typing_off')>f.apiCalls.findLastIndex(c=>c.body.message));
+ const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,2);assert.equal(sent[0].body.message.attachment,undefined);assert.deepEqual(sent[0].body.message.attachments.map(a=>a.payload.url),photoProducts[0].images);assert.match(sent[1].body.message.text,/Silver watch/);assert.match(sent[1].body.message.text,/₹399/);
+ assert.equal(f.rpcCalls.filter(c=>c.name==='autoreply_reserve_context_delivery').length,1);assert.equal(f.partLedger.size,2);
+ const inbox=f.writes.filter(w=>w.collection==='inbox_messages'&&w.data.direction==='out');assert.equal(inbox.length,2);assert.deepEqual(Array.from(inbox[0].data.image_urls),photoProducts[0].images);
+ const first=f.apiCalls.findIndex(c=>c.body.message);assert.ok(f.apiCalls.findIndex(c=>c.body.sender_action==='typing_off')>first);assert.equal(f.apiCalls.slice(first).some(c=>c.body.sender_action==='typing_on'),false);
 });
-test('gallery typing remains active while the last text is awaiting acceptance',async()=>{
+test('collection send retains the indicator until acceptance, then never restarts it for details',async()=>{
  const gate=deferred(),entered=deferred();const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
- const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products:photoProducts,chooseCatalog:true,messageGateAt:3,messageGate:gate.promise,onMessage:n=>{if(n===3)entered.resolve();}});
- const request=f.post(dm('slow-gallery','Show catalog'));try{await withinDeadline(entered.promise);assert.equal(f.apiCalls.some(c=>c.body.sender_action==='typing_off'),false);assert.ok(f.apiCalls.filter(c=>c.body.sender_action==='typing_on').length>=2);}finally{gate.resolve();}await request;assert.equal(f.apiCalls.filter(c=>c.body.sender_action==='typing_off').length,1);
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products:photoProducts,chooseCatalog:true,messageGateAt:1,messageGate:gate.promise,onMessage:n=>{if(n===1)entered.resolve();}});
+ const request=f.post(dm('slow-gallery','Show catalog'));try{await withinDeadline(entered.promise);assert.equal(f.apiCalls.some(c=>c.body.sender_action==='typing_off'),false);assert.ok(f.apiCalls.some(c=>c.body.sender_action==='typing_on'));assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);}finally{gate.resolve();}await request;
+ const sentIndex=f.apiCalls.findIndex(c=>c.body.message);assert.equal(f.apiCalls.slice(sentIndex).some(c=>c.body.sender_action==='typing_on'),false);assert.equal(f.apiCalls.filter(c=>c.body.sender_action==='typing_off').length,1);
 });
-test('partial gallery failure saves accepted photos and never sends the final summary',async()=>{
+test('typing stays off while the separate information message is still pending',async()=>{
+ const gate=deferred(),entered=deferred();const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products:photoProducts,chooseCatalog:true,messageGateAt:2,messageGate:gate.promise,onMessage:n=>{if(n===2)entered.resolve();}});
+ const request=f.post(dm('slow-details','Show catalog'));try{await withinDeadline(entered.promise);assert.equal(f.apiCalls.filter(c=>c.body.sender_action==='typing_off').length,1);const first=f.apiCalls.findIndex(c=>c.body.message);assert.equal(f.apiCalls.slice(first).some(c=>c.body.sender_action==='typing_on'),false);}finally{gate.resolve();}await request;
+});
+test('partial collection failure saves the accepted group and never sends the final summary',async()=>{
  const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
- const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products:photoProducts,chooseCatalog:true,failMessageAt:2});await f.post(dm('partial-gallery','Show catalog'));
- assert.equal(f.apiCalls.filter(c=>c.body.message).length,2);assert.equal(f.apiCalls.some(c=>c.body.message?.text),false);
- assert.equal(f.writes.filter(w=>w.collection==='inbox_messages'&&w.data.direction==='out').length,1);assert.equal(f.rpcCalls.some(c=>c.name==='autoreply_finish_delivery_quota'&&c.args.p_sent===false),false);
+ const products=Array.from({length:2},(_,n)=>({...photoProducts[0],id:'watch-'+n,images:Array.from({length:8},(_,i)=>'https://img.example/'+(n*8+i)+'.jpg')}));
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products,chooseCatalog:true,failMessageAt:2});await f.post(dm('partial-gallery','Show catalog'));
+ const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,2);assert.equal(sent[0].body.message.attachments.length,10);assert.equal(sent[1].body.message.attachments.length,6);assert.equal(f.apiCalls.some(c=>c.body.message?.text),false);
+ const inbox=f.writes.filter(w=>w.collection==='inbox_messages'&&w.data.direction==='out');assert.equal(inbox.length,1);assert.equal(inbox[0].data.image_urls.length,10);assert.equal(f.rpcCalls.some(c=>c.name==='autoreply_finish_delivery_quota'&&c.args.p_sent===false),false);
  assert.ok(f.apiCalls.some(c=>c.body.sender_action==='typing_off'));
 });
-test('confirmed catalog parts are skipped on replay while uncertain parts block resending',async()=>{
+test('rejected photo collection never falls back to individual photo messages',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products:photoProducts,chooseCatalog:true,failMessageAt:1});await f.post(dm('rejected-gallery','Show catalog'));
+ assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);assert.equal(f.apiCalls.some(c=>c.body.message?.attachment?.type==='image'),false);assert.equal(f.writes.filter(w=>w.collection==='inbox_messages'&&w.data.direction==='out').length,0);
+ assert.ok(f.rpcCalls.some(c=>c.name==='autoreply_finish_delivery_quota'&&c.args.p_sent===false));
+});
+test('confirmed collection is skipped on replay while an uncertain collection blocks resending',async()=>{
  const catalog={id:'watches',name:'Watches',delivery_style:'photos_only',products:photoProducts,elements:photoProducts[0].images.map(image_url=>({image_url,title:'Silver watch'}))};
- const f=fixture([]);await f.sendCatalog(catalog);await f.sendCatalog(catalog);assert.equal(f.apiCalls.filter(c=>c.body.message).length,2);
+ const f=fixture([]);await f.sendCatalog(catalog);await f.sendCatalog(catalog);assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);
  const unknown=fixture([],{ambiguousMessageAt:1});await assert.rejects(unknown.sendCatalog(catalog),/timeout/);await assert.rejects(unknown.sendCatalog(catalog),/unconfirmed/);assert.equal(unknown.apiCalls.filter(c=>c.body.message).length,1);
+});
+test('message handoff cancels a scheduled typing refresh without an early typing_off',async()=>{
+ const timers=new Map();let next=0;const calls=[];
+ const f=fixture([],{setTimeout:(callback,ms)=>{const id=++next;timers.set(id,{callback,ms});return id;},clearTimeout:id=>timers.delete(id)});
+ const session=f.helpers.createTypingSession('collection-handoff',async action=>{calls.push(action);return {};},()=>{});await session.first;
+ const stale=[...timers.values()][0];session.handoffToMessage();assert.equal(timers.size,0);assert.deepEqual(calls,['typing_on']);
+ stale.callback();await session.pulse();await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(calls,['typing_on']);await session.stop();assert.deepEqual(calls,['typing_on','typing_off']);
+});
+test('fixed catalog automation also sends a collection and one details message',async()=>{
+ const rule={...staticRule('dm',{keywords:['catalog']}),actions:[{type:'send_dm',catalog_id:'watches',message_text:'Catalog'}]};
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_details'}],products:photoProducts});await f.post(dm('static-collection','catalog'));
+ const sent=f.apiCalls.filter(c=>c.body.message);assert.equal(sent.length,2);assert.equal(sent[0].body.message.attachments.length,2);assert.match(sent[1].body.message.text,/₹399/);
+});
+
+test('a pending typing request settles before dispatching the photo collection',async()=>{
+ const gate=deferred(),started=deferred();const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
+ const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_only'}],products:photoProducts,chooseCatalog:true,typingGate:gate.promise,onTypingAttempt:()=>started.resolve()});
+ const request=f.post(dm('typing-before-group','Show catalog'));try{await withinDeadline(started.promise);await new Promise(resolve=>setImmediate(resolve));assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);}finally{gate.resolve();}await request;
+ const first=f.apiCalls.findIndex(c=>c.body.message);assert.ok(first>=0);assert.equal(f.apiCalls.slice(first).some(c=>c.body.sender_action==='typing_on'),false);
 });

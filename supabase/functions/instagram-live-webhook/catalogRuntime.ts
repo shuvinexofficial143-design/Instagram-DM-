@@ -173,7 +173,12 @@ export function catalogDeliveryParts(catalog:RuntimeCatalog):CatalogDeliveryPart
  const style=catalogDeliveryStyle(catalog.delivery_style),elements=catalog.elements||[];
  if(!elements.length)throw Error('No product photos are available.');
  if(style==='cards')return [{kind:'cards',text:`[Catalog: ${catalog.name}]`,catalog,message:{attachment:{type:'template',payload:{template_type:'generic',elements}}}}];
- const parts:CatalogDeliveryPart[]=elements.map(element=>({kind:'image',text:'',catalog:{id:catalog.id,name:catalog.name,image_urls:[element.image_url]},message:{attachment:{type:'image',payload:{url:element.image_url}}}}));
+ // A collection is one Send API message, never separate concurrent photo sends.
+ const parts:CatalogDeliveryPart[]=[];
+ for(let offset=0;offset<elements.length;offset+=10){
+  const attachments=elements.slice(offset,offset+10).map(element=>({type:'image',payload:{url:element.image_url}}));
+  parts.push({kind:'image',text:'',catalog:{id:catalog.id,name:catalog.name,image_urls:attachments.map(a=>a.payload.url)},message:attachments.length===1?{attachment:attachments[0]}:{attachments}});
+ }
  if(style!=='photos_only')for(const text of splitCatalogText(catalogMessage(catalog)))parts.push({kind:'text',text,catalog:null,message:{text}});
  return parts;
 }

@@ -26,7 +26,7 @@ export function watchCatalogs(scope:string,subscribe:Subscribe,onData:(data:Cata
 
 export const catalogDeliveryStyles=[
  {value:'cards',label:'Product cards',description:'Swipeable photos with names, prices and links.'},
- {value:'photos_details',label:'Photos + details',description:'All photos first, then your saved product information.'},
- {value:'photos_ai',label:'Photos + AI message',description:'All photos, saved details and a natural AI introduction.'},
- {value:'photos_only',label:'Photos only',description:'Send the photos without a separate information message.'},
+ {value:'photos_details',label:'Photos + details',description:'Photos together, then your saved product information.'},
+ {value:'photos_ai',label:'Photos + AI message',description:'Photo groups, saved details and a natural AI introduction.'},
+ {value:'photos_only',label:'Photos only',description:'Photo groups without a separate information message.'},
 ] as const;
