@@ -1066,7 +1066,7 @@ function isConversationalGreeting(incomingText: string): boolean {
 async function loadSendableCatalog(admin:any,workspaceId:string,catalogId:string) {
   return prepareCatalogDelivery(await loadCatalog(admin,workspaceId,catalogId),1);
 }
-async function sendInstagramCatalog(igUserId:string,senderId:string,accessToken:string,catalog:any,delivery?:{admin:any;workspaceId:string;key:string;onPart?:(part:any,result:any,index:number)=>void;pulse?:()=>void}) {
+async function sendInstagramCatalog(igUserId:string,senderId:string,accessToken:string,catalog:any,delivery?:{admin:any;workspaceId:string;key:string;onPart?:(part:any,result:any,index:number)=>void;beforeSend?:()=>Promise<any>|void}) {
   const parts=catalogDeliveryParts(catalog);const confirmed:string[]=[];
   const multipart=catalogDeliveryStyle(catalog.delivery_style)!=='cards';
   try{for(let index=0;index<parts.length;index++){
@@ -1088,13 +1088,13 @@ async function sendInstagramCatalog(igUserId:string,senderId:string,accessToken:
     }
     try{
       if(!result){
+        if(index===0)await delivery?.beforeSend?.();
         result=await metaWrite(`${encodeURIComponent(igUserId)}/messages`,accessToken,{recipient:{id:senderId},message:part.message});
         if(!result?.message_id)throw Error('Instagram did not confirm catalog delivery');
         // Record accepted parts before starting another; an ambiguous timeout is never resent automatically.
         if(checkpointId&&delivery){const {error}=await delivery.admin.from('autoreply_documents').upsert({user_id:delivery.workspaceId,collection:'catalog_delivery_parts',id:checkpointId,data:{status:'sent',fingerprint,part:index,total:parts.length,catalog_id:catalog.id,message_id:String(result.message_id),sent_at:new Date().toISOString()}});if(error)throw Error('Catalog part was accepted but progress could not be confirmed. Review before retrying.');}
       }
       confirmed.push(String(result.message_id));delivery?.onPart?.(part,result,index);
-      if(index<parts.length-1)delivery?.pulse?.();
     }catch(error:any){
       if(error.deliveryRejected&&checkpointId&&delivery)await delivery.admin.from('autoreply_documents').delete().eq('user_id',delivery.workspaceId).eq('collection','catalog_delivery_parts').eq('id',checkpointId);
       error.confirmedParts=confirmed.length;error.confirmedMessageIds=confirmed;error.deliveryRejected=Boolean(error.deliveryRejected)&&confirmed.length===0;
@@ -1118,28 +1118,37 @@ function createTypingSession(key: string, send: (action: "typing_on" | "typing_o
   const previous = typingConversations.get(key);
   const state = { owner: Symbol(key), tail: previous?.tail || Promise.resolve(null) };
   typingConversations.set(key, state);
-  let active = true;
+  let active = true, refreshing = true;
   let timer: ReturnType<typeof setTimeout> | null = null;
   const owns = () => typingConversations.get(key) === state;
   const queue = (action: "typing_on" | "typing_off") => {
-    const valid = () => owns() && (action === "typing_off" || active);
+    const valid = () => owns() && (action === "typing_off" || (active && refreshing));
     state.tail = state.tail.catch(() => null).then(() => valid() ? send(action, valid) : null);
     return state.tail;
   };
   const refresh = () => {
-    if (!active || !owns()) return;
+    if (!active || !refreshing || !owns()) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      if (!active || !owns()) return;
+      if (!active || !refreshing || !owns()) return;
       runInBackground(queue("typing_on").then(refresh));
     }, 4000);
   };
   const first = queue("typing_on").then(result => { onFirst(result); refresh(); return result; });
   return { first, pulse() {
-    if (!active || !owns()) return Promise.resolve(null);
+    if (!active || !refreshing || !owns()) return Promise.resolve(null);
     if (timer) clearTimeout(timer);timer=null;
     return queue("typing_on").then(result=>{refresh();return result;});
+  }, handoffToMessage() {
+    // The response itself clears Instagram's indicator. Do not send typing_off
+    // early, or re-enable typing while a delivered collection is appearing.
+    refreshing = false;
+    if (timer) clearTimeout(timer);
+    timer = null;
+    // Drain an already dispatched typing request before the photo collection;
+    // a late typing response must not arrive after the photos.
+    return state.tail.catch(() => null);
   }, stop() {
     if (!active) return Promise.resolve(null);
     active = false;
@@ -2026,9 +2035,8 @@ Instagram DM style rules:
       }
       // This is the user-visible critical point. Everything expensive that does
       // not affect the reply itself is deferred until after the Send API call.
-      if(sendCatalog&&typingSession)runInBackground(typingSession.pulse());
       const multipartCatalog=sendCatalog&&catalogDeliveryStyle(selectedCatalog?.delivery_style)!=='cards';
-      const sendResult = sendCatalog ? await sendInstagramCatalog(igUserId,item.senderId,accessToken,selectedCatalog,{admin,workspaceId,key:aiDeliveryKey,pulse:()=>{if(typingSession)runInBackground(typingSession.pulse());},onPart:(part,result,index)=>{if(!multipartCatalog)return;if(index===0){runInBackground(finishDeliveryQuota(admin,workspaceId,aiDeliveryKey,true));unresolvedAiKey="";}runInBackground(markOutboundClaim(admin,workspaceId,String(result.message_id)));runInBackground(persistOutboundMessage(admin,workspaceId,item,senderProfile,automation,part.text,String(result.message_id),part.catalog));}}) : await sendInstagramText(
+      const sendResult = sendCatalog ? await sendInstagramCatalog(igUserId,item.senderId,accessToken,selectedCatalog,{admin,workspaceId,key:aiDeliveryKey,beforeSend:()=>typingSession?.handoffToMessage(),onPart:(part,result,index)=>{if(index===0)stopTyping();if(!multipartCatalog)return;if(index===0){runInBackground(finishDeliveryQuota(admin,workspaceId,aiDeliveryKey,true));unresolvedAiKey="";}runInBackground(markOutboundClaim(admin,workspaceId,String(result.message_id)));runInBackground(persistOutboundMessage(admin,workspaceId,item,senderProfile,automation,part.text,String(result.message_id),part.catalog));}}) : await sendInstagramText(
         igUserId,
         item.senderId,
         accessToken,
@@ -2044,7 +2052,7 @@ Instagram DM style rules:
       if (tagActions.length) runInBackground(saveContactTags(admin, workspaceId, item.senderId, tagActions.map((a: any) => a.tag_name)));
       // Google Sheets is Coming Soon. Customer Data capture runs independently above.
 
-      console.log("[DM_DELIVERY_ACCEPTED]",{catalog:sendCatalog,parts:sendResult?.part_count||1,send_ms:sendMs,typing_stop_after_accept:true});
+      console.log("[DM_DELIVERY_ACCEPTED]",{catalog:sendCatalog,parts:sendResult?.part_count||1,send_ms:sendMs,typing_stop_after_accept:true,typing_stop_after_first_catalog_group:sendCatalog});
       stopTyping();
 
       if (instagramMessageId) {
