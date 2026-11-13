@@ -1943,7 +1943,7 @@ Instagram DM style rules:
           isGreeting,
           selectedCatalog ? {...selectedCatalog,onSelect:(chosen:any)=>{selectedCatalog=chosen;sendCatalog=true;}} : undefined,
           item.images || [], catalogWarning, {
-            memory:context.memory,memorySettings:context.memory_settings,manualAnchorId:context.manual_context?.id,
+            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,
             historySearch:async(query:string)=>{const {data,error}=await admin.rpc('autoreply_search_conversation',{p_workspace:workspaceId,p_sender:item.senderId,p_query:query});if(error)throw Error('Historical search unavailable');return data;},
             onUsage:(usage:any)=>{for(const key of ['input_tokens','output_tokens','cached_input_tokens','calls','provider_ms'])replyUsage[key]+=usage[key]||0;replyUsage.usage_available=replyUsage.usage_available||usage.usage_available;},
           }

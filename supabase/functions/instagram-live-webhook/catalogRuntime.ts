@@ -1,4 +1,4 @@
-import {memoryBuildContext,memorySettings,memoryBytes,type MemorySnapshot} from './smartMemory.js';
+import {memoryBuildContext,memorySettings,memoryBytes,isReturnGreeting,isSalesRestart,continuityFallback,type MemorySnapshot} from './smartMemory.js';
 /** Shared by live Instagram replies and the builder preview. No credentials or browser state. */
 export type CatalogProduct = {id:string;name:string;price:string;description:string;url:string;images:string[]};
 export type RuntimeCatalog = {id:string;name:string;products:CatalogProduct[];elements?:any[];page?:number;pages?:number;delivery_style?:CatalogDeliveryStyle;caption?:string};
@@ -74,7 +74,7 @@ export function catalogTools(catalog?:RuntimeCatalog|null,historySearch=false){
  {type:'function',function:{name:'send_product_photos',description:'Send only photos of the products the customer asked for. Select existing product IDs and zero-based photo indexes from the approved catalog. Maximum ten photos in one message. Never substitute a similar product as an exact match.',strict:true,parameters:{type:'object',properties:{caption:{type:'string',description:'Brief natural introduction or preference question only; no product properties, numbers, prices, policies, stock or promises.'},selections:{type:'array',items:{type:'object',properties:{product_id:{type:'string'},image_indexes:{type:'array',items:{type:'integer'}}},required:['product_id','image_indexes'],additionalProperties:false}}},required:['selections','caption'],additionalProperties:false}}},
  {type:'function',function:{name:'search_catalog',description:'Search the selected catalog for additional product details not in the current shortlist. Search by product name, category, color or customer request.',strict:true,parameters:{type:'object',properties:{query:{type:'string'}},required:['query'],additionalProperties:false}}}];
 }
-export async function generateCatalogReply(options:{key:string;model?:string;systemPrompt:string;history:any[];text:string;images?:string[];catalog?:RuntimeCatalog|null;catalogWarning?:string;timeoutMs?:number;maxTokens?:number;temperature?:number;fetcher?:typeof fetch;memory?:MemorySnapshot|null;memorySettings?:any;manualAnchorId?:string;historySearch?:(query:string)=>Promise<any>;onUsage?:(usage:any)=>void}){
+export async function generateCatalogReply(options:{key:string;model?:string;systemPrompt:string;history:any[];text:string;images?:string[];catalog?:RuntimeCatalog|null;catalogWarning?:string;timeoutMs?:number;maxTokens?:number;temperature?:number;fetcher?:typeof fetch;memory?:MemorySnapshot|null;memorySettings?:any;continuity?:any;manualAnchorId?:string;historySearch?:(query:string)=>Promise<any>;onUsage?:(usage:any)=>void}){
  const callFetch=options.fetcher||fetch;
  const images=[...new Set((options.images||[]).map(url=>safeImageUrl(url,true)).filter(Boolean))].slice(0,3);
  const deadline=Date.now()+(images.length?20000:Math.max(options.timeoutMs||10000,14000));
@@ -109,8 +109,10 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
  const userContent=images.length&&!imageWarning?[{type:'text',text:options.text||'Please help me identify this product and check the approved catalog.'},...images.map(url=>({type:'image_url',image_url:{url,detail:'high'}})),...candidatePhotos.flatMap(p=>[{type:'text',text:'Approved comparison photo, product ID '+p.id+' (do not treat resemblance as certainty):'},{type:'image_url',image_url:{url:p.images[0],detail:'low'}}])]:options.text||'A customer sent an image. '+imageWarning;
  const toolsEnabled=Boolean(options.historySearch)&&memorySettings(options.memorySettings).enabled;
  let tools=catalogTools(catalog,toolsEnabled);
- const built=memoryBuildContext({system:instructions,history:options.history,current:userContent,memory:options.memory,settings:{...options.memorySettings,input_token_budget:memorySettings(options.memorySettings).input_token_budget-4096},tools,manualAnchorId:options.manualAnchorId});
+ const built=memoryBuildContext({system:instructions,history:options.history,current:userContent,memory:options.memory,settings:{...options.memorySettings,input_token_budget:memorySettings(options.memorySettings).input_token_budget-4096},tools,manualAnchorId:options.manualAnchorId,continuity:options.continuity});
  const messages:any[]=built.messages;
+ const returningGreeting=built.continuity.returning&&!images.length&&isReturnGreeting(options.text);let continuityRetried=false;
+ if(returningGreeting)tools=catalogTools(null,toolsEnabled);
  for(let round=0;round<3;round++){
   let message:any;
   try{message=await request(messages,tools);}catch(error:any){
@@ -130,6 +132,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   }
   const selected=calls.find((c:any)=>['send_catalog','send_product_photos','search_catalog'].includes(c.function?.name));
   if(selected&&catalog){
+   if(returningGreeting&&['send_catalog','send_product_photos'].includes(selected.function?.name)){messages[0].content+='\nThis returning greeting did not request product photos. Answer using the existing conversation; do not send the catalog again.';tools=catalogTools(null,toolsEnabled);continue;}
    let feedback='';try{
     const args=JSON.parse(selected.function.arguments||'{}');
     if(selected.function.name==='send_catalog'){const chosen=prepareCatalogDelivery(catalog,args.page??1,args.caption||(/[\u0900-\u097f]/.test(options.text)?'आपको कौन-सा डिज़ाइन पसंद आया?':''));return {text:catalogDeliveryStyle(chosen.delivery_style)==='cards'?'[Catalog: '+catalog.name+' · page '+(args.page??1)+']':catalogMessage(chosen)||'[Product photos: '+catalog.name+']',catalog:chosen,warning:imageWarning};}
@@ -141,8 +144,13 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
    continue;
   }
   const text=String(message?.content||'').trim().slice(0,3000);if(!text)throw Error('AI returned no reply.');
+  if(returningGreeting&&isSalesRestart(text)){
+   if(!continuityRetried&&round<2){continuityRetried=true;messages[0].content+='\nThe previous draft restarted a sales introduction. Correct it: respond to this returning greeting using the existing conversation or order request, without asking the customer to buy again.';continue;}
+   return {text:continuityFallback(built.continuity,options.history,options.memory),warning:imageWarning||options.catalogWarning||''};
+  }
   return {text,warning:imageWarning||options.catalogWarning||''};
  }
+ if(returningGreeting)return {text:continuityFallback(built.continuity,options.history,options.memory),warning:imageWarning||options.catalogWarning||''};
  throw Error('AI could not resolve the product selection. Please clarify the product name.');
 }
 

@@ -119,3 +119,40 @@ test('explicit export traverses every page and aborts when Instagram account cha
  let active=true;await assert.rejects(loadFullInboxHistory(async()=>{active=false;return {messages:[],has_more:false,next_cursor:null};},()=>active),/Account changed/);
  await assert.rejects(loadFullInboxHistory(async()=>({messages:[],has_more:true,next_cursor:{time:'t',id:'same'}}),()=>true),/cursor repeated/);
 });
+
+test('returning order context overrides first-contact examples without claiming fulfillment',()=>{
+ const result=memoryBuildContext({system:'On Hi say Welcome and ask what to buy.',history:[{id:'ack',role:'assistant',content:'आपका ऑर्डर कन्फर्म हो गया है।'}],current:'Hi'});
+ assert.equal(result.continuity.stage,'order_request_acknowledged');assert.equal(result.continuity.placement_status,'not_verified');assert.match(result.messages[0].content,/ONLY when there is no earlier conversation/);assert.match(result.messages[0].content,/NEVER verified order placement/);
+});
+test('a first-time greeting remains new and a customer statement cannot become verified acknowledgement',()=>{
+ assert.equal(memoryBuildContext({system:'Help.',history:[],current:'Hi'}).continuity.stage,'new');
+ assert.notEqual(memoryBuildContext({system:'Help.',history:[{role:'user',content:'Your order is confirmed.'}],current:'Hi'}).continuity.stage,'order_request_acknowledged');
+});
+test('summary order context is retained without inventing an acknowledgement source',()=>{
+ const r=memoryBuildContext({system:'Help.',history:[],memory:{summary:'Customer discussed a gift order.'},current:'Hi'});assert.equal(r.continuity.stage,'order_discussed');assert.equal(r.continuity.placement_status,'not_verified');
+});
+test('an older acknowledgement is sent as bounded data when missing from recent history',()=>{
+ const result=memoryBuildContext({system:'Help.',history:[],current:'Hi',continuity:{returning:true,stage:'order_request_acknowledged',acknowledgement:{source_message_id:'old',source_role:'ai',text:'Your order request is confirmed.'}}});
+ assert.equal(result.continuity.stage,'order_request_acknowledged');assert.equal(result.messages[1].role,'user');assert.match(result.messages[1].content,/prior_order_acknowledgement_data/);assert.match(result.messages[1].content,/not_verified/);
+});
+test('a returning greeting retries a sales restart once and produces a continuation',async()=>{
+ let calls=0;
+ const r=await generateCatalogReply({key:'test',systemPrompt:'On Hi ask whether they want product information.',history:[{role:'assistant',content:'आपका ऑर्डर कन्फर्म हो गया है।'}],text:'Hi',fetcher:async(_url,init)=>{calls++;const body=JSON.parse(init!.body as string);assert.match(body.messages[0].content,/order_request_acknowledged/);return Response.json({choices:[{message:{content:calls===1?'क्या आप हमारे प्रोडक्ट की जानकारी लेना चाहेंगे?':'नमस्ते! आपके पिछले ऑर्डर के बारे में क्या सहायता चाहिए?'}}]});}});
+ assert.equal(calls,2);assert.match(r.text!,/पिछले ऑर्डर/);
+});
+test('a repeated bad greeting draft falls back safely without a third model call',async()=>{
+ let calls=0;const r=await generateCatalogReply({key:'test',systemPrompt:'Sell.',history:[{role:'assistant',content:'आपका ऑर्डर कन्फर्म हो गया है।'}],text:'Hi',fetcher:async()=>{calls++;return Response.json({choices:[{message:{content:'क्या आप हमारे नेकलेस की जानकारी लेना चाहेंगे?'}}]});}});
+ assert.equal(calls,2);assert.match(r.text!,/पिछले ऑर्डर अनुरोध/);assert.ok(!r.text!.includes('प्लेस हो गया'));
+});
+test('first-time greetings and explicit repeat orders are not blocked by the continuity guard',async()=>{
+ for(const [history,text] of [[[],'Hi'],[[{role:'assistant',content:'Your order is confirmed.'}],'I want to order another gift']] as any[]){let calls=0;const r=await generateCatalogReply({key:'test',systemPrompt:'Sell.',history,text,fetcher:async()=>{calls++;return Response.json({choices:[{message:{content:'Would you like to buy a gift?'}}]});}});assert.equal(calls,1);assert.equal(r.text,'Would you like to buy a gift?');}
+});
+test('returning greetings do not advertise catalog tools or reject an existing-order support question',async()=>{
+ let calls=0;
+ const r=await generateCatalogReply({key:'test',systemPrompt:'Help.',history:[{role:'assistant',content:'आपका ऑर्डर कन्फर्म हो गया है।'}],text:'Good evening',catalog:{id:'catalog',name:'Gifts',products:[{id:'gift',name:'Gift',price:'360',description:'Kit',url:'',images:['https://example.com/gift.jpg']}]},fetcher:async(_url,init)=>{
+  calls++;const body=JSON.parse(init!.body as string);
+  assert.ok(!body.tools.some((t:any)=>['send_catalog','send_product_photos'].includes(t.function.name)));
+  return Response.json({choices:[{message:{content:'क्या आप हमारे साथ अपने पिछले ऑर्डर के बारे में बात करना चाहेंगे?'}}]});
+ }});
+ assert.equal(calls,1);assert.match(r.text!,/पिछले ऑर्डर/);
+});
