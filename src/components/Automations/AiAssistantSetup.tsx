@@ -232,7 +232,7 @@ export const AiAssistantSetup = (p: AiAssistantSetupProps) => {
                           {avatar ? <img src={avatar} alt="" /> : <Bot />}
                         </span>
                         <div className="ai-ig-bubble ai-ig-bubble-business">
-                          {p.testCatalog?.elements?.length?<CatalogPreview products={p.testCatalog.elements.map((card:any,i:number)=>({id:String(i),name:card.title,images:[card.image_url],description:card.subtitle||'',price:'',url:card.buttons?.[0]?.url||'',active:true}))}/>:p.testReply}
+                          {p.testCatalog?.elements?.length?<CatalogPreview deliveryStyle={p.testCatalog.delivery_style} name={p.testCatalog.name} messageText={p.testCatalog.message_text} products={p.testCatalog.elements.map((card:any,i:number)=>({id:String(i),name:card.title,images:[card.image_url],description:card.subtitle||'',price:'',url:card.buttons?.[0]?.url||'',active:true}))}/>:p.testReply}
                         </div>
                       </div>
                     )}

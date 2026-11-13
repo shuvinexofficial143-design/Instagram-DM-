@@ -1,6 +1,6 @@
 import {fetchConversationUsernames,cacheInstagramProfilePhoto} from './instagramProfiles.ts';
 import { memorySettings,memoryLogPreview } from './smartMemory.ts';
-import { loadCatalog, buildCatalogPage, extractImageAttachments, generateCatalogReply } from "./catalogRuntime.ts";
+import { loadCatalog, buildCatalogPage, prepareCatalogDelivery, catalogDeliveryParts, catalogDeliveryStyle, extractImageAttachments, generateCatalogReply } from "./catalogRuntime.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -991,7 +991,7 @@ async function persistOutboundMessage(
     from_username: profile.username || item.senderId,
     from_avatar: profile.avatar_url || "",
     message_text: responseText,
-    ...(catalog?{catalog_id:catalog.id,catalog_name:catalog.name,catalog_elements:catalog.elements}:{}),
+    ...(catalog?.image_urls?{catalog_id:catalog.id,catalog_name:catalog.name,image_urls:catalog.image_urls}:catalog?{catalog_id:catalog.id,catalog_name:catalog.name,catalog_elements:catalog.elements}:{}),
     direction: "out",
     is_automated: true,
     automation_id: automation?.id || "",
@@ -1064,12 +1064,45 @@ function isConversationalGreeting(incomingText: string): boolean {
 
 // Only workspace-owned active catalog data can be used in a Send API request.
 async function loadSendableCatalog(admin:any,workspaceId:string,catalogId:string) {
-  return buildCatalogPage(await loadCatalog(admin,workspaceId,catalogId),1);
+  return prepareCatalogDelivery(await loadCatalog(admin,workspaceId,catalogId),1);
 }
-async function sendInstagramCatalog(igUserId:string,senderId:string,accessToken:string,catalog:any) {
-  const result=await metaWrite(`${encodeURIComponent(igUserId)}/messages`,accessToken,{recipient:{id:senderId},message:{attachment:{type:"template",payload:{template_type:"generic",elements:catalog.elements}}}});
-  if(!result?.message_id) throw new Error("Instagram did not confirm catalog delivery");
-  return result;
+async function sendInstagramCatalog(igUserId:string,senderId:string,accessToken:string,catalog:any,delivery?:{admin:any;workspaceId:string;key:string;onPart?:(part:any,result:any,index:number)=>void;pulse?:()=>void}) {
+  const parts=catalogDeliveryParts(catalog);const confirmed:string[]=[];
+  const multipart=catalogDeliveryStyle(catalog.delivery_style)!=='cards';
+  try{for(let index=0;index<parts.length;index++){
+    const part=parts[index];let checkpointId='';let fingerprint='';let result:any;
+    if(multipart&&delivery){
+      const digest=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(b=>b.toString(16).padStart(2,'0')).join('');
+      checkpointId='catalog_part_'+await digest(delivery.key+':'+index);
+      fingerprint=await digest(JSON.stringify(part.message));
+      const query=()=>delivery.admin.from('autoreply_documents').select('data').eq('user_id',delivery.workspaceId).eq('collection','catalog_delivery_parts').eq('id',checkpointId);
+      const {data:previous,error:readError}=await query().maybeSingle();
+      if(readError)throw Error('Catalog delivery progress could not be checked.');
+      if(previous){
+        if(previous.data?.status!=='sent'||previous.data?.fingerprint!==fingerprint)throw Error('A catalog part has an unconfirmed delivery. Review it before retrying.');
+        result={message_id:previous.data.message_id};
+      }else{
+        const {error}=await delivery.admin.from('autoreply_documents').insert({user_id:delivery.workspaceId,collection:'catalog_delivery_parts',id:checkpointId,data:{status:'sending',fingerprint,part:index,total:parts.length,catalog_id:catalog.id,started_at:new Date().toISOString()}});
+        if(error)throw Error('Could not claim this catalog part. It may already be sending.');
+      }
+    }
+    try{
+      if(!result){
+        result=await metaWrite(`${encodeURIComponent(igUserId)}/messages`,accessToken,{recipient:{id:senderId},message:part.message});
+        if(!result?.message_id)throw Error('Instagram did not confirm catalog delivery');
+        // Record accepted parts before starting another; an ambiguous timeout is never resent automatically.
+        if(checkpointId&&delivery){const {error}=await delivery.admin.from('autoreply_documents').upsert({user_id:delivery.workspaceId,collection:'catalog_delivery_parts',id:checkpointId,data:{status:'sent',fingerprint,part:index,total:parts.length,catalog_id:catalog.id,message_id:String(result.message_id),sent_at:new Date().toISOString()}});if(error)throw Error('Catalog part was accepted but progress could not be confirmed. Review before retrying.');}
+      }
+      confirmed.push(String(result.message_id));delivery?.onPart?.(part,result,index);
+      if(index<parts.length-1)delivery?.pulse?.();
+    }catch(error:any){
+      if(error.deliveryRejected&&checkpointId&&delivery)await delivery.admin.from('autoreply_documents').delete().eq('user_id',delivery.workspaceId).eq('collection','catalog_delivery_parts').eq('id',checkpointId);
+      error.confirmedParts=confirmed.length;error.confirmedMessageIds=confirmed;error.deliveryRejected=Boolean(error.deliveryRejected)&&confirmed.length===0;
+      throw error;
+    }
+  }
+  }catch(error:any){error.confirmedParts=confirmed.length;error.confirmedMessageIds=confirmed;if(confirmed.length)error.deliveryRejected=false;throw error;}
+  return {message_id:confirmed.at(-1),message_ids:confirmed,part_count:parts.length};
 }
 
 async function generateReply(openaiKey:string,model:string,systemPrompt:string,history:any[],incomingText:string,varyNaturally=false,catalogOffer?:any,images:string[]=[],catalogWarning='',memoryOptions:any={}) {
@@ -1095,6 +1128,7 @@ function createTypingSession(key: string, send: (action: "typing_on" | "typing_o
   };
   const refresh = () => {
     if (!active || !owns()) return;
+    if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
       if (!active || !owns()) return;
@@ -1102,7 +1136,11 @@ function createTypingSession(key: string, send: (action: "typing_on" | "typing_o
     }, 4000);
   };
   const first = queue("typing_on").then(result => { onFirst(result); refresh(); return result; });
-  return { first, stop() {
+  return { first, pulse() {
+    if (!active || !owns()) return Promise.resolve(null);
+    if (timer) clearTimeout(timer);timer=null;
+    return queue("typing_on").then(result=>{refresh();return result;});
+  }, stop() {
     if (!active) return Promise.resolve(null);
     active = false;
     if (timer) clearTimeout(timer);
@@ -1380,15 +1418,16 @@ async function executeStaticActions(admin: any, workspaceId: string, item: any, 
         if(slot.allowed) unresolvedDeliveryKey=deliveryKey;
         if(!slot.allowed) return {ok:false,sent:deliveries.length>0,reason:slot.reason||"monthly_standard_limit_reached",deliveries};
         const recipient = item.triggerType === "comment" ? { comment_id: item.commentId } : { id: item.senderId };
-        const payload = catalog ? await sendInstagramCatalog(account.ig_user_id,item.senderId,account.access_token,catalog) : await metaWrite(`${encodeURIComponent(account.ig_user_id)}/messages`, account.access_token, { recipient, message: { text } });
+        const multipartCatalog=catalog&&catalogDeliveryStyle(catalog.delivery_style)!=='cards';
+        const payload = catalog ? await sendInstagramCatalog(account.ig_user_id,item.senderId,account.access_token,catalog,{admin,workspaceId,key:deliveryKey,onPart:(part,result,index)=>{if(!multipartCatalog)return;if(index===0){runInBackground(finishDeliveryQuota(admin,workspaceId,deliveryKey,true));unresolvedDeliveryKey="";}runInBackground(markOutboundClaim(admin,workspaceId,String(result.message_id)));runInBackground(persistOutboundMessage(admin,workspaceId,item,{username:item.senderId,avatar_url:""},automation,part.text,String(result.message_id),part.catalog));}}) : await metaWrite(`${encodeURIComponent(account.ig_user_id)}/messages`, account.access_token, { recipient, message: { text } });
         if (!payload?.message_id) throw new Error("Instagram did not confirm private message delivery");
         deliveries.push({ type: "send_dm", id: String(payload.message_id), text });
         // Reserved in the database before the Meta API call; confirmation only
         // changes the reservation state, never grants a second allowance.
-        runInBackground(finishDeliveryQuota(admin,workspaceId,deliveryKey,true));
+        if(!multipartCatalog)runInBackground(finishDeliveryQuota(admin,workspaceId,deliveryKey,true));
         unresolvedDeliveryKey="";
         runInBackground(markOutboundClaim(admin, workspaceId, String(payload.message_id)));
-        runInBackground(persistOutboundMessage(admin, workspaceId, item, { username: item.senderId, avatar_url: "" }, automation, text, String(payload.message_id), catalog));
+        if(!multipartCatalog)runInBackground(persistOutboundMessage(admin, workspaceId, item, { username: item.senderId, avatar_url: "" }, automation, text, String(payload.message_id), catalog));
       }
       if (action.type === "reply_comment" && item.triggerType === "comment" && action.comment_reply_text) {
         const deliveryKey=`standard:${item.messageId||item.commentId||item.senderId}:${automation.id}:${index}:${action.type}`;
@@ -1987,7 +2026,9 @@ Instagram DM style rules:
       }
       // This is the user-visible critical point. Everything expensive that does
       // not affect the reply itself is deferred until after the Send API call.
-      const sendResult = sendCatalog ? await sendInstagramCatalog(igUserId,item.senderId,accessToken,selectedCatalog) : await sendInstagramText(
+      if(sendCatalog&&typingSession)runInBackground(typingSession.pulse());
+      const multipartCatalog=sendCatalog&&catalogDeliveryStyle(selectedCatalog?.delivery_style)!=='cards';
+      const sendResult = sendCatalog ? await sendInstagramCatalog(igUserId,item.senderId,accessToken,selectedCatalog,{admin,workspaceId,key:aiDeliveryKey,pulse:()=>{if(typingSession)runInBackground(typingSession.pulse());},onPart:(part,result,index)=>{if(!multipartCatalog)return;if(index===0){runInBackground(finishDeliveryQuota(admin,workspaceId,aiDeliveryKey,true));unresolvedAiKey="";}runInBackground(markOutboundClaim(admin,workspaceId,String(result.message_id)));runInBackground(persistOutboundMessage(admin,workspaceId,item,senderProfile,automation,part.text,String(result.message_id),part.catalog));}}) : await sendInstagramText(
         igUserId,
         item.senderId,
         accessToken,
@@ -1997,12 +2038,13 @@ Instagram DM style rules:
       const sendMs = Math.round(performance.now() - sendStart);
       const instagramMessageId = String(sendResult?.message_id || "");
       if(!instagramMessageId) throw new Error("Instagram did not confirm AI reply delivery");
-      runInBackground(finishDeliveryQuota(admin,workspaceId,aiDeliveryKey,true));
+      if(!multipartCatalog)runInBackground(finishDeliveryQuota(admin,workspaceId,aiDeliveryKey,true));
       unresolvedAiKey="";
       const tagActions = (automation.actions || []).filter((a: any) => a.type === "add_tag");
       if (tagActions.length) runInBackground(saveContactTags(admin, workspaceId, item.senderId, tagActions.map((a: any) => a.tag_name)));
       // Google Sheets is Coming Soon. Customer Data capture runs independently above.
 
+      console.log("[DM_DELIVERY_ACCEPTED]",{catalog:sendCatalog,parts:sendResult?.part_count||1,send_ms:sendMs,typing_stop_after_accept:true});
       stopTyping();
 
       if (instagramMessageId) {
@@ -2020,7 +2062,7 @@ Instagram DM style rules:
       // Persist the new conversation before the next event in this batch.
       await Promise.all([
         saveHistory(admin, workspaceId, item.senderId, nextHistory),
-        persistOutboundMessage(admin,workspaceId,item,senderProfile,automation,responseText,instagramMessageId,sendCatalog?selectedCatalog:undefined),
+        multipartCatalog?Promise.resolve():persistOutboundMessage(admin,workspaceId,item,senderProfile,automation,responseText,instagramMessageId,sendCatalog?selectedCatalog:undefined),
       ]);
       runInBackground(admin.rpc("autoreply_dispatch_memory_worker"));
       runInBackground(
@@ -2093,6 +2135,7 @@ Instagram DM style rules:
       }
       const sendMs = Math.round(performance.now() - sendStart);
       const sendError = err instanceof Error ? err.message : String(err);
+      if(err?.confirmedParts)console.warn("[CATALOG_PARTIAL_DELIVERY]",{confirmed_parts:err.confirmedParts,message_id:item.messageId});
 
       stopTyping();
       console.error("[LIVE_DM_SEND_FAILED]", sendError);
