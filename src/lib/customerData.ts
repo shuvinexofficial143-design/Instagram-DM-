@@ -32,6 +32,7 @@ export type CustomerRecord = {
   source_instagram_id?: string;
   purchase_reported_at?: string | null;
   purchase_product?: string;
+  address_components?: Record<string,string>;
 };
 export type AutomationDataGroup = {
   id: string;
@@ -116,7 +117,7 @@ export const customerSearchPattern = (text: string) =>
     .replace(/[\\%_]/g, "\\$&") +
   "%";
 export const CUSTOMER_RECORD_COLUMNS =
-  "id,customer_key,username,data,created_at,updated_at,first_seen_at,last_seen_at,instagram_id,source_instagram_username,source_instagram_id,purchase_reported_at,purchase_product";
+  "id,customer_key,username,data,created_at,updated_at,first_seen_at,last_seen_at,instagram_id,source_instagram_username,source_instagram_id,purchase_reported_at,purchase_product,address_components";
 export function customerDisplayName(row: CustomerRecord) {
   const named = Object.entries(row.data || {}).find(([k]) =>
     /^(name|customer name|full name|नाम)$/i.test(k),

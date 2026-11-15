@@ -13,7 +13,7 @@ Deno.serve(async(req:Request)=>{
   if(error||!authorized)return reply(401,{ok:false,error:'Internal worker authorization required'});
   const providerKey=Deno.env.get('OPENAI_API_KEY')||'';if(!providerKey)return reply(503,{ok:false,code:'provider_key_missing'});
   // Synthetic only. This endpoint has no Meta send or production customer write path.
-  const sources=[{id:'synthetic-address',timestamp:'2026-11-15T00:00:00Z',text:'1. Ek\n2. Arun Kumar Sharma\n3. 9876543210\n4. Sant Hari Nagar, Naygaon Road, Sinnar, Ji. Nashik'},{id:'synthetic-pin',timestamp:'2026-11-15T00:01:00Z',text:'422103'}];
+  const sources=[{id:'synthetic-address',timestamp:'2026-11-15T00:00:00Z',text:'1. Ek\n2. Arun Kumar Sharma\n3. 9876543210\n4. Flat 12, Sant Hari Nagar, Naygaon Road, Sinnar, Ji. Nashik'},{id:'synthetic-pin',timestamp:'2026-11-15T00:01:00Z',text:'422103'}];
   const state=await scanCustomerFacts({key:providerKey,sources,history:[{role:'assistant',content:'कृपया अपना पूरा नाम, मोबाइल और पता भेजें।'}]});
   const values=customerFactValues(state);
   const outputs:any[]=[];
@@ -21,6 +21,6 @@ Deno.serve(async(req:Request)=>{
    const result=await generateCatalogReply({key:providerKey,systemPrompt:'You are Ishu Mart assistant. Love Pearl Necklace costs ₹360, free delivery, COD. Estimated delivery 5–7 days. The customer already wants one unit. Collect only missing address fields, then request confirmation. Do not restart the sales pitch.',history:[{role:'user',content:sources[0].text},{role:'assistant',content:'आपकी जानकारी मिल गई है। कृपया राज्य बता दीजिए।'}],text:current,customerFacts:{...state,configuredFields:['Name','Phone','Address','City','District','State','PIN Code','Quantity']},timeoutMs:20000});
    outputs.push({input:current,reply:result.text,handoff:Boolean(result.handoff)});
   }
-  return reply(200,{ok:true,model:DM_AI_MODEL,synthetic:true,no_customer_messages_sent:true,checks:{name:values.name==='Arun Kumar Sharma',phone:values.phone==='9876543210',address:Boolean(values.address?.includes('Naygaon Road')),pincode:values.pincode==='422103',state_not_invented:!values.state},fields:values,outputs});
+  return reply(200,{ok:true,model:DM_AI_MODEL,synthetic:true,no_customer_messages_sent:true,checks:{name:values.name==='Arun Kumar Sharma',phone:values.phone==='9876543210',address:Boolean(values.address?.includes('Naygaon Road')),pincode:values.pincode==='422103',state_not_invented:!values.state,house_number:Boolean(values.house_number?.includes('12')),road:Boolean(values.road?.includes('Naygaon')),area:Boolean(values.area?.includes('Sant Hari'))},fields:values,outputs});
  }catch(error:any){return reply(503,{ok:false,model:DM_AI_MODEL,error:String(error?.message||'AI check failed').slice(0,300),provider_status:error?.status||null,provider_detail:error?.providerMessage||null});}
 });

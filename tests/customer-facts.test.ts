@@ -49,3 +49,20 @@ test('native Roman Hindi order acknowledgement is retained as conversation evide
  assert.equal(orderAcknowledgement('Okay aap ka order confirm ho gya hai'),true);
  assert.equal(orderAcknowledgement('Aap ka order confirm ho gya hai kya?'),false);
 });
+test('combined address parts are separate facts and a road cannot be invented from a city',()=>{
+ const msg={id:'full-address',timestamp:source.timestamp,text:'Flat 12, Lake Road, Mohan Colony, Tarana, District Ujjain, MP 456665'};
+ const raw=Object.fromEntries(Object.entries({house_number:'Flat 12',road:'Lake Road',area:'Mohan Colony',city:'Tarana',district:'Ujjain',state:'MP',pincode:'456665'}).map(([key,value])=>[key,{value,evidence:value,source_message_id:msg.id}]));
+ const parsed=validateCustomerFacts(raw,[msg]);assert.equal(parsed.road?.value,'Lake Road');assert.equal(parsed.area?.value,'Mohan Colony');assert.equal(parsed.house_number?.value,'Flat 12');assert.equal(parsed.city?.value,'Tarana');
+ assert.equal(validateCustomerFacts({road:{value:'Main Road',evidence:'Tarana',source_message_id:msg.id}},[msg]).road,undefined);
+});
+
+test('order confirmation waits for a missing configured address field while support replies remain available',async()=>{
+ const state={...known,configuredFields:['Name','Phone','Address','State']};
+ assert.equal(repeatedCustomerQuestion('कृपया ऑर्डर कन्फर्म कर दें।',state),true);
+ assert.equal(repeatedCustomerQuestion('आपकी डिलीवरी 5–7 दिन में होती है।',state),false);
+ assert.equal(repeatedCustomerQuestion('क्या आपका नाम और पता सही है?',state),false);
+ let calls=0;const result=await generateCatalogReply({key:'test',systemPrompt:'Collect delivery details.',history:[],text:'Kr Diya bro',customerFacts:state,fetcher:async(_url,init)=>{
+  calls++;assert.match(JSON.stringify(JSON.parse(String(init?.body)).messages),/missing_configured_fields/);
+  return Response.json({choices:[{message:{content:'कृपया ऑर्डर कन्फर्म कर दें।'}}]});
+ }});assert.equal(calls,2);assert.match(result.text||'',/राज्य/);assert.doesNotMatch(result.text||'',/मोबाइल|पूरा नाम/);
+});

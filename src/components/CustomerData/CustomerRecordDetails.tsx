@@ -1,5 +1,5 @@
 import React from "react";
-import { Clock3, Instagram, ShoppingBag, UserRound, X } from "lucide-react";
+import { Clock3, Instagram, MapPin, ShoppingBag, UserRound, X } from "lucide-react";
 import { CustomerRecord, customerDisplayName } from "../../lib/customerData";
 export const formatCustomerTime = (text?: string | null) => {
   if (!text) return "Not recorded";
@@ -38,6 +38,14 @@ export function CustomerRecordDetails({
         </button>
       </header>
       <div className="cd-detail-grid">
+        {Object.keys(r.address_components || {}).length > 0 && <section className="cd-address-section">
+          <h4><MapPin size={16} />Delivery address</h4>
+          <dl>{[
+            ['house_number','House / flat'],['road','Road / street'],['area','Area / locality'],
+            ['city','City / town'],['district','District'],['state','State'],['pincode','PIN code'],['landmark','Landmark'],['address','Full address as shared'],
+          ].map(([key,label]) => r.address_components?.[key] ? <div key={key}><dt>{label}</dt><dd>{r.address_components[key]}</dd></div> : null)}</dl>
+          <p className="cd-fine-print">Only details supplied by this customer are saved. Unclear or missing parts are confirmed in chat.</p>
+        </section>}
         <section>
           <h4>
             <UserRound size={16} />

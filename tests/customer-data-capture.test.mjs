@@ -10,7 +10,7 @@ const raw = await fs.readFile(
   ),
   "utf8",
 );
-const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/openaiConfig.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/customerFacts.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/dmTurns.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/openaiConfig.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/customerFacts.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+
   raw.replace(/^import .*;\n/gm, "") +
     "\nglobalThis.customerHelpers={captureCustomerData,customerDataFields,isCustomerPurchaseReport};",
   { loader: "ts", format: "esm" },
@@ -38,6 +38,7 @@ function fixture({ failAI = false, failSave = false, purchase = null } = {}) {
         limit() {
           return q;
         },
+        update(v){value=v;return q;},
         upsert(v) {
           value = v;
           return q;
@@ -175,8 +176,8 @@ test("capture off does no work; storage failures retry and remain visible withou
 test("runtime starts capture after inbound persistence, before quota and outbound success checks", () => {
   assert.ok(
     raw.indexOf(
-      "captureCustomerData(admin,workspaceId,automation,item,openaiKey,account,conversationHistory(context),inboundSaved,context.memory_identity)",
-    ) < raw.indexOf("const canStartAi ="),
+      "captureCustomerData(admin,workspaceId,automation,item,openaiKey,account,conversationHistory(context),inboundSaved,context.memory_identity,dmTurn?.pending_ids||[])",
+    ) > raw.indexOf("const canStartAi ="),
   );
   assert.ok(!raw.includes("runInBackground(syncAiLeadToGoogleSheet("));
 });

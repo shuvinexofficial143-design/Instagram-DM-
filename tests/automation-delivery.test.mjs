@@ -6,7 +6,7 @@ import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/instagramProfiles.ts', import.meta.url), 'utf8')).replace(/^export /gm, '') + '\n' + (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/openaiConfig.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/customerFacts.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { getSenderProfile, extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog, sendInstagramCatalog };', { loader: 'ts', format: 'esm' });
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/dmTurns.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/openaiConfig.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/customerFacts.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { getSenderProfile, extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog, sendInstagramCatalog };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
@@ -14,7 +14,7 @@ const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, sta
 
 function fixture(automations = [ai], options = {}) {
   const writes = [], apiCalls = [], aiInputs = [], rpcCalls = [], claims = new Set(), history = new Map(), tasks = [], deliveryKeys = new Set();
-  const partLedger=new Map();
+  const partLedger=new Map(),turns=new Map();
   const inbox=new Map((options.initialInbox||[]).map(row=>[row.id,row]));
   const threadRows=sender=>[...inbox.values()].filter(r=>r.data.from_ig_id===sender).sort((a,b)=>Date.parse(a.data.timestamp)-Date.parse(b.data.timestamp)||a.id.localeCompare(b.id));
   const outboundVersion=sender=>JSON.stringify(threadRows(sender).filter(r=>r.data.direction==='out').map(r=>[r.id,r.data.message_text]));
@@ -66,6 +66,21 @@ function fixture(automations = [ai], options = {}) {
     },
     async rpc(name, args) {
       rpcCalls.push({name,args});
+      if(name==='autoreply_dm_turn'){
+        const key=args.p_workspace+':'+args.p_sender;let turn=turns.get(key)||{revision:0,pending_ids:[],seen:new Map(),phase:'collecting'};
+        if(args.p_action==='register'){
+          if(turn.seen.has(args.p_message))return {data:{...turn,revision:turn.seen.get(args.p_message)}};
+          turn={...turn,revision:turn.revision+1,pending_ids:[...turn.pending_ids,args.p_message],phase:'collecting'};turn.seen.set(args.p_message,turn.revision);turns.set(key,turn);
+        }
+        const latest=args.p_revision===turn.revision;let claimed=false;
+        if(args.p_action==='claim'&&latest&&turn.phase==='collecting'){turn.phase='sending';claimed=true;}
+        if(args.p_action==='finish'&&latest){turn.phase='sent';turn.pending_ids=[];}
+        return {data:{revision:turn.revision,pending_ids:turn.pending_ids,latest,ready:true,quiet_ms:0,claimed,phase:turn.phase}};
+      }
+      if(name==='autoreply_conversation_context'){
+        const saved=threadRows(args.p_sender).filter(r=>r.id!==args.p_exclude_message);
+        return {data:{history:saved.slice(-20).map(r=>({id:r.id,role:r.data.direction==='out'?'assistant':'user',content:r.data.message_text,at:Date.parse(r.data.timestamp)})),thread_outbound_version:outboundVersion(args.p_sender)}};
+      }
       if(name==='autoreply_record_instagram_outbound'){
         if(options.outboundStoreFails)return {error:{message:'Store unavailable'}};
         if(args.p_business_id!=='business'||args.p_recipient_id==='business'||(!args.p_is_echo&&args.p_sender_id!=='business'&&!account.own_sender_ids.includes(args.p_sender_id)))return {data:{recorded:false}};
@@ -138,7 +153,7 @@ function fixture(automations = [ai], options = {}) {
         if(body.response_format?.type==='json_object'){options.onDetailScan?.();const vision=body.messages.some(m=>Array.isArray(m.content));if(vision&&options.visionFails)return Response.json({error:{message:'Image unavailable'}},{status:400});return Response.json({choices:[{message:{content:vision?JSON.stringify({description:'Silver watch with adjustable strap',uncertain:false}):'{}'}}]});}
         aiInputs.push(body.messages);
         if(options.handoff)return Response.json({choices:[{message:{tool_calls:[{function:{name:'handoff_to_human',arguments:options.malformedHandoff?'{bad-json':JSON.stringify({reason:'customer_requested',summary:'Customer wants a human',workspaceId:'forged-target'})}}]}}]});
-        options.onAIStart?.(body);
+        if(options.onAIStart)await options.onAIStart(body);
         if (options.aiFails) return Response.json({ error: { message: 'AI outage' } }, { status: 503 });
         return Response.json({ choices: [{ message: options.photoSelections ? {tool_calls:[{id:'photos',type:'function',function:{name:'send_product_photos',arguments:JSON.stringify({selections:options.photoSelections,caption:options.aiCaption||''})}}]} : options.chooseCatalog ? {tool_calls:[{function:{name:'send_catalog',arguments:JSON.stringify({page:options.catalogPage||1,caption:options.aiCaption||''})}}]} : { content: 'AI: ' + body.messages.at(-1).content } }] });
       }
@@ -266,11 +281,15 @@ test('unlimited administrator continues standard replies without bypassing a pau
  const paused=fixture([{...ai,status:'paused'}],{unlimited:true,aiUsed:200000});assert.equal((await paused.post(dm())).body.sent,0);
  const disconnected=fixture([ai],{unlimited:true,aiUsed:200000,disconnected:true});assert.equal((await disconnected.post(dm())).body.sent,0);
 });
-test('two distinct messages in one batch both reply and the second sees history', async () => {
-  const f = fixture(); const event = dm('m1', 'first'); event.entry[0].messaging.push(dm('m2', 'second').entry[0].messaging[0]);
-  const r = await f.post(event); assert.equal(r.body.sent, 2);
-  assert.ok(f.aiInputs[1].some(m => m.role === 'assistant' && m.content.includes('first')));
+test('two messages in one payload produce one reply using both messages', async () => {
+ const f=fixture();const event=dm('m1','My name is Arun');event.entry[0].messaging.push(dm('m2','Mohan Colony, Tarana').entry[0].messaging[0]);
+ const result=await f.post(event);assert.equal(result.body.sent,1);assert.equal(f.aiInputs.length,1);
+ assert.ok(f.aiInputs[0].some(m=>m.role==='user'&&m.content==='My name is Arun'));
+ assert.equal(f.aiInputs[0].at(-1).content,'Mohan Colony, Tarana');
+ assert.equal(f.apiCalls.filter(c=>c.body.sender_action==='typing_off').length,1);
+ assert.deepEqual([...new Set(f.writes.filter(w=>w.collection==='inbox_messages'&&w.data.direction==='in').map(w=>w.id))].sort(),['m1','m2']);
 });
+
 test('webhook retry never sends a duplicate reply', async () => {
   const f = fixture(); await f.post(dm()); const r = await f.post(dm());
   assert.equal(r.body.sent, 0); assert.equal(r.body.results[0].duplicate, true);
@@ -826,4 +845,19 @@ test('a pending typing request settles before dispatching the photo collection',
  const f=fixture([rule],{catalogs:[{...photoCatalog[0],delivery_style:'photos_only'}],products:photoProducts,chooseCatalog:true,typingGate:gate.promise,onTypingAttempt:()=>started.resolve()});
  const request=f.post(dm('typing-before-group','Show catalog'));try{await withinDeadline(started.promise);await new Promise(resolve=>setImmediate(resolve));assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);}finally{gate.resolve();}await request;
  const first=f.apiCalls.findIndex(c=>c.body.message);assert.ok(first>=0);assert.equal(f.apiCalls.slice(first).some(c=>c.body.sender_action==='typing_on'),false);
+});
+
+test('a new message during generation supersedes the old draft without a second send',async()=>{
+ const started=deferred(),release=deferred();const f=fixture([ai],{onAIStart:async body=>{if(body.messages.at(-1).content==='हाँ'){started.resolve();await release.promise;}}});
+ const first=f.post(dm('overlap-1','हाँ'));await withinDeadline(started.promise);
+ const second=await f.post(dm('overlap-2','मेरा नाम अरुण शर्मा है'));
+ release.resolve();const old=await first;
+ assert.equal(second.body.sent,1);assert.equal(old.body.sent,0);
+ assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);
+ assert.equal(f.apiCalls.filter(c=>c.body.sender_action==='typing_off').length,1);
+ assert.equal(old.body.results[0].reason,'superseded_customer_turn');
+});
+test('repeated yes messages in one burst have a single outgoing reply',async()=>{
+ const f=fixture();const event=dm('yes-1','हाँ');event.entry[0].messaging.push(dm('yes-2','हाँ').entry[0].messaging[0]);
+ const result=await f.post(event);assert.equal(result.body.sent,1);assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);
 });

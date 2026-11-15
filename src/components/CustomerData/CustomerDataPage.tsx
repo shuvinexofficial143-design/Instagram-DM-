@@ -229,6 +229,7 @@ export const CustomerDataPage = () => {
         ? "auto"
         : "smooth",
       block: "start",
+      inline: "nearest",
     });
     panel?.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
   }, [selectedId]);
@@ -239,11 +240,12 @@ export const CustomerDataPage = () => {
         ? "auto"
         : "smooth",
       block: "nearest",
+      inline: "nearest",
     });
   }, [detail?.id]);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return (
-    <div className="customer-data-workspace">
+    <div className={"customer-data-workspace" + (selected ? " is-table-open" : "")}>
       <header className="cd-page-header">
         <div>
           <span className="cd-kicker">WORKSPACE / CUSTOMER DATA</span>
@@ -311,7 +313,7 @@ export const CustomerDataPage = () => {
         />
       ) : (
         <>
-          <section aria-labelledby="automation-data-heading">
+          {!selected && <section aria-labelledby="automation-data-heading">
             <div className="cd-section-title">
               <div>
                 <h2 id="automation-data-heading">Your automations</h2>
@@ -351,7 +353,7 @@ export const CustomerDataPage = () => {
                 No automations match this filter.
               </div>
             )}
-          </section>
+          </section>}
           {!selected && (
             <div className="cd-get-started">
               <Table2 size={19} />
@@ -378,7 +380,7 @@ export const CustomerDataPage = () => {
                     }}
                   >
                     <ArrowLeft size={14} />
-                    Close table
+                    All automations
                   </button>
                   <h2 id="records-heading" tabIndex={-1}>
                     {selected.automation_name}

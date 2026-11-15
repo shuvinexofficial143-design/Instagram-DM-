@@ -1,5 +1,8 @@
 .customer-data-workspace {
   container: customer-data / inline-size;
+  width: 100%;
+  box-sizing: border-box;
+  min-inline-size: 0;
   max-width: 1360px;
   margin: 0 auto;
   padding: 32px;
@@ -336,6 +339,10 @@
   flex-shrink: 0;
 }
 .cd-records-panel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  contain: inline-size;
   margin-top: 30px;
   border: 1px solid #e3e7f0;
   border-radius: 18px;
@@ -471,8 +478,17 @@
   background: #a7adba;
 }
 .cd-table-wrap {
-  overflow: auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
+.customer-data-workspace.is-table-open .cd-records-panel { margin-top: 0; }
+.cd-records-header { flex-wrap: wrap; }
+.cd-records-actions { min-width: 0; max-width: 100%; }
+.cd-version-select { min-width: 0; max-width: 100%; }
+.cd-version-select select { max-width: 100%; }
 .customer-data-workspace table {
   border-collapse: collapse;
   min-width: 100%;

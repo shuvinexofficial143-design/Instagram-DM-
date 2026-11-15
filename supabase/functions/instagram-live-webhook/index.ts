@@ -1,3 +1,4 @@
+import {registerDmTurn,observeDmTurn,waitForDmTurn,claimDmTurn,finishDmTurn,watchDmTurn,dropUnstoredDmInput,type DmTurn} from './dmTurns.ts';
 import {DM_AI_MODEL,chatModelParams,businessPrompt} from './openaiConfig.ts';
 import {scanCustomerFacts,scanConfiguredCustomerFields,customerFactValues,canonicalCustomerField,type CustomerFacts} from './customerFacts.ts';
 import {fetchConversationUsernames,cacheInstagramProfilePhoto} from './instagramProfiles.ts';
@@ -465,7 +466,7 @@ function isCustomerPurchaseReport(text:string):boolean {
  if(/\?|\b(?:not|never|haven't|haven’t|didn't|didn’t|havenot|hypothetical|example|if|would)\b|नहीं|नही|मतलब अगर|अगर|उदाहरण/i.test(text))return false;
  return /\b(?:I\s+(?:(?:have|already)\s+){0,2}(?:bought|purchased|ordered|paid)|my\s+(?:order|payment)\s+(?:is\s+)?(?:confirmed|completed|done))\b|मैंने.{0,45}(?:खरीद (?:लिया|ली)|खरीदी|खरीदा|ऑर्डर (?:कर दिया|किया)|पेमेंट (?:कर दिया|किया)|भुगतान (?:कर दिया|किया))|mera\s+(?:order|payment)\s+(?:confirm|done)|maine.{0,45}(?:kharid liya|order kar diya|payment kar diya|pay kar diya)/i.test(text);
 }
-async function captureCustomerData(admin:any,workspaceId:string,automation:any,item:any,openaiKey:string,sourceAccount:any={},history:any[]=[],persistReady?:Promise<boolean>,identity:any={}) {
+async function captureCustomerData(admin:any,workspaceId:string,automation:any,item:any,openaiKey:string,sourceAccount:any={},history:any[]=[],persistReady?:Promise<boolean>,identity:any={},pendingIds:string[]=[]) {
  const cfg=automation?.trigger_config||{};
  if(automation?.trigger_type!=='dm_ai_conversation'||cfg.data_capture_enabled===false)return null;
  const fields=customerDataFields(automation);if(!item.text)return null;
@@ -483,6 +484,11 @@ async function captureCustomerData(admin:any,workspaceId:string,automation:any,i
    if(error)throw Error('Previous customer messages could not be read');
    sources=[...(older||[]).filter((row:any)=>row.id!==current.id&&!row.data?.is_test).reverse().map((row:any)=>({id:row.id,text:String(row.data.message_text||'').slice(0,6000),timestamp:row.data.timestamp})),current];
   }
+  if(pendingIds.length>1){
+   const {data:batch,error}=await admin.from('autoreply_documents').select('id,data').eq('user_id',workspaceId).eq('collection','inbox_messages').eq('data->>direction','in').in('id',pendingIds).order('message_time',{ascending:true});
+   if(error)throw Error('Customer message batch could not be read');
+   sources=[...(batch||[]).filter((row:any)=>row.id!==current.id&&!row.data?.is_test).map((row:any)=>({id:row.id,text:String(row.data.message_text||'').slice(0,6000),timestamp:row.data.timestamp})),current];
+  }
   const previous=state;
   state=await scanCustomerFacts({key:'',sources,previous,history});
   try{state=await scanCustomerFacts({key:openaiKey,sources,previous,history});}
@@ -499,7 +505,15 @@ async function captureCustomerData(admin:any,workspaceId:string,automation:any,i
   if(contactError)throw Error('Could not resolve customer identity');
   const contact=(contacts||[]).find((r:any)=>r.id===item.senderId||r.data?.ig_user_id===item.senderId||(r.data?.ig_user_ids||[]).includes(item.senderId));
   const args={p_workspace:workspaceId,p_automation:String(automation.id),p_fields:fields,p_customer:contact?.id||item.senderId,p_username:contact?.data?.ig_username||item.senderUsername||item.senderId,p_values:facts,p_message:item.messageId,p_at:current.timestamp,p_event:{customer_instagram_id:item.senderId,source_username:String(sourceAccount.username||''),source_id:String(sourceAccount.ig_user_id||sourceAccount.user_id||''),purchase_reported:isCustomerPurchaseReport(current.text),purchase_product:isCustomerPurchaseReport(current.text)?values.product||'':''}};
-  for(let attempt=0;attempt<2;attempt++){const {error}=await admin.rpc('autoreply_capture_customer',args);if(!error)break;if(attempt===1)throw Error('Customer data could not be saved');}
+  for(let attempt=0;attempt<2;attempt++){
+   const {data:recordId,error}=await admin.rpc('autoreply_capture_customer',args);
+   if(!error){
+    const parts=Object.fromEntries(['address','house_number','road','area','city','district','state','pincode','landmark'].filter(field=>values[field]).map(field=>[field,values[field]]));
+    if(recordId&&Object.keys(parts).length){const {error:addressError}=await admin.from('autoreply_customer_records').update({address_components:parts}).eq('workspace_id',workspaceId).eq('id',recordId);if(addressError)throw Error('Structured address could not be saved');}
+    break;
+   }
+   if(attempt===1)throw Error('Customer data could not be saved');
+  }
  }catch(error:any){await logEvent(admin,workspaceId,'data-save:'+item.messageId,{status:'failed',reason:'customer_data_save_failed',automation_id:automation.id,sender_id:item.senderId,error:String(error.message).slice(0,200)});}
  return {...state,configuredFields:fields};
 }
@@ -1151,6 +1165,11 @@ function createTypingSession(key: string, send: (action: "typing_on" | "typing_o
     // Drain an already dispatched typing request before the photo collection;
     // a late typing response must not arrive after the photos.
     return state.tail.catch(() => null);
+  }, abandon() {
+    // A newer worker continues the same indicator; stale work must never send typing_off.
+    active=false;refreshing=false;if(timer)clearTimeout(timer);timer=null;
+    if(owns())typingConversations.delete(key);
+    return state.tail.catch(()=>null);
   }, stop() {
     if (!active) return Promise.resolve(null);
     active = false;
@@ -1623,6 +1642,20 @@ Deno.serve(async (req: Request) => {
   }
 
   const results: any[] = [];
+  const preparedDm=new Map<any,{context:any;turn:DmTurn|null;error?:boolean}>();
+  // Register every DM in this payload before processing any reply. Other webhook
+  // workers register against the same database revision, never isolate memory.
+  for(const item of messages){
+   if(item.triggerType!=='dm')continue;
+   try{
+    const context=await loadDmContext(admin,[item.entryId||item.recipientId],item.messageId,'',item.senderId,true);
+    const automation=context?.campaign_automation?.status==='active'?context.campaign_automation:matchAutomation(context?.automations||[],item);
+    const account=context?.account||{},business=String(account.ig_user_id||''),aliases=[business,account.ig_scoped_id,account.id,account.user_id,...(account.own_sender_ids||[])].map(String);
+    const eligible=context?.user_id&&context.message_state==='new'&&automation?.trigger_type==='dm_ai_conversation'&&automation.status==='active'&&!context.thread_human_handoff&&!context.thread_ai_paused&&aliases.includes(item.entryId||item.recipientId)&&aliases.includes(item.recipientId)&&!aliases.includes(item.senderId)&&(!item.senderUsername||item.senderUsername!==String(account.username||'').toLowerCase());
+    const turn=eligible?await registerDmTurn(admin,String(context.user_id),item.senderId,item.messageId):null;
+    preparedDm.set(item,{context,turn});
+   }catch{preparedDm.set(item,{context:null,turn:null,error:true});}
+  }
 
   for (const item of messages) {
     const totalStart = performance.now();
@@ -1643,6 +1676,8 @@ Deno.serve(async (req: Request) => {
     let typingStarted = false;
     let typingTask: Promise<any> = Promise.resolve(null);
     let typingSession: ReturnType<typeof createTypingSession> | null = null;
+    const dmTurn=preparedDm.get(item)?.turn||null;
+    const abandonTyping=()=>{typingStopRequested=true;if(typingSession)runInBackground(typingSession.abandon());};
 
     const startTyping = (runtime: any, source: "edge_memory" | "supabase_runtime_context" | "full_context") => {
       if (typingStarted) return;
@@ -1685,11 +1720,14 @@ Deno.serve(async (req: Request) => {
       typingStopRequested = true;
       // Called after confirmed delivery or failure. The session suppresses stale
       // cleanup, serializes pending on/off, and cancels all refresh/retry work.
-      if (typingSession) runInBackground(typingSession.stop());
+      if(typingSession){const session=typingSession;
+        runInBackground(dmTurn?observeDmTurn(admin,dmTurn).then(state=>state.latest?session.stop():session.abandon()).catch(()=>session.abandon()):session.stop());
+      }
     };
 
     try {
-      context = await loadDmContext(admin, [item.entryId || item.recipientId], item.messageId, "", item.senderId, true);
+      const prepared=preparedDm.get(item);if(prepared?.error)throw Error('DM preparation failed');
+      context=prepared?prepared.context:await loadDmContext(admin,[item.entryId||item.recipientId],item.messageId,'',item.senderId,true);
     } catch {
       results.push({ messageId: item.messageId, ok: false, reason: "context_lookup_failed" });
       continue;
@@ -1772,6 +1810,7 @@ Deno.serve(async (req: Request) => {
         inboundSaveMs = Math.round(performance.now() - inboundSaveStart);
         if(saved)runInBackground(admin.rpc("autoreply_dispatch_memory_worker"));
         if (!saved) {
+          if(dmTurn)runInBackground(dropUnstoredDmInput(admin,dmTurn,item.messageId));
           stopTyping();
           runInBackground(logEvent(admin, workspaceId, item.messageId, {
             status: "failed", reason: "inbox_save_failed", sender_id: item.senderId, inbound_save_ms: inboundSaveMs,
@@ -1793,13 +1832,13 @@ Deno.serve(async (req: Request) => {
     let automation = item.triggerType === "dm" && context.campaign_automation?.status === "active" ? context.campaign_automation : matchAutomation(context.automations || [], item);
     if (context.thread_human_handoff === true || context.thread_ai_paused === true) automation = null;
     context.automation = automation;
-    const customerScan=automation?captureCustomerData(admin,workspaceId,automation,item,openaiKey,account,conversationHistory(context),inboundSaved,context.memory_identity):Promise.resolve(null);
-    runInBackground(customerScan);
+    let customerScan:Promise<any>=Promise.resolve(null);
 
     // Keep non-AI/ignored events ordered within this batch, including their
     // contact updates. Only an eligible AI turn benefits from parallel storage.
     const canStartAi = automation?.trigger_type === "dm_ai_conversation" &&
       context.quota && (context.quota.unlimited === true || context.quota.aiUsed < context.quota.aiLimit);
+    if(!canStartAi&&automation?.trigger_type==='dm_ai_conversation')runInBackground(captureCustomerData(admin,workspaceId,automation,item,openaiKey,account,conversationHistory(context),inboundSaved,context.memory_identity));
     if (!canStartAi && !await inboundSaved) {
       results.push({ messageId: item.messageId, ok: false, reason: "inbox_save_failed" });
       continue;
@@ -1870,6 +1909,14 @@ Deno.serve(async (req: Request) => {
     }
     startTyping(context, "full_context");
     if (extraDelay) await new Promise(resolve => setTimeout(resolve, extraDelay * 1000));
+    if(dmTurn){
+      if(!await waitForDmTurn(admin,dmTurn)){await inboundSaved;abandonTyping();results.push({messageId:item.messageId,ok:true,ignored:true,reason:'superseded_customer_turn'});continue;}
+      const {data:fresh,error}=await admin.rpc('autoreply_conversation_context',{p_workspace:workspaceId,p_sender:item.senderId,p_exclude_message:item.messageId});
+      if(error)throw Error('Latest customer context unavailable');
+      context={...context,...fresh};
+    }
+    customerScan=captureCustomerData(admin,workspaceId,automation,item,openaiKey,account,conversationHistory(context),inboundSaved,context.memory_identity,dmTurn?.pending_ids||[]);
+    runInBackground(customerScan);
 
     const aiAction = (automation?.actions || []).find(
       (a: any) => a?.type === "ai_chatbot"
@@ -1879,6 +1926,7 @@ Deno.serve(async (req: Request) => {
     );
 
     const scannedCustomerFacts=await customerScan;
+    if(dmTurn&&!(await observeDmTurn(admin,dmTurn)).latest){abandonTyping();results.push({messageId:item.messageId,ok:true,ignored:true,reason:'superseded_customer_turn'});continue;}
     const baseSystemPrompt = businessPrompt(aiAction?.ai_system_instruction);
     const systemPrompt = `${baseSystemPrompt}
 
@@ -1932,7 +1980,8 @@ Instagram DM style rules:
           try{selectedCatalog=await loadCatalog(admin,workspaceId,String(aiAction.catalog_id));}
           catch(error:any){catalogWarning=error?.message||'Catalog is unavailable.';console.warn('[CATALOG_UNAVAILABLE]',{workspaceId,automationId:automation.id});}
         }
-        const generated = await generateReply(
+        const turnWatch=dmTurn?watchDmTurn(admin,dmTurn):null;
+        let generated:any;try{generated = await generateReply(
           openaiKey,
           model,
           systemPrompt,
@@ -1941,11 +1990,12 @@ Instagram DM style rules:
           isGreeting,
           selectedCatalog ? {...selectedCatalog,onSelect:(chosen:any)=>{selectedCatalog=chosen;sendCatalog=true;}} : undefined,
           item.images || [], catalogWarning, {
-            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,customerFacts:scannedCustomerFacts,
+            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,customerFacts:scannedCustomerFacts,signal:turnWatch?.signal,
             historySearch:async(query:string)=>{const {data,error}=await admin.rpc('autoreply_search_conversation',{p_workspace:workspaceId,p_sender:item.senderId,p_query:query});if(error)throw Error('Historical search unavailable');return data;},
             onUsage:(usage:any)=>{for(const key of ['input_tokens','output_tokens','cached_input_tokens','calls','provider_ms'])replyUsage[key]+=usage[key]||0;replyUsage.usage_available=replyUsage.usage_available||usage.usage_available;},
           }
         );
+        }finally{turnWatch?.stop();}
         if(typeof generated === "string") responseText=generated;else humanHandoff=generated.handoff;
       } catch (err) {
         aiError = err instanceof Error ? err.message : String(err);
@@ -1973,6 +2023,7 @@ Instagram DM style rules:
       }
     }
 
+    if(dmTurn&&!(await observeDmTurn(admin,dmTurn)).latest){abandonTyping();results.push({messageId:item.messageId,ok:true,ignored:true,reason:'superseded_customer_turn'});continue;}
     if (humanHandoff) {
       stopTyping();
       await inboundSaved;
@@ -2020,6 +2071,7 @@ Instagram DM style rules:
     let unresolvedAiKey="";
 
     try {
+      if(dmTurn&&!await claimDmTurn(admin,dmTurn)){abandonTyping();results.push({messageId:item.messageId,ok:true,ignored:true,reason:'superseded_customer_turn'});continue;}
       // Separate AI allowance, reserved under an owner-level database lock.
       const aiDeliveryKey=`ai:${item.messageId||item.senderId}:${automation.id}`;
       const slot=await reserveDeliveryQuota(admin,workspaceId,aiDeliveryKey,true,String(automation.id),item.senderId,context.thread_control_version,context.thread_outbound_version);
@@ -2033,6 +2085,7 @@ Instagram DM style rules:
       }
       // This is the user-visible critical point. Everything expensive that does
       // not affect the reply itself is deferred until after the Send API call.
+      if(dmTurn&&!(await observeDmTurn(admin,dmTurn)).latest){await finishDeliveryQuota(admin,workspaceId,aiDeliveryKey,false);unresolvedAiKey='';abandonTyping();results.push({messageId:item.messageId,ok:true,ignored:true,reason:'superseded_customer_turn'});continue;}
       const multipartCatalog=sendCatalog&&catalogDeliveryStyle(selectedCatalog?.delivery_style)!=='cards';
       const sendResult = sendCatalog ? await sendInstagramCatalog(igUserId,item.senderId,accessToken,selectedCatalog,{admin,workspaceId,key:aiDeliveryKey,beforeSend:()=>typingSession?.handoffToMessage(),onPart:(part,result,index)=>{if(index===0)stopTyping();if(!multipartCatalog)return;if(index===0){runInBackground(finishDeliveryQuota(admin,workspaceId,aiDeliveryKey,true));unresolvedAiKey="";}runInBackground(markOutboundClaim(admin,workspaceId,String(result.message_id)));runInBackground(persistOutboundMessage(admin,workspaceId,item,senderProfile,automation,part.text,String(result.message_id),part.catalog));}}) : await sendInstagramText(
         igUserId,
@@ -2050,6 +2103,7 @@ Instagram DM style rules:
       if (tagActions.length) runInBackground(saveContactTags(admin, workspaceId, item.senderId, tagActions.map((a: any) => a.tag_name)));
       // Google Sheets is Coming Soon. Customer Data capture runs independently above.
 
+      if(dmTurn)await finishDmTurn(admin,dmTurn);
       console.log("[DM_DELIVERY_ACCEPTED]",{catalog:sendCatalog,parts:sendResult?.part_count||1,send_ms:sendMs,typing_stop_after_accept:true,typing_stop_after_first_catalog_group:sendCatalog});
       stopTyping();
 
