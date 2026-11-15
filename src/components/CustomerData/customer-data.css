@@ -478,12 +478,26 @@
   background: #a7adba;
 }
 .cd-table-wrap {
+  /* Keep absolutely positioned accessible labels inside this scrollport.
+     Otherwise the last-column label escapes clipping and enlarges the mobile
+     document even while the table itself has overflow-x: auto. */
+  position: relative;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   overflow-x: auto;
   overscroll-behavior-x: contain;
 }
+.cd-table-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 24px 12px;
+  color: #64748b;
+  font-size: 12px;
+}
+.cd-table-hint svg { flex-shrink: 0; }
+.cd-table-wrap:focus-visible { outline-offset: -3px; }
 .customer-data-workspace.is-table-open .cd-records-panel { margin-top: 0; }
 .cd-records-header { flex-wrap: wrap; }
 .cd-records-actions { min-width: 0; max-width: 100%; }
@@ -880,6 +894,7 @@
   .cd-table-wrap {
     display: none;
   }
+  .cd-table-hint { display: none; }
   .cd-mobile-records {
     display: grid;
     gap: 10px;

@@ -15,6 +15,7 @@ import {
   Plus,
   ArrowLeft,
   Clock3,
+  ArrowLeftRight,
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { supabase } from "../../lib/supabase";
@@ -488,7 +489,11 @@ export const CustomerDataPage = () => {
                 />
               ) : (
                 <>
-                  <div className="cd-table-wrap">
+                  <div id="customer-table-scroll-hint" className="cd-table-hint">
+                    <ArrowLeftRight size={14} aria-hidden="true" />
+                    Scroll sideways inside the table for more fields. Open a customer for full details.
+                  </div>
+                  <div className="cd-table-wrap" role="region" aria-label="Customer records" aria-describedby="customer-table-scroll-hint" tabIndex={0}>
                     <table>
                       <thead>
                         <tr>
