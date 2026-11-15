@@ -1,3 +1,4 @@
+import {MAX_BUSINESS_PROMPT_CHARS} from '../../supabase/functions/instagram-live-webhook/openaiConfig.js';
 import {cleanEnvironment,SUPABASE_URL,upstreamFetch} from './supabaseConfig.js';
 export const adminOperationMethods:Record<string,string>={
  'admin-handoffs':'GET','admin-handoff-detail':'GET','admin-handoff-action':'POST','admin-handoff-reply':'POST',
@@ -34,7 +35,7 @@ export function validateAdminAutomation(value:any){
  if(!value||!/^auto_[\w-]{4,}$/.test(value.id||'')||typeof value.name!=='string'||!value.name.trim()||value.name.length>120||!['dm','comment','story_reply','dm_ai_conversation'].includes(value.trigger_type)||!['active','paused'].includes(value.status)||!Array.isArray(value.actions)||!value.actions.length||value.actions.length>20||JSON.stringify(value).length>100000)throw new AdminOperationError('Enter a valid automation name, type, status and reply.');
  for(const action of value.actions){
   if(!['send_dm','reply_comment','add_delay','add_tag','ai_chatbot','auto_like_comment'].includes(action.type))throw new AdminOperationError('Unsupported automation action.');
-  if(action.type==='ai_chatbot'&&(typeof action.ai_system_instruction!=='string'||!action.ai_system_instruction.trim()||action.ai_system_instruction.length>10000))throw new AdminOperationError('Enter AI instructions of up to 10,000 characters.');
+  if(action.type==='ai_chatbot'&&(typeof action.ai_system_instruction!=='string'||!action.ai_system_instruction.trim()||action.ai_system_instruction.length>MAX_BUSINESS_PROMPT_CHARS))throw new AdminOperationError('Enter AI instructions of up to 60,000 characters.');
   if(['message_text','comment_reply_text'].some(k=>action[k]!==undefined&&(typeof action[k]!=='string'||action[k].length>1000)))throw new AdminOperationError('Replies must be 1,000 characters or fewer.');
   if(action.type==='add_delay'&&(!Number.isFinite(action.delay_seconds)||action.delay_seconds<0||action.delay_seconds>20))throw new AdminOperationError('Delay must be between 0 and 20 seconds.');
   if(action.type==='send_dm'&&!String(action.message_text||'').trim()&&!action.catalog_id)throw new AdminOperationError('Enter a reply message or choose a catalog.');

@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {useApp} from '../../context/AppContext';
 import {supabase} from '../../lib/supabase';
-const defaults={enabled:true,recent_limit:12,summary_threshold:10,input_token_budget:32768};
+const defaults={enabled:true,recent_limit:12,summary_threshold:10,input_token_budget:131072};
 export function MemorySettings(){
  const {workspaceId,instagramAccount,firebaseUser}=useApp();
  const [draft,setDraft]=useState(defaults),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),[retry,setRetry]=useState(0),[loaded,setLoaded]=useState(false);
@@ -27,7 +27,7 @@ export function MemorySettings(){
   <div className="mt-4 grid gap-4 sm:grid-cols-3">
    <label className="text-sm text-slate-600">Recent messages<select disabled={disabled} value={draft.recent_limit} onChange={e=>{setDraft(value=>({...value,recent_limit:Number(e.target.value)}));setSaved(false);}} className="mt-1 min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3">{[6,8,10,12,16,20].map(n=><option key={n} value={n}>{n} messages</option>)}</select></label>
    <label className="text-sm text-slate-600">Update summary after<select disabled={disabled} value={draft.summary_threshold} onChange={e=>{setDraft(value=>({...value,summary_threshold:Number(e.target.value)}));setSaved(false);}} className="mt-1 min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3">{[8,9,10,11,12].map(n=><option key={n} value={n}>{n} new messages</option>)}</select></label>
-   <label className="text-sm text-slate-600">AI context budget<select disabled={disabled} value={draft.input_token_budget} onChange={e=>{setDraft(value=>({...value,input_token_budget:Number(e.target.value)}));setSaved(false);}} className="mt-1 min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3"><option value={8192}>Small</option><option value={16384}>Standard</option><option value={32768}>Balanced (default)</option><option value={65536}>Extended</option></select></label>
+   <label className="text-sm text-slate-600">AI context budget<select disabled={disabled} value={draft.input_token_budget} onChange={e=>{setDraft(value=>({...value,input_token_budget:Number(e.target.value)}));setSaved(false);}} className="mt-1 min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3"><option value={8192}>Small</option><option value={16384}>Standard</option><option value={32768}>Balanced</option><option value={65536}>Extended</option><option value={131072}>Long conversations (default)</option><option value={262144}>Large business instructions</option></select></label>
   </div>
   <p className="mt-3 text-xs leading-5 text-slate-500">Summaries update in the background, including after a quiet conversation. Smaller context budgets can leave less room for recent messages. Images may use additional AI tokens.</p>
   <div className="mt-4 flex items-center gap-3"><button disabled={disabled||Boolean(error)&&loading} onClick={()=>void save()} className="min-h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white disabled:opacity-50">{saving?'Saving…':'Save memory preferences'}</button>{saved&&<p role="status" className="text-sm text-emerald-700">Memory preferences saved</p>}</div>

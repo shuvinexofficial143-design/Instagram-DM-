@@ -88,7 +88,7 @@ export interface ActionItem {
   comment_reply_text?: string;
   tag_name?: string;
   ai_system_instruction?: string;
-  ai_model?: 'gpt-4o-mini' | string;
+  ai_model?: 'gpt-5.6-luna' | string;
 }
 
 export interface Automation {

@@ -1117,7 +1117,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const payload = await openAiRes.json().catch(() => null);
         if (!openAiRes.ok || !payload?.ok) {
-          throw new Error(payload?.error || 'GPT-4o mini request failed.');
+          throw new Error(payload?.error || 'GPT-5.6 Luna request failed.');
         }
 
         responseSummary = String(payload.reply || '').trim();

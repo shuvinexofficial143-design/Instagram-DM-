@@ -1,3 +1,4 @@
+import {businessPrompt} from '../supabase/functions/instagram-live-webhook/openaiConfig.js';
 import { typedFetch as httpFetch } from '../src/server/typedFetch.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
 import { SUPABASE_URL, authenticatedWorkspace, UpstreamError } from '../src/server/supabaseConfig.js';
@@ -91,6 +92,7 @@ export default async function handler(req: any, res: any) {
       if (!automation || typeof automation !== 'object') {
         return res.status(400).json({ ok: false, error: 'Automation data is required.' });
       }
+      for(const action of automation.actions||[]){if(action.type==='ai_chatbot'){try{businessPrompt(action.ai_system_instruction);}catch(error:any){return res.status(400).json({ok:false,error:error.message});}}}
       // Reject malformed automation data before saving.
       // The Edge store still enforces the authoritative plan limits.
       const automationId = String(automation.id || '');

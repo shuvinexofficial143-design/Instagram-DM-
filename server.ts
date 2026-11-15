@@ -1,3 +1,4 @@
+import {DM_AI_MODEL,chatModelParams} from './supabase/functions/instagram-live-webhook/openaiConfig.js';
 import openaiChatHandler from './api/openai/chat.js';
 import adminHandler, { configuredAdminEmails, isConfiguredAdmin } from './src/server/adminAccess';
 import workspaceDataHandler from './api/workspace-data';
@@ -98,7 +99,7 @@ async function generateOpenAIDmReply(params: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        ...chatModelParams(params.maxTokens||600),
         messages: [
           {
             role: 'system',
@@ -108,8 +109,6 @@ async function generateOpenAIDmReply(params: {
           },
           { role: 'user', content: params.incomingText },
         ],
-        temperature: 0.45,
-        max_tokens: params.maxTokens || 90,
       }),
       signal: controller.signal,
     });
@@ -123,7 +122,7 @@ async function generateOpenAIDmReply(params: {
     }
 
     const reply = String(payload?.choices?.[0]?.message?.content || '').trim();
-    if (!reply) throw new Error('GPT-4o mini returned an empty response');
+    if (!reply) throw new Error('GPT-5.6 Luna returned an empty response');
     return reply;
   } finally {
     clearTimeout(timeout);
@@ -2170,11 +2169,11 @@ async function startServer() {
       }
     }
 
-    // Call the model selected on the automation. DM AI Conversation uses GPT-4o mini.
+    // Call the model selected on the automation. DM AI Conversation uses GPT-5.6 Luna.
     if (!replyText && isExplicitAiConversation) {
       const ai_start = Date.now();
       const aiAction = matchedAutomation?.actions?.find((a) => a.type === 'ai_chatbot');
-      const selectedModel = 'gpt-4o-mini';
+      const selectedModel = DM_AI_MODEL;
       const promptToUse =
         systemPrompt ||
         'You are a concise Instagram assistant. Reply politely and directly in 1 short sentence.';

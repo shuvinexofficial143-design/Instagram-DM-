@@ -95,7 +95,7 @@ export function useInstagramAutomation(): UseInstagramAutomationReturn {
         return {
           reply: String(payload.reply || ''),
           latencyMs: elapsed,
-          usedKeyLabel: 'GPT-4o mini',
+          usedKeyLabel: 'GPT-5.6 Luna',
         };
       } finally {
         setIsProcessing(false);

@@ -6,7 +6,7 @@ import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/instagramProfiles.ts', import.meta.url), 'utf8')).replace(/^export /gm, '') + '\n' + (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { getSenderProfile, extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog, sendInstagramCatalog };', { loader: 'ts', format: 'esm' });
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/openaiConfig.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/customerFacts.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { getSenderProfile, extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog, sendInstagramCatalog };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
@@ -135,7 +135,7 @@ function fixture(automations = [ai], options = {}) {
     fetch: async (url, init = {}) => {
       const body = JSON.parse(init.body || '{}');
       if (String(url).includes('api.openai.com')) {
-        if(body.response_format?.type==='json_object'){const vision=body.messages.some(m=>Array.isArray(m.content));if(vision&&options.visionFails)return Response.json({error:{message:'Image unavailable'}},{status:400});return Response.json({choices:[{message:{content:vision?JSON.stringify({description:'Silver watch with adjustable strap',uncertain:false}):'{}'}}]});}
+        if(body.response_format?.type==='json_object'){options.onDetailScan?.();const vision=body.messages.some(m=>Array.isArray(m.content));if(vision&&options.visionFails)return Response.json({error:{message:'Image unavailable'}},{status:400});return Response.json({choices:[{message:{content:vision?JSON.stringify({description:'Silver watch with adjustable strap',uncertain:false}):'{}'}}]});}
         aiInputs.push(body.messages);
         if(options.handoff)return Response.json({choices:[{message:{tool_calls:[{function:{name:'handoff_to_human',arguments:options.malformedHandoff?'{bad-json':JSON.stringify({reason:'customer_requested',summary:'Customer wants a human',workspaceId:'forged-target'})}}]}}]});
         options.onAIStart?.(body);
@@ -532,14 +532,14 @@ test('different verified usernames are never merged', async () => {
 });
 
 
-test('typing and AI start while inbox persistence is pending, but sending waits for storage', async () => {
+test('typing and detail scan start during storage; reply generation waits for evidence persistence', async () => {
   const storage = deferred(), typing = deferred(), generation = deferred();
   const f = fixture([ai], { inboundGate: storage.promise,
-    onTypingAttempt: typing.resolve, onAIStart: generation.resolve });
+    onTypingAttempt: typing.resolve, onDetailScan: generation.resolve });
   const request = f.post(dm());
   try {
     await withinDeadline(Promise.all([typing.promise, generation.promise]));
-    assert.equal(f.aiInputs.length, 1);
+    assert.equal(f.aiInputs.length, 0);
     assert.equal(f.apiCalls.some(c => c.body.message), false);
     assert.equal(f.apiCalls.some(c => c.body.sender_action === 'typing_off'), false);
   } finally { storage.resolve(); }

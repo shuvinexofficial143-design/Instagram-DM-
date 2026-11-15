@@ -1,15 +1,17 @@
+import {DM_AI_MODEL,chatModelParams,businessPrompt} from '../../supabase/functions/instagram-live-webhook/openaiConfig.js';
+import {scanCustomerFacts} from '../../supabase/functions/instagram-live-webhook/customerFacts.js';
 import { createClient } from '@supabase/supabase-js';
 import { authenticatedWorkspace, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '../../src/server/supabaseConfig.js';
 import { loadCatalog, generateCatalogReply, safeImageUrl, catalogMessage } from '../../supabase/functions/instagram-live-webhook/catalogRuntime.js';
 import { typedFetch as httpFetch } from '../../src/server/typedFetch.js';
 import { enforceRateLimit, resolveAiIdentity } from '../_auth.js';
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
-const OPENAI_MODEL = 'gpt-4o-mini';
+const OPENAI_MODEL = DM_AI_MODEL;
 function cleanHistory(value: any): Array<{ role: 'user' | 'assistant'; content: string }> {
   if (!Array.isArray(value)) return [];
 
   return value
-    .slice(-12)
+    .slice(-20)
     .map((item: any) => {
       const role =
         item?.role === 'assistant' || item?.sender === 'ai' || item?.sender === 'assistant'
@@ -76,7 +78,10 @@ export default async function handler(req: any, res: any) {
       const client=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{global:{headers:{Authorization:String(req.headers.authorization)}},auth:{persistSession:false,autoRefreshToken:false}});
       let catalog=null,warning='';
       if(req.body?.catalogId){try{catalog=await loadCatalog(client,workspace.id,String(req.body.catalogId));}catch(error:any){warning=error?.message||'Catalog could not be loaded.';}}
-      const result=await generateCatalogReply({key:OPENAI_API_KEY,model:OPENAI_MODEL,systemPrompt:String(req.body.systemInstruction||'Reply helpfully about this business.').slice(0,12000),history:cleanHistory(req.body.history),text:input,images:image?[image]:[],catalog,catalogWarning:warning,timeoutMs:12000,maxTokens:250,fetcher:httpFetch});
+      const previewHistory=cleanHistory(req.body.history);
+      const sources=[...previewHistory.filter(m=>m.role==='user').map((m,i)=>({id:'preview-'+i,text:m.content,timestamp:new Date(i).toISOString()})),{id:'preview-current',text:input,timestamp:new Date().toISOString()}];
+      const scanned=await scanCustomerFacts({key:OPENAI_API_KEY,sources,history:previewHistory,fetcher:httpFetch});
+      const result=await generateCatalogReply({customerFacts:scanned,key:OPENAI_API_KEY,model:OPENAI_MODEL,systemPrompt:businessPrompt(req.body.systemInstruction),history:cleanHistory(req.body.history),text:input,images:image?[image]:[],catalog,catalogWarning:warning,timeoutMs:12000,maxTokens:250,fetcher:httpFetch});
       return res.status(200).json({ok:true,previewOnly:true,reply:result.handoff?'A human handoff would be requested.':result.text,catalog:result.catalog?{id:result.catalog.id,name:result.catalog.name,elements:result.catalog.elements,page:result.catalog.page,pages:result.catalog.pages,delivery_style:result.catalog.delivery_style,message_text:catalogMessage(result.catalog)}:null,warning:result.warning||warning,handoff:Boolean(result.handoff)});
     }catch(error:any){return res.status(error.status||503).json({ok:false,error:'AI preview could not be completed. Please retry.'});}
   }
@@ -86,12 +91,11 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ ok: false, error: 'Message text is required.' });
   }
 
-  const systemInstruction = String(
+  let systemInstruction: string;
+  try {systemInstruction = businessPrompt(
     req.body?.systemInstruction ||
       'You are a helpful Instagram DM assistant. Reply naturally, briefly, and only about the business.'
-  )
-    .trim()
-    .slice(0, 12000);
+  );}catch(error:any){return res.status(400).json({ok:false,error:error.message});}
 
   const language = String(req.body?.language || 'Auto Detect');
   const personality = String(req.body?.personality || 'Friendly');
@@ -119,14 +123,12 @@ export default async function handler(req: any, res: any) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: OPENAI_MODEL,
+        ...chatModelParams(maxTokensForLength(req.body?.maxReplyLength)),
         messages: [
           { role: 'system', content: systemContent },
           ...history,
           { role: 'user', content: input.slice(0, 6000) },
         ],
-        temperature: 0.45,
-        max_tokens: maxTokensForLength(req.body?.maxReplyLength),
       }),
       signal: controller.signal,
     });
@@ -146,7 +148,7 @@ export default async function handler(req: any, res: any) {
     if (!reply) {
       return res.status(502).json({
         ok: false,
-        error: 'GPT-4o mini returned an empty response.',
+        error: 'GPT-5.6 Luna returned an empty response.',
       });
     }
 

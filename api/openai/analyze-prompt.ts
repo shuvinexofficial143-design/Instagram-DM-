@@ -1,7 +1,8 @@
+import {DM_AI_MODEL,chatModelParams} from '../../supabase/functions/instagram-live-webhook/openaiConfig.js';
 import { typedFetch as httpFetch } from '../../src/server/typedFetch.js';
 import { enforceRateLimit, resolveAiIdentity } from '../_auth.js';
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
-const OPENAI_MODEL = 'gpt-4o-mini';
+const OPENAI_MODEL = DM_AI_MODEL;
 
 type Analysis = {
   role_identity: {
@@ -271,8 +272,7 @@ async function analyzeWithOpenAI(prompt: string, fallback: Analysis): Promise<An
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: OPENAI_MODEL,
-        temperature: 0.2,
+        ...chatModelParams(3000),
         response_format: { type: 'json_object' },
         messages: [
           {
@@ -308,7 +308,6 @@ PROMPT:
 ${prompt}`,
           },
         ],
-        max_tokens: 1400,
       }),
       signal: controller.signal,
     });
@@ -362,7 +361,7 @@ export default async function handler(req: any, res: any) {
 
   return res.status(200).json({
     ok: true,
-    provider: aiAnalysis ? 'gpt-4o-mini' : 'local-structured-fallback',
+    provider: aiAnalysis ? OPENAI_MODEL : 'local-structured-fallback',
     analysis: aiAnalysis || fallback,
   });
 }

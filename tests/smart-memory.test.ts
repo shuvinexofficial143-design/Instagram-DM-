@@ -47,8 +47,8 @@ test('native owner opening and customer/AI turns preserve chronological transcri
 });
 test('token upper bound keeps instructions and current message intact while reducing old context',()=>{
  const history=Array.from({length:12},(_,i)=>({id:String(i),role:'user',content:'x'.repeat(5000)}));
- const result=memoryBuildContext({system:'Mandatory business rules',history,current:'Current request',settings:{input_token_budget:8192}});
- assert.ok(result.text_token_upper_bound<=8192);assert.ok(result.recent_messages<12);assert.match(result.messages[0].content,/Mandatory business rules/);assert.equal(result.messages.at(-1).content,'Current request');
+ const result=memoryBuildContext({system:'Mandatory business rules',history,current:'Current request',settings:{input_token_budget:32768}});
+ assert.ok(result.text_token_upper_bound<=32768);assert.ok(result.recent_messages<12);assert.match(result.messages[0].content,/Mandatory business rules/);assert.equal(result.messages.at(-1).content,'Current request');
  assert.throws(()=>memoryBuildContext({system:'x'.repeat(9000),history:[],current:'Keep this',settings:{input_token_budget:8192}}),/too small/);
 });
 test('incremental summary batches stop at their bound without skipping a source',()=>{

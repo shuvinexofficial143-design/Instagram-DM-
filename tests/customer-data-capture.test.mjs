@@ -10,7 +10,7 @@ const raw = await fs.readFile(
   ),
   "utf8",
 );
-const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/openaiConfig.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/customerFacts.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+
   raw.replace(/^import .*;\n/gm, "") +
     "\nglobalThis.customerHelpers={captureCustomerData,customerDataFields,isCustomerPurchaseReport};",
   { loader: "ts", format: "esm" },
@@ -23,13 +23,15 @@ function fixture({ failAI = false, failSave = false, purchase = null } = {}) {
   const admin = {
     from() {
       let value;
+      let selectedCollection;
       const q = {
         select() {
           return q;
         },
-        eq() {
-          return q;
-        },
+        eq(key, val) { if(key==="collection")selectedCollection=val; return q; },
+        order(){return q;},
+        in(){return q;},
+        async maybeSingle(){return {data:null,error:null};},
         or() {
           return q;
         },
@@ -45,6 +47,7 @@ function fixture({ failAI = false, failSave = false, purchase = null } = {}) {
             logs.push(value);
             return Promise.resolve({ error: null }).then(resolve);
           }
+          if(selectedCollection==="inbox_messages")return Promise.resolve({data:[],error:null}).then(resolve);
           return Promise.resolve({
             data: [
               {
@@ -59,6 +62,7 @@ function fixture({ failAI = false, failSave = false, purchase = null } = {}) {
       return q;
     },
     async rpc(name, args) {
+      if(name==="autoreply_merge_customer_facts")return {data:{facts:args.p_facts},error:null};
       saves++;
       calls.push({ name, args });
       return { data: "row", error: failSave ? { message: "outage" } : null };
@@ -89,6 +93,7 @@ function fixture({ failAI = false, failSave = false, purchase = null } = {}) {
           {
             message: {
               content: JSON.stringify({
+                facts:{name:{value:"Asha",evidence:"Asha",source_message_id:"m1"}},
                 _purchase: purchase,
                 Name: "Asha",
                 Consent: "Yes",
@@ -142,7 +147,8 @@ test("capture uses only customer facts, configured fields, and a canonical custo
   assert.equal(saved.args.p_values.Email, undefined);
   const prompt = JSON.parse(f.requests[0].init.body);
   assert.equal(prompt.messages.length, 2);
-  assert.equal(prompt.messages[1].content, "My name is Asha. Phone 9876543210");
+  assert.match(prompt.messages[1].content, /My name is Asha\. Phone 9876543210/);
+  assert.match(prompt.messages[0].content, /exact substring/);
   assert.ok(!f.requests.some((r) => r.url.includes("google")));
 });
 test("AI extraction outage still saves explicit phone/email and logs partial extraction", async () => {
@@ -169,7 +175,7 @@ test("capture off does no work; storage failures retry and remain visible withou
 test("runtime starts capture after inbound persistence, before quota and outbound success checks", () => {
   assert.ok(
     raw.indexOf(
-      "await captureCustomerData(admin,workspaceId,automation,item,openaiKey,account)",
+      "captureCustomerData(admin,workspaceId,automation,item,openaiKey,account,conversationHistory(context),inboundSaved,context.memory_identity)",
     ) < raw.indexOf("const canStartAi ="),
   );
   assert.ok(!raw.includes("runInBackground(syncAiLeadToGoogleSheet("));
@@ -197,7 +203,7 @@ test("purchase detection requires an explicit customer report with exact evidenc
   });
   await f.capture(evidence);
   assert.equal(f.calls[0].args.p_event.purchase_reported, true);
-  assert.equal(f.calls[0].args.p_event.purchase_product, "Watch");
+  assert.equal(f.calls[0].args.p_event.purchase_product, ""); // No invented product without an evidence-backed product field.
   const invalid = fixture({
     purchase: {
       reported: true,
