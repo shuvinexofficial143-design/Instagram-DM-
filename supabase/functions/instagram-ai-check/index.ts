@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import {createClient} from 'npm:@supabase/supabase-js@2';
 import {scanCustomerFacts,customerFactValues} from '../instagram-live-webhook/customerFacts.ts';
 import {generateCatalogReply} from '../instagram-live-webhook/catalogRuntime.ts';
+import {checkCatalogProvider} from './catalogCheck.ts';
 import {DM_AI_MODEL} from '../instagram-live-webhook/openaiConfig.ts';
 const reply=(status:number,value:any)=>Response.json(value,{status});
 Deno.serve(async(req:Request)=>{
@@ -12,6 +13,7 @@ Deno.serve(async(req:Request)=>{
   const {data:authorized,error}=await admin.rpc('autoreply_memory_worker_authorized',{p_secret:req.headers.get('x-memory-cron')||''});
   if(error||!authorized)return reply(401,{ok:false,error:'Internal worker authorization required'});
   const providerKey=Deno.env.get('OPENAI_API_KEY')||'';if(!providerKey)return reply(503,{ok:false,code:'provider_key_missing'});
+  const body=await req.json().catch(()=>({}));if(body.action==='catalog')return reply(200,{model:DM_AI_MODEL,...await checkCatalogProvider(providerKey)});
   // Synthetic only. This endpoint has no Meta send or production customer write path.
   const sources=[{id:'synthetic-address',timestamp:'2026-11-15T00:00:00Z',text:'1. Ek\n2. Arun Kumar Sharma\n3. 9876543210\n4. Flat 12, Sant Hari Nagar, Naygaon Road, Sinnar, Ji. Nashik'},{id:'synthetic-pin',timestamp:'2026-11-15T00:01:00Z',text:'422103'}];
   const state=await scanCustomerFacts({key:providerKey,sources,history:[{role:'assistant',content:'कृपया अपना पूरा नाम, मोबाइल और पता भेजें।'}]});

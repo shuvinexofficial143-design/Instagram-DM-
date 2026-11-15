@@ -29,3 +29,9 @@ test('preview rejects unsafe image input before calling the model',async()=>{
 test('unavailable catalog remains a warning, and ordinary preview replies still work',async()=>{
  const calls=transport({inactive:true,inspect:(p:any)=>{assert.equal(p.tools.length,1);assert.match(p.messages[0].content,/inactive/);}});const r=await request();assert.equal(r.code,200);assert.match(r.body.warning,/inactive/);assert.ok(calls.some(c=>c.url.includes('openai.com')));
 });
+
+test('multi-image previews reject unsafe images and oversized batches before model access',async()=>{
+ for(const images of [['https://localhost/private.jpg'],Array.from({length:6},(_,i)=>'https://images.example/'+i+'.jpg')]){
+  const calls=transport();const result=await request({images});assert.equal(result.code,400);assert.ok(calls.every(c=>!c.url.includes('openai.com')));
+ }
+});

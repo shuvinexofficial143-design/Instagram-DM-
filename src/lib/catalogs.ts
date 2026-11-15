@@ -7,7 +7,7 @@ export { defaultCatalog, resolveCatalogs };
 export type { Catalog, CatalogProduct };
 export const CATALOG_BUCKET = 'catalog-images';
 export function catalogCards(products:CatalogProduct[]) {
- return products.filter(p=>p.active).flatMap(p=>(p.images||[]).map(image=>({image,title:p.name,subtitle:[p.price,p.description].filter(Boolean).join(' · '),url:p.url})));
+ return products.filter(p=>p.active).flatMap(p=>(p.images||[]).map(image=>({image,title:p.name,subtitle:[p.style_number?'Style '+p.style_number:'',p.price,p.description].filter(Boolean).join(' · '),url:p.url})));
 }
 export function catalogProblem(catalog:Catalog|undefined, products:CatalogProduct[], ai=false) {
  if(!catalog||catalog.deleted) return 'This catalog no longer exists.';

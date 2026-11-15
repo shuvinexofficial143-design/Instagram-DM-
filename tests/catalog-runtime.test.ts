@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {buildCatalogPage,selectProductPhotos,rankCatalogProducts,catalogContext,safeImageUrl,extractImageAttachments,generateCatalogReply,loadCatalog} from '../supabase/functions/instagram-live-webhook/catalogRuntime';
 const product=(id='red',images=['https://images.example/red-front.jpg','https://images.example/red-back.jpg'])=>({id,name:id==='red'?'Red heart frame':id,price:'₹499',description:'Red heart photo frame',url:'https://shop.example/'+id,images});
-const catalog={id:'gifts',name:'Gifts',products:[product(),{...product('blue'),name:'Blue watch',description:'Blue wrist watch',price:'₹799'}]};
+const catalog={id:'gifts',name:'Gifts',products:[product(),{...product('blue',['https://images.example/blue.jpg']),name:'Blue watch',description:'Blue wrist watch',price:'₹799'}]};
 const answer=(message:any)=>Response.json({choices:[{message}]});
 const base={key:'fixture',systemPrompt:'Old product price ₹99. Help customers buy gifts.',history:[],text:'Show red frame photos',catalog};
 test('specific product selection sends only requested approved views',()=>{
@@ -31,13 +31,13 @@ test('generation uses current catalog data and a specific product photo tool',as
  let requests=0;const result=await generateCatalogReply({...base,fetcher:async(_url,init)=>{requests++;const payload=JSON.parse(String(init?.body));assert.match(payload.messages[0].content,/override older/);assert.match(payload.messages[0].content,/₹499/);assert.ok(payload.tools.some((t:any)=>t.function.name==='send_product_photos'));return answer({tool_calls:[{id:'call1',type:'function',function:{name:'send_product_photos',arguments:JSON.stringify({selections:[{product_id:'red',image_indexes:[0]}]})}}]});}});
  assert.equal(requests,1);assert.equal(result.catalog?.elements?.[0].title,'Red heart frame');
 });
-test('customer image is analyzed and compared with catalog photos before selecting a product',async()=>{
- let requests=0;const result=await generateCatalogReply({...base,text:'Do you have this?',images:['https://images.example/customer.jpg'],fetcher:async(_url,init)=>{const p=JSON.parse(String(init?.body));requests++;if(p.response_format)return answer({content:JSON.stringify({description:'Red heart frame',uncertain:false})});assert.ok(Array.isArray(p.messages.at(-1).content));assert.ok(p.messages.at(-1).content.some((c:any)=>c.image_url?.url==='https://images.example/customer.jpg'));assert.ok(p.messages.at(-1).content.some((c:any)=>c.image_url?.url===product().images[0]));return answer({content:'This resembles the red heart frame. Can you confirm the design?'});}});
- assert.equal(requests,2);assert.match(result.text||'',/resembles/);
+test('customer screenshot compares all catalog photos then sends one matched design photo',async()=>{
+ let requests=0;const result=await generateCatalogReply({...base,text:'Do you have this?',images:['https://images.example/customer.jpg'],fetcher:async(_url,init)=>{const p=JSON.parse(String(init?.body));requests++;if(!p.response_format)return answer({tool_calls:[{id:'photo',function:{name:'send_product_photos',arguments:JSON.stringify({selections:[{product_id:'red',image_indexes:[1]}]})}}]});const content=p.messages.at(-1).content;assert.ok(content.some((c:any)=>c.image_url?.url===product().images[1]));return answer({content:JSON.stringify({matches:[{input_index:0,product_id:'red',image_index:1,confidence:0.98,distinctive:true,ambiguous:false}]})});}});
+ assert.equal(requests,2);assert.equal(result.catalog?.elements?.length,1);assert.equal(result.catalog?.elements?.[0].image_url,product().images[1]);
 });
 test('unreadable images ask for clarification without pretending visual recognition',async()=>{
- let calls=0;const result=await generateCatalogReply({...base,images:['https://images.example/expired.jpg'],fetcher:async(_url,init)=>{calls++;const p=JSON.parse(String(init?.body));if(p.response_format)return Response.json({error:{message:'Image expired'}},{status:400});assert.match(p.messages[0].content,/could not be inspected/);assert.equal(typeof p.messages.at(-1).content,'string');return answer({content:'Please send a clear photo or tell me the product name.'});}});
- assert.equal(calls,2);assert.ok(result.warning);assert.match(result.text||'',/clear photo/);
+ let calls=0;const result=await generateCatalogReply({...base,images:['https://images.example/expired.jpg'],fetcher:async()=>{calls++;return Response.json({error:{message:'Image expired'}},{status:400});}});
+ assert.equal(calls,1);assert.ok(result.warning);assert.match(result.text||'',/clearer photo/);assert.equal(result.catalog,undefined);
 });
 test('invalid product tool output cannot send foreign images and is returned for clarification',async()=>{
  let calls=0;const result=await generateCatalogReply({...base,fetcher:async(_url,init)=>{calls++;const p=JSON.parse(String(init?.body));if(calls===1)return answer({tool_calls:[{id:'invalid',type:'function',function:{name:'send_product_photos',arguments:'{"selections":[{"product_id":"foreign","image_indexes":[0]}]}'}}]});assert.match(p.messages.at(-1).content,/not in/);return answer({content:'Which frame would you like?'});}});

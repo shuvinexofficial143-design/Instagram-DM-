@@ -182,3 +182,9 @@
 @media(max-width:600px){.catalog-delivery-setting{padding:12px}.catalog-style-picker label>span>span{font-size:10px}}
 
 .catalog-style-picker .catalog-style-hint{margin:0 0 12px;color:#64748b;font-size:12px;line-height:1.5}
+
+.catalog-style-number{display:inline-block;margin:4px 0;padding:3px 8px;border-radius:6px;background:#eef2ff;color:#4338ca;font-size:12px;font-weight:600}
+.catalog-post-references{display:grid;gap:12px;min-width:0;padding:14px;border:1px solid #e2e8f0;border-radius:12px}
+.catalog-post-references legend{font-size:13px;font-weight:600;padding:0 4px}
+.catalog-post-reference{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,120px) auto;gap:10px;align-items:end}
+@media(max-width:520px){.catalog-post-reference{grid-template-columns:minmax(0,1fr) auto}.catalog-post-reference>label:first-child{grid-column:1/-1}}

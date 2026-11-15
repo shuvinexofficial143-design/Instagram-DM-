@@ -26,7 +26,7 @@ function fixture(automations = [ai], options = {}) {
       const query = {
         select(value) { columns = value; return query; },
         eq(key, value) { filters[key] = value; return query; },
-        or() { return query; }, delete() { mutation = { deleted: true, ...filters }; return query; }, in() { return query; }, order() { return query; }, range() { return query; }, limit() { return query; },
+        or() { return query; }, delete() { mutation = { deleted: true, ...filters }; return query; }, in(key,values) { filters['in:'+key]=values;return query; }, order() { return query; }, range() { return query; }, limit() { return query; },
         insert(value) { mutation = {...value,__insert:true}; return query; }, upsert(value) { mutation = value; return query; }, update(value) { mutation = value; return query; },
         async maybeSingle() { return result(true); },
         then(resolve, reject) { return Promise.resolve(result(false)).then(resolve, reject); },
@@ -55,6 +55,10 @@ function fixture(automations = [ai], options = {}) {
           if (options.inboundGate) await options.inboundGate;
           if (options.inboundFails) return { data: null, error: { code: 'database' } };
           return { data: options.contacts || [] };
+        }
+        if(table==='autoreply_documents'&&filters.collection==='inbox_messages'&&filters['data->>direction']){
+          assert.equal(filters.user_id,'workspace');
+          return {data:[...inbox.values()].filter(row=>row.data.direction===filters['data->>direction']&&(!filters['in:id']||filters['in:id'].includes(row.id))&&(!filters['in:data->>from_ig_id']||filters['in:data->>from_ig_id'].includes(row.data.from_ig_id)))};
         }
         if (table === 'autoreply_documents' && filters.collection === 'catalog_delivery_parts')return {data:partLedger.get(filters.id)||null,error:null};
         if (table === 'autoreply_documents' && filters.collection === 'catalogs') { const c=(options.catalogs||[]).find(c=>c.id===filters.id);return {data:c?{id:c.id,data:c}:null}; }
@@ -150,7 +154,7 @@ function fixture(automations = [ai], options = {}) {
     fetch: async (url, init = {}) => {
       const body = JSON.parse(init.body || '{}');
       if (String(url).includes('api.openai.com')) {
-        if(body.response_format?.type==='json_object'){options.onDetailScan?.();const vision=body.messages.some(m=>Array.isArray(m.content));if(vision&&options.visionFails)return Response.json({error:{message:'Image unavailable'}},{status:400});return Response.json({choices:[{message:{content:vision?JSON.stringify({description:'Silver watch with adjustable strap',uncertain:false}):'{}'}}]});}
+        if(body.response_format?.type==='json_object'){options.onDetailScan?.();const vision=body.messages.some(m=>Array.isArray(m.content));if(vision)options.onVisionRequest?.(body);if(vision&&options.visionFails)return Response.json({error:{message:'Image unavailable'}},{status:400});return Response.json({choices:[{message:{content:vision?JSON.stringify(options.products?.length?{matches:(options.photoSelections||[{product_id:options.products[0].id,image_indexes:[0]}]).map((selection,input_index)=>({input_index,product_id:selection.product_id,image_index:selection.image_indexes[0],confidence:0.99,distinctive:true,ambiguous:false}))}:{description:'Silver watch with adjustable strap',uncertain:false}):'{}'}}]});}
         aiInputs.push(body.messages);
         if(options.handoff)return Response.json({choices:[{message:{tool_calls:[{function:{name:'handoff_to_human',arguments:options.malformedHandoff?'{bad-json':JSON.stringify({reason:'customer_requested',summary:'Customer wants a human',workspaceId:'forged-target'})}}]}}]});
         if(options.onAIStart)await options.onAIStart(body);
@@ -731,7 +735,7 @@ test('a manual pause and resume during generation invalidates the old AI answer 
 
 test('signed image-only DMs reach vision and Inbox and send only selected product photos',async()=>{
  const rule={...ai,actions:[{type:'ai_chatbot',ai_system_instruction:'Sell watches',catalog_id:'watches'}]};
- const f=fixture([rule],{catalogs:photoCatalog,products:photoProducts,photoSelections:[{product_id:'watch',image_indexes:[1]}],onAIStart:body=>assert.ok(Array.isArray(body.messages.at(-1).content))});
+ const f=fixture([rule],{catalogs:photoCatalog,products:photoProducts,photoSelections:[{product_id:'watch',image_indexes:[1]}],onVisionRequest:body=>assert.ok(Array.isArray(body.messages.at(-1).content))});
  const event=dm('photo-only','');event.entry[0].messaging[0].message.attachments=[{type:'image',payload:{url:'https://images.example/customer.jpg'}}];
  const result=await f.direct(event);assert.equal(result.status,200);
  assert.ok(f.writes.some(w=>w.collection==='inbox_messages'&&w.data.image_urls?.[0]==='https://images.example/customer.jpg'));
@@ -860,4 +864,31 @@ test('a new message during generation supersedes the old draft without a second 
 test('repeated yes messages in one burst have a single outgoing reply',async()=>{
  const f=fixture();const event=dm('yes-1','हाँ');event.entry[0].messaging.push(dm('yes-2','हाँ').entry[0].messaging[0]);
  const result=await f.post(event);assert.equal(result.body.sent,1);assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);
+});
+
+test('Style Number uses current scoped catalog metadata and sends one photo without a vision call',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
+ const f=fixture([rule],{chooseCatalog:true,catalogs:photoCatalog,products:photoProducts.map(p=>({...p,style_number:'07',cod:'Available',delivery_time:'5–7 days'}))});
+ await f.post(dm('style-direct','Style 07 दिखाओ'));
+ const messages=f.apiCalls.filter(c=>c.body.message);assert.equal(messages.length,1);assert.equal(messages[0].body.message.attachment.payload.elements.length,1);assert.equal(f.aiInputs.length,1);
+});
+test('confirmed recent catalog images are scoped to this customer and explicit resends still work',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
+ const initialInbox=[{id:'prior-image',user_id:'workspace',collection:'inbox_messages',data:{from_ig_id:'customer',direction:'out',catalog_id:'watches',image_urls:[photoProducts[0].images[0]],message_text:'[Product photos]',timestamp:new Date().toISOString()}}];
+ const f=fixture([rule],{chooseCatalog:true,catalogs:photoCatalog,products:photoProducts.map(p=>({...p,style_number:'07'})),initialInbox});
+ await f.post(dm('style-already-sent','Style 07 दिखाओ'));
+ let messages=f.apiCalls.filter(c=>c.body.message);assert.equal(messages.length,1);assert.ok(messages[0].body.message.text);assert.equal(messages[0].body.message.attachment,undefined);
+ await f.post(dm('style-resend','Style 07 फिर से भेजो'));
+ messages=f.apiCalls.filter(c=>c.body.message);assert.equal(messages.length,2);assert.equal(messages[1].body.message.attachment.payload.elements.length,1);
+ const foreign=fixture([rule],{chooseCatalog:true,catalogs:photoCatalog,products:photoProducts.map(p=>({...p,style_number:'07'})),initialInbox:initialInbox.map(row=>({...row,data:{...row.data,from_ig_id:'other-customer'}}))});
+ await foreign.post(dm('style-other-customer','Style 07 दिखाओ'));assert.ok(foreign.apiCalls.find(c=>c.body.message)?.body.message.attachment);
+});
+test('rapid separate image messages are coalesced and every pending image reaches one comparison',async()=>{
+ const rule={...ai,actions:[{type:'ai_chatbot',catalog_id:'watches',ai_system_instruction:'Sell watches'}]};
+ let seen=[];const f=fixture([rule],{catalogs:photoCatalog,products:photoProducts,onVisionRequest:body=>{seen=body.messages[1].content.filter(c=>c.image_url).map(c=>c.image_url.url);}});
+ const event=dm('first-photo','');event.entry[0].messaging[0].message.attachments=[{type:'image',payload:{url:'https://images.example/customer-a.jpg'}}];
+ const second=structuredClone(event.entry[0].messaging[0]);second.message.mid='second-photo';second.message.attachments=[{type:'image',payload:{url:'https://images.example/customer-b.jpg'}}];event.entry[0].messaging.push(second);
+ await f.post(event);assert.ok(seen.includes('https://images.example/customer-a.jpg'));assert.ok(seen.includes('https://images.example/customer-b.jpg'));
+ // The fixture supplies only one match, so the incomplete multi-image result safely asks for clarification once.
+ const messages=f.apiCalls.filter(c=>c.body.message);assert.equal(messages.length,1);assert.ok(messages[0].body.message.text);assert.equal(messages[0].body.message.attachment,undefined);
 });

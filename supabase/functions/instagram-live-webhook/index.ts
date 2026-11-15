@@ -1344,7 +1344,7 @@ function extractAutomationEvents(event: any): any[] {
     const senderUsername = String(value.from?.username || value.sender?.username || "").trim().toLowerCase();
     if (!text || !senderId || !recipientId || message.is_echo || value.is_echo || message.is_self || value.is_self || senderId === entryId) return;
     const timestamp = Number(value.timestamp || entry.time || Date.now());
-    items.push({ entryId, senderId, senderUsername, recipientId, text, timestamp, mediaId, images,
+    items.push({ entryId, senderId, senderUsername, recipientId, text, timestamp, mediaId, images, postId:String(value.referral?.media?.id||message.referral?.media?.id||message.reply_to?.media?.id||''),
       triggerType: story || mediaId ? "story_reply" : "dm",
       messageId: String(message.mid || value.mid || `dm_${senderId}_${timestamp}_${text}`),
     });
@@ -1980,6 +1980,18 @@ Instagram DM style rules:
           try{selectedCatalog=await loadCatalog(admin,workspaceId,String(aiAction.catalog_id));}
           catch(error:any){catalogWarning=error?.message||'Catalog is unavailable.';console.warn('[CATALOG_UNAVAILABLE]',{workspaceId,automationId:automation.id});}
         }
+        let turnImages:string[]=item.images||[];
+        if(dmTurn&&dmTurn.pending_ids.length>1){
+          const {data:batch,error}=await admin.from('autoreply_documents').select('id,data').eq('user_id',workspaceId).eq('collection','inbox_messages').eq('data->>direction','in').in('id',dmTurn.pending_ids).order('message_time',{ascending:true});
+          if(error)throw Error('Customer image batch unavailable');
+          turnImages=[...new Set<string>([...(batch||[]).flatMap((row:any)=>row.data?.image_urls||[]),...turnImages])];
+        }
+        let recentPhotoUrls:string[]=[];
+        if(selectedCatalog){
+          const aliases=Array.isArray(context.memory_identity?.aliases)?context.memory_identity.aliases:[item.senderId];
+          const {data:deliveries,error}=await admin.from('autoreply_documents').select('data').eq('user_id',workspaceId).eq('collection','inbox_messages').eq('data->>direction','out').in('data->>from_ig_id',aliases).order('message_time',{ascending:false}).limit(20);
+          if(!error)recentPhotoUrls=[...new Set<string>((deliveries||[]).filter((row:any)=>row.data?.catalog_id===selectedCatalog.id&&Date.parse(row.data.timestamp)>Date.now()-15*60*1000).flatMap((row:any)=>[...(row.data.image_urls||[]),...(row.data.catalog_elements||[]).map((element:any)=>element.image_url)]))];
+        }
         const turnWatch=dmTurn?watchDmTurn(admin,dmTurn):null;
         let generated:any;try{generated = await generateReply(
           openaiKey,
@@ -1989,8 +2001,8 @@ Instagram DM style rules:
           item.text,
           isGreeting,
           selectedCatalog ? {...selectedCatalog,onSelect:(chosen:any)=>{selectedCatalog=chosen;sendCatalog=true;}} : undefined,
-          item.images || [], catalogWarning, {
-            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,customerFacts:scannedCustomerFacts,signal:turnWatch?.signal,
+          turnImages, catalogWarning, {
+            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,customerFacts:scannedCustomerFacts,signal:turnWatch?.signal,postId:item.postId,recentPhotoUrls,
             historySearch:async(query:string)=>{const {data,error}=await admin.rpc('autoreply_search_conversation',{p_workspace:workspaceId,p_sender:item.senderId,p_query:query});if(error)throw Error('Historical search unavailable');return data;},
             onUsage:(usage:any)=>{for(const key of ['input_tokens','output_tokens','cached_input_tokens','calls','provider_ms'])replyUsage[key]+=usage[key]||0;replyUsage.usage_available=replyUsage.usage_available||usage.usage_available;},
           }

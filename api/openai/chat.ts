@@ -72,16 +72,18 @@ export default async function handler(req: any, res: any) {
       const workspace=await authenticatedWorkspace(req);
       if(!workspace)return res.status(401).json({ok:false,error:'Sign in before testing product replies.'});
       const image=String(req.body?.image||'');
+      const images=Array.isArray(req.body?.images)?req.body.images.map(String):(image?[image]:[]);
+      if(images.length>5||images.some((url:string)=>!safeImageUrl(url,true)))return res.status(400).json({ok:false,error:'Choose up to five secure JPG, PNG or WebP images.'});
       if(image&&!safeImageUrl(image,true))return res.status(400).json({ok:false,error:'Choose a JPG, PNG or WebP image up to 2 MB.'});
       const input=String(req.body?.text||'').trim().slice(0,6000);
-      if(!input&&!image)return res.status(400).json({ok:false,error:'Enter a message or choose a product image.'});
+      if(!input&&!images.length)return res.status(400).json({ok:false,error:'Enter a message or choose a product image.'});
       const client=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{global:{headers:{Authorization:String(req.headers.authorization)}},auth:{persistSession:false,autoRefreshToken:false}});
       let catalog=null,warning='';
       if(req.body?.catalogId){try{catalog=await loadCatalog(client,workspace.id,String(req.body.catalogId));}catch(error:any){warning=error?.message||'Catalog could not be loaded.';}}
       const previewHistory=cleanHistory(req.body.history);
       const sources=[...previewHistory.filter(m=>m.role==='user').map((m,i)=>({id:'preview-'+i,text:m.content,timestamp:new Date(i).toISOString()})),{id:'preview-current',text:input,timestamp:new Date().toISOString()}];
       const scanned=await scanCustomerFacts({key:OPENAI_API_KEY,sources,history:previewHistory,fetcher:httpFetch});
-      const result=await generateCatalogReply({customerFacts:scanned,key:OPENAI_API_KEY,model:OPENAI_MODEL,systemPrompt:businessPrompt(req.body.systemInstruction),history:cleanHistory(req.body.history),text:input,images:image?[image]:[],catalog,catalogWarning:warning,timeoutMs:12000,maxTokens:250,fetcher:httpFetch});
+      const result=await generateCatalogReply({customerFacts:scanned,key:OPENAI_API_KEY,model:OPENAI_MODEL,systemPrompt:businessPrompt(req.body.systemInstruction),history:cleanHistory(req.body.history),text:input,images,postId:String(req.body?.postId||'').slice(0,200),catalog,catalogWarning:warning,timeoutMs:12000,maxTokens:250,fetcher:httpFetch});
       return res.status(200).json({ok:true,previewOnly:true,reply:result.handoff?'A human handoff would be requested.':result.text,catalog:result.catalog?{id:result.catalog.id,name:result.catalog.name,elements:result.catalog.elements,page:result.catalog.page,pages:result.catalog.pages,delivery_style:result.catalog.delivery_style,message_text:catalogMessage(result.catalog)}:null,warning:result.warning||warning,handoff:Boolean(result.handoff)});
     }catch(error:any){return res.status(error.status||503).json({ok:false,error:'AI preview could not be completed. Please retry.'});}
   }

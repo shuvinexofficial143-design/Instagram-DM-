@@ -9,6 +9,7 @@ import { CatalogEditor, ProductEditor } from './CatalogEditors';
 import { CatalogDeleteDialog } from './CatalogDeleteDialog';
 import { catalogDeliveryStyles } from '../../lib/catalogState';
 import { deleteCatalogRecords } from '../../lib/catalogManagement';
+import {catalogProductMetadata,catalogStyleKey} from '../../../supabase/functions/instagram-live-webhook/catalogRuntime';
 import './catalog.css';
 
 type Panel = { type: 'new' | 'settings' | 'preview' | 'delete' } | { type: 'product'; product?: CatalogProduct };
@@ -63,7 +64,7 @@ export const CatalogPage: React.FC = () => {
   const photoCount = visible.filter(p => p.active).reduce((count, p) => count + (p.images?.length || 0), 0);
   const problem = catalogProblem(current, visible, true);
   const search = query.trim().toLocaleLowerCase();
-  const results = visible.filter(p => (!search || [p.name, p.description, p.price].some(v => (v || '').toLocaleLowerCase().includes(search))) && (filter === 'all' || (filter === 'active' ? p.active : !p.active)));
+  const results = visible.filter(p => (!search || [p.name, p.style_number||'', p.description, p.price].some(v => (v || '').toLocaleLowerCase().includes(search))) && (filter === 'all' || (filter === 'active' ? p.active : !p.active)));
   const ready = loaded && !error;
   useEffect(() => {
     const row = collectionRow.current;
@@ -85,7 +86,9 @@ export const CatalogPage: React.FC = () => {
     if (product.url && !safeCatalogUrl(product.url)) throw Error('Use a secure HTTPS product link.');
     const catalogId = product.catalog_id || DEFAULT_ID;
     if (!allCatalogs.some(c => c.id === catalogId)) throw Error('This catalog was removed. Close this form and choose another catalog.');
-    const saved = { ...product, name: product.name.trim(), catalog_id: catalogId, updated_at: new Date().toISOString() };
+    if(product.style_number&&products.some(other=>other.id!==product.id&&(other.catalog_id||DEFAULT_ID)===catalogId&&other.style_number&&catalogStyleKey(other.style_number)===catalogStyleKey(product.style_number!)))throw Error('This Style Number is already used in this catalog.');
+    if((product.post_refs||[]).some(ref=>!ref.post_id.trim()||!Number.isInteger(ref.position)||ref.position<1||ref.position>100))throw Error('Each post reference needs a post link or ID and a photo number from 1 to 100.');
+    const saved = { ...product, ...catalogProductMetadata(product), name: product.name.trim(), catalog_id: catalogId, updated_at: new Date().toISOString() };
     await saveUserDocument(scope, 'catalog_products', saved);
     if (currentScope.current !== scope) return;
     setProducts(previous => previous.some(p => p.id === saved.id) ? previous.map(p => p.id === saved.id ? saved : p) : [...previous, saved]);
@@ -149,7 +152,7 @@ export const CatalogPage: React.FC = () => {
         </div> : results.length === 0 ? <div className="catalog-no-results"><Search size={28} /><h3>No matching products</h3><p>Try another search or filter.</p><button className="catalog-button catalog-secondary" onClick={() => { setQuery(''); setFilter('all'); }}>Show all products</button></div> : <div className="catalog-product-grid">{results.map(product => <article key={product.id} className="catalog-product-card">
           <button className="catalog-product-open" disabled={!ready} onClick={() => setPanel({ type: 'product', product })} aria-label={`Edit ${product.name}`}>
             <div className="catalog-product-photo">{product.images?.[0] ? <img src={product.images[0]} alt={product.name} loading="lazy" /> : <div className="catalog-product-placeholder"><Package size={32} /><span>No photo</span></div>}<span className={`catalog-product-status ${product.active ? 'is-active' : ''}`}><i />{product.active ? 'Active' : 'Hidden'}</span>{(product.images?.length || 0) > 1 && <span className="catalog-image-count"><ImageIcon size={13} />{product.images!.length}</span>}</div>
-            <div className="catalog-product-info"><h3>{product.name}</h3><p className={product.price ? 'catalog-price' : 'catalog-no-price'}>{product.price || 'Price not set'}</p><p className="catalog-product-description">{product.description || 'Add a description'}</p></div>
+            <div className="catalog-product-info"><h3>{product.name}</h3>{product.style_number&&<span className="catalog-style-number">Style {product.style_number}</span>}<p className={product.price ? 'catalog-price' : 'catalog-no-price'}>{product.price || 'Price not set'}</p><p className="catalog-product-description">{product.description || 'Add a description'}</p></div>
           </button><button className="catalog-product-edit" disabled={!ready} onClick={() => setPanel({ type: 'product', product })}>Edit product<ChevronRight size={15} /></button>
         </article>)}</div>}
         {visible.length > 0 && <div className="catalog-ai-bar"><span className="catalog-ai-icon"><Sparkles size={20} /></span><div><strong>{!current.active ? 'This catalog is paused' : problem ? 'Your catalog needs attention' : 'Ready for your AI assistant'}</strong><p>{problem || `${activeCount} active product${activeCount === 1 ? '' : 's'} · Current prices, details and photos`}</p></div><button className="catalog-button catalog-secondary" disabled={!ready || !!problem} title={problem || 'Set up an AI reply with this catalog'} onClick={useInAi}><Sparkles size={16} />Use in AI<ChevronRight size={15} /></button></div>}

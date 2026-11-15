@@ -1,6 +1,7 @@
+import type {CatalogProductMetadata} from '../../supabase/functions/instagram-live-webhook/catalogRuntime';
 /** Catalog data shared by the picker and the builder's validation. */
 export type Catalog = { id:string; name:string; description:string; active:boolean; deleted?:boolean; delivery_style?:'cards'|'photos_details'|'photos_ai'|'photos_only' };
-export type CatalogProduct = { id:string; catalog_id?:string; name:string; price:string; description:string; url:string; active:boolean; images?:string[] };
+export type CatalogProduct = CatalogProductMetadata&{ id:string; catalog_id?:string; name:string; price:string; description:string; url:string; active:boolean; images?:string[] };
 export const defaultCatalog:Catalog = {id:'default',name:'Main Catalog',description:'Your product collection',active:true};
 export function resolveCatalogs(records:Catalog[]):Catalog[] {
  const main=records.find(c=>c.id==='default');
