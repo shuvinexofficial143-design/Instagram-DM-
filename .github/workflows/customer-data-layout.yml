@@ -1,0 +1,45 @@
+name: Customer Data browser layout
+on:
+  push:
+    branches: [main, fix/customer-data-layout]
+    paths:
+      - 'src/App.tsx'
+      - 'src/crisp-ui.css'
+      - 'src/components/CustomerData/**'
+      - 'tests/browser/customer-data-layout.mjs'
+      - '.github/workflows/customer-data-layout.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/App.tsx'
+      - 'src/crisp-ui.css'
+      - 'src/components/CustomerData/**'
+      - 'tests/browser/customer-data-layout.mjs'
+      - '.github/workflows/customer-data-layout.yml'
+permissions:
+  contents: read
+jobs:
+  customer-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Install isolated browser test runtime
+        run: npm install --prefix /tmp/customer-layout-browser --no-save --package-lock=false playwright@1.62.1
+      - name: Install Chromium
+        run: node /tmp/customer-layout-browser/node_modules/playwright/cli.js install --with-deps chromium
+      - name: Customer table viewport and detail checks
+        run: node tests/browser/customer-data-layout.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: customer-data-layout
+          path: test-results/customer-data-layout
+          retention-days: 7
