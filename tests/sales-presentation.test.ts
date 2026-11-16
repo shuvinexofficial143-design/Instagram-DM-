@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {defaultSalesLayout,renderSalesTemplate,selectSalesLayoutAI,customerLanguage,type SalesProduct} from '../supabase/functions/instagram-live-webhook/salesPresentation';
+import {defaultSalesLayout,renderSalesTemplate,formatMobileSalesText,selectSalesLayoutAI,customerLanguage,type SalesProduct} from '../supabase/functions/instagram-live-webhook/salesPresentation';
 
 const frame:SalesProduct={id:'frame02',name:'Floral Birthday Frame',style_number:'Style 02',price:'₹250',
  cod:'Available',delivery_time:'5–6 days • free delivery',customization:'Use your photos',
@@ -82,4 +82,26 @@ test('support requests are not sent to another AI or converted into sales templa
  const selection=await selectSalesLayoutAI({key:'test',customerText:'refund status',draft:'Checking.',
   fetcher:async()=>{calls++;throw Error('should not call');}});
  assert.equal(selection.layout,'support');assert.equal(calls,0);
+});
+
+
+test('mobile layout keeps facts intact and wraps only at word boundaries',()=>{
+ const long='✨ Floral Birthday Frame with many lovely memories for a special occasion\n💰 कीमत: ₹250\n📦 COD उपलब्ध';
+ const formatted=formatMobileSalesText(long,36);
+ assert.ok(formatted.split('\n').filter(Boolean).every(line=>[...line].length<=36));
+ assert.match(formatted,/Floral Birthday Frame/);
+ assert.match(formatted,/₹250/);
+ assert.match(formatted,/COD/);
+ assert.doesNotMatch(formatted,/<br|<strong|\*\*/iu);
+ const product=renderSalesTemplate({layout:'photo',product:frame,language:'hi'});
+ assert.ok(product.split('\n').filter(Boolean).every(line=>[...line].length<=48));
+});
+test('explicit price and purchase requests skip expensive secondary model, while ambiguous intent can use it',async()=>{
+ let calls=0;
+ const fetcher=async()=>{calls++;throw Error('secondary call not needed');};
+ const price=await selectSalesLayoutAI({key:'fake',customerText:'price kitna hai',draft:'₹250',fetcher});
+ const buying=await selectSalesLayoutAI({key:'fake',customerText:'I want to buy',draft:'Yes',fetcher});
+ assert.deepEqual(price,{layout:'price',source:'rules'});
+ assert.deepEqual(buying,{layout:'buying',source:'rules'});
+ assert.equal(calls,0);
 });
