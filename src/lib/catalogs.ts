@@ -11,7 +11,7 @@ export function catalogCards(products:CatalogProduct[]) {
   const expanded=expandCatalogProduct({...p,images:p.images||[],url:p.url||''});
   const variants=expanded.filter(item=>item.variant_id);
   const show=variants.length?variants:expanded;
-  return show.flatMap(item=>(item.images||[]).filter(safeImageUrl).map(image=>{
+  return show.flatMap(item=>(item.images||[]).filter(url=>Boolean(safeImageUrl(url))).map(image=>{
    const title=cleanCatalogDisplayName(item.name,item.style_number);
    const style=item.style_number ? 'Style '+item.style_number.replace(/^(?:style|स्टाइल)\s*/iu,'') : '';
    const subtitle=[style,item.price,item.delivery_time,item.cod].filter(Boolean).join(' · ');
