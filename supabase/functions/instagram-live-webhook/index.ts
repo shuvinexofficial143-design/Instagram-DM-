@@ -823,6 +823,27 @@ async function getVerifiedFollowStatus(senderId:string,token:string):Promise<boo
  }catch{return null;}
 }
 
+/** Normalize Meta's short-lived CDN image into in-memory image bytes before vision.
+ * The original customer image URL stays in the inbox; base64 is never stored.
+ * This is limited to Instagram's image CDN to prevent SSRF and large downloads.
+ */
+async function imageForVision(raw:string):Promise<string>{
+ try{
+  const url=new URL(String(raw||''));
+  if(url.protocol!=='https:'||url.hostname!=='lookaside.fbsbx.com')return raw;
+  const response=await fetch(url.href,{redirect:'error',signal:AbortSignal.timeout(3200)});
+  if(!response.ok)return raw;
+  const mime=String(response.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
+  if(!['image/jpeg','image/png','image/webp'].includes(mime))return raw;
+  if(Number(response.headers.get('content-length')||0)>1800000)return raw;
+  const bytes=new Uint8Array(await response.arrayBuffer());
+  if(!bytes.length||bytes.length>1800000)return raw;
+  let binary='';
+  for(let pos=0;pos<bytes.length;pos+=8192)binary+=String.fromCharCode(...bytes.subarray(pos,pos+8192));
+  return 'data:'+mime+';base64,'+btoa(binary);
+ }catch{return raw;}
+}
+
 async function getSenderProfile(
   senderId: string,
   accessToken: string,
@@ -2058,6 +2079,21 @@ Instagram DM style rules:
           if(error)throw Error('Customer image batch unavailable');
           turnImages=[...new Set<string>([...(batch||[]).flatMap((row:any)=>row.data?.image_urls||[]),...turnImages])];
         }
+        // Screenshot recognition runs on actual CDN bytes, not an expiring signed URL.
+        turnImages=await Promise.all(turnImages.slice(0,5).map(imageForVision));
+        let previousCustomerImages:string[]=[];
+        if(selectedCatalog&&/^\s*[0-9०-९]{1,2}\s*$/u.test(item.text)){
+          const {data:priorImages,error:priorError}=await admin.from('autoreply_documents').select('data')
+            .eq('user_id',workspaceId).eq('collection','inbox_messages')
+            .eq('data->>direction','in').eq('data->>from_ig_id',item.senderId)
+            .order('message_time',{ascending:false}).limit(12);
+          if(!priorError){
+            const eligible=(priorImages||[]).filter((row:any)=>row.data?.image_urls?.length&&
+              Date.parse(String(row.data.timestamp||''))>Date.now()-5*60*1000);
+            previousCustomerImages=[...new Set<string>(eligible.flatMap((row:any)=>row.data.image_urls))].slice(0,2);
+            previousCustomerImages=await Promise.all(previousCustomerImages.map(imageForVision));
+          }
+        }
         let recentPhotoUrls:string[]=[];
         if(selectedCatalog){
           const aliases=Array.isArray(context.memory_identity?.aliases)?context.memory_identity.aliases:[item.senderId];
@@ -2077,7 +2113,7 @@ Instagram DM style rules:
           isGreeting,
           selectedCatalog ? {...selectedCatalog,onSelect:(chosen:any)=>{selectedCatalog=chosen;sendCatalog=true;}} : undefined,
           turnImages, catalogWarning, {
-            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,customerFacts:scannedCustomerFacts,signal:turnWatch?.signal,postId:item.postId,adSource:item.adSource,sharedMediaRefs:item.sharedMediaRefs||[],sharedMediaUnknown:Boolean(item.sharedMediaUnknown),recentPhotoUrls,followStatus:verifiedFollowStatus,followDiscountPercent:followOfferEnabled?10:undefined,
+            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,customerFacts:scannedCustomerFacts,signal:turnWatch?.signal,postId:item.postId,adSource:item.adSource,sharedMediaRefs:item.sharedMediaRefs||[],sharedMediaUnknown:Boolean(item.sharedMediaUnknown),recentPhotoUrls,previousCustomerImages,followStatus:verifiedFollowStatus,followDiscountPercent:followOfferEnabled?10:undefined,
             historySearch:async(query:string)=>{const {data,error}=await admin.rpc('autoreply_search_conversation',{p_workspace:workspaceId,p_sender:item.senderId,p_query:query});if(error)throw Error('Historical search unavailable');return data;},
             onUsage:(usage:any)=>{for(const key of ['input_tokens','output_tokens','cached_input_tokens','calls','provider_ms'])replyUsage[key]+=usage[key]||0;replyUsage.usage_available=replyUsage.usage_available||usage.usage_available;},
           }
