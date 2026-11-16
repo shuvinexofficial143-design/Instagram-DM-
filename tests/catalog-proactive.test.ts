@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {proactiveCatalogSelection,cleanCatalogDisplayName,catalogMessage,generateCatalogReply,type RuntimeCatalog} from '../supabase/functions/instagram-live-webhook/catalogRuntime';
+import {proactiveCatalogSelection,shouldOfferGalleryAfterStall,resolveCatalogReference,cleanCatalogDisplayName,catalogMessage,generateCatalogReply,type RuntimeCatalog} from '../supabase/functions/instagram-live-webhook/catalogRuntime';
 
 const frame=(i:number)=>({id:'frame-'+i,name:'Style-'+String(i).padStart(2,'0')+'-Birthday-Frame.png',style_number:'Style '+i,price:'₹250',description:'Custom photo frame',url:'',images:['https://example.com/frame-'+i+'.jpg'],collection_name:'Photo Frame',customization:'Add customer photo'});
 const pearl={id:'pearl',name:'Love Pearl',style_number:'',price:'₹360',description:'Pendant',url:'',images:['https://example.com/pearl.jpg'],collection_name:'Love Pearl'};
@@ -46,4 +46,37 @@ test('verified follow pricing is derived from approved saved price, not from cus
 });
 test('blank variant price continues to inherit parent price',()=>{
  assert.equal(cleanCatalogDisplayName('Style-07-Fairy-Memories-Frame.png','Style 7'),'Fairy Memories Frame');
+});
+
+
+test('a stalled photo frame conversation presents the relevant swipeable family once, without another AI call',()=>{
+ const browsing=[
+  {role:'user',content:'Photo Frame ki price'},
+  {role:'assistant',content:'₹250 — कौन-सा डिज़ाइन पसंद है?'},
+  {role:'user',content:'अच्छा'},
+  {role:'assistant',content:'और कई Styles उपलब्ध हैं।'},
+  {role:'user',content:'देख रहा हूँ'},
+  {role:'assistant',content:'आप अपनी पसंद बता सकते हैं।'}
+ ];
+ const previouslySent=['https://example.com/frame-2.jpg'];
+ assert.equal(shouldOfferGalleryAfterStall('hmm',browsing,previouslySent),true);
+ const selected=proactiveCatalogSelection({...catalog,delivery_style:'premium_cards'},'hmm',browsing,previouslySent,'','Photo Frame');
+ assert.ok(selected);
+ assert.equal(selected.delivery_style,'premium_cards');
+ assert.deepEqual(selected.products.map(p=>p.style_number),[1,2,3,4,5,6,7,8].map(n=>'Style '+n));
+ assert.equal(selected.elements?.length,8);
+ assert.equal(shouldOfferGalleryAfterStall('hmm',browsing,[1,2,3,4,5,6,7,8].map(n=>'https://example.com/frame-'+n+'.jpg')),false);
+ assert.equal(proactiveCatalogSelection(catalog,'not interested',browsing,previouslySent),null);
+ assert.equal(proactiveCatalogSelection(catalog,'where is my order?',browsing,previouslySent),null);
+});
+test('a number or ordinal after the gallery sends exactly one matching catalog image',()=>{
+ const sent=[1,2,3,4,5,6,7,8].map(n=>'https://example.com/frame-'+n+'.jpg');
+ const history=[{role:'assistant',content:'These are our eight available styles'}];
+ const fourth=resolveCatalogReference(catalog,'चौथी स्टाइल','',history,sent);
+ assert.equal(fourth.ambiguous,false);
+ assert.deepEqual(fourth.products.map(p=>p.id),['frame-4']);
+ const seven=resolveCatalogReference(catalog,'7','',history,sent);
+ assert.deepEqual(seven.products.map(p=>p.id),['frame-7']);
+ const unsupported=resolveCatalogReference(catalog,'चौथी स्टाइल','',history,[]);
+ assert.equal(unsupported.products.length,0); // No guess from an unsent gallery
 });
