@@ -383,7 +383,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
  }
  const photoResult=(selected:RuntimeCatalog):CatalogReply=>{
   const elements=selected.elements||[];
-  const prefersHindi=catalogHindi(options.text)||options.history.slice(-10).some(m=>catalogHindi(String(m?.content||'')));
+  const prefersHindi=catalogHindi(options.text)||/^\[Customer sent an image\]$/iu.test(options.text.trim())||options.history.slice(-10).some(m=>catalogHindi(String(m?.content||'')));
   const formatted={...selected,reply_language:prefersHindi?'hi' as const:'en' as const};
   const userSelectedStyle=/^\s*[0-9०-९]{1,2}\s*$/u.test(options.text)&&reference.products.length===1;
   if(elements.length&&elements.every(e=>recentUrls.has(e.image_url))&&!explicitCatalogResend(options.text)&&!userSelectedStyle&&!images.length)return {text:(formatted.reply_language==='hi'?'📸 इस डिज़ाइन की फोटो ऊपर भेजी गई है।\n':'📸 This design photo was sent above.\n')+catalogMessage(formatted),warning:''};
@@ -396,6 +396,20 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   const selected=reference.products[0];
   if(selected.images.length)return photoResult(selectProductPhotos(catalog,[{product_id:selected.id,image_indexes:[0]}]));
  }
+ const unknownScreenshot=():CatalogReply=>{
+  // After a real image-vision failure, show an accurately labeled gallery instead of
+  // making the customer guess the number already visible on their screenshot.
+  // Do not repeat a gallery recently delivered in this chat and never guess a single SKU.
+  if(catalog?.id==='workspace_active_catalogs'&&!options.recentPhotoUrls?.length){
+   const frames=catalog.products.filter(p=>p.images.length&&p.collection_name==='Photo Frame'&&p.style_number)
+    .slice().sort((a,b)=>Number((a.style_number||'').match(/\d+/)?.[0]||999)-Number((b.style_number||'').match(/\d+/)?.[0]||999)).slice(0,10);
+   if(frames.length>=2){
+    const selected=buildCatalogPage({...catalog,products:frames,delivery_style:'premium_cards'},1);
+    return photoResult({...selected,proactive:true,reply_language:'hi'});
+   }
+  }
+  return {text:'📸 इस फोटो का डिज़ाइन अभी पक्का मैच नहीं हुआ। आप चाहें तो फोटो पर लिखा STYLE नंबर (जैसे 03 या 08) भेजें, ताकि सही डिज़ाइन दिखा सकूँ।',warning:'Image comparison did not identify one unique catalog design.'};
+ };
  const specificPhotos=(products:CatalogProduct[],indexes:number[]=[])=>({...selectProductPhotos(catalog!,products.map((p,i)=>({product_id:p.id,image_indexes:[indexes[i]||0]}))),caption:catalogDeliveryStyle(catalog!.delivery_style)==='photos_ai'?(catalogHindi(options.text)?'आपको यह डिज़ाइन पसंद आया?':'Do you like this design?'):''});
 
  const handoffRequest=/\b(?:human|person|agent|staff)\b|इंसान|मालिक|कर्मचारी/iu.test(options.text);
@@ -411,7 +425,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   if(images.length){
    try{
     const recognition=await recognizeCatalogImages(catalog,images,async(messages:any[])=>request(messages,[],true));
-    if(!recognition.certain)return {text:(catalogHindi(options.text)||options.history.some(m=>m?.role==='user'&&catalogHindi(String(m?.content||'')))?'📸 फोटो के डिज़ाइन की पक्की पहचान नहीं हो पाई। फोटो पर लिखा Style नंबर (जैसे 03 या FR-05) बता दीजिए, मैं उसी की सही फोटो दिखाऊँगा।':'📸 I could not confidently match this picture. Please share the printed Style number (for example 03 or FR-05) so I can show the exact saved design.'),warning:'Image match needs customer confirmation.'};
+    if(!recognition.certain)return unknownScreenshot();
     const matches=recognition.matches;
     if(reference.requested&&matches.some(m=>!reference.products.some(p=>p.id===m.product_id)))return {text:catalogHindi(options.text)?'फोटो और बताए गए Style Number का डिज़ाइन अलग लग रहा है। आप किसे चुनना चाहते हैं?':'The photo and Style Number point to different designs. Which one would you like?',warning:'Conflicting catalog references.'};
     identified=matches.map(m=>catalog.products.find(p=>p.id===m.product_id)!);matchedIndexes=matches.map(m=>m.image_index);
@@ -426,7 +440,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
      const selected=printed.matches.map(m=>catalog.products.find(p=>p.id===m.product_id)!).filter(Boolean);
      if(selected.length)return photoResult(specificPhotos(selected,printed.matches.map(m=>m.image_index)));
     }
-    return {text:(catalogHindi(options.text)||options.history.some(m=>m?.role==='user'&&catalogHindi(String(m?.content||'')))?'📸 यह फोटो अभी स्पष्ट पहचान नहीं पा रहा हूँ। कृपया उस पर लिखा Style नंबर बताइए, ताकि गलत डिज़ाइन न भेजूँ।':'📸 I could not verify this photo yet. Please share its printed Style number so I do not send a different design.'),warning:'The customer image could not be inspected.'};
+    return unknownScreenshot();
    }
   }
   // Keep the ordinary business prompt / handoff decision even for a resolved
