@@ -38,17 +38,41 @@ function catalogDigits(text:string){return text.normalize('NFKC').replace(/[०-
 export function catalogStyleKey(text:string){const raw=catalogDigits(text).toLowerCase().replace(/^(?:style|स्टाइल)\s*/u,'').replace(/[\s_]+/g,'');return /^\d+$/.test(raw)?String(Number(raw)):raw;}
 function catalogPostKey(text:string){return text.trim().replace(/\/$/,'').split(/[?#]/)[0].replace(/^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\//i,'').replace(/\/$/,'');}
 export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postId='',history:any[]=[]):{requested:boolean;products:CatalogProduct[];ambiguous:boolean}{
- const input=catalogDigits(text);postId=postId||text.match(/https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[^\s?#]+/i)?.[0]||'';const styles=[...input.matchAll(/(?:\bstyle|स्टाइल)\s*(?:no\.?|number|नंबर|#)?\s*[:.-]?\s*([a-z0-9][a-z0-9-]{0,39})/giu)].map(m=>catalogStyleKey(m[1]));
- if(styles.length){const chosen:CatalogProduct[]=[];for(const style of new Set(styles)){const matches=catalog.products.filter(p=>p.style_number&&catalogStyleKey(p.style_number)===style);if(matches.length!==1)return {requested:true,products:[],ambiguous:true};chosen.push(matches[0]);}return {requested:true,products:chosen,ambiguous:false};}
-
- // A bare numeric reply chooses a design only in a design-related conversation.
+ const input=catalogDigits(text);
+ postId=postId||text.match(/https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[^\s?#]+/i)?.[0]||'';
+ const styles=[...input.matchAll(/(?:\bstyle|स्टाइल)\s*(?:no\.?|number|नंबर|#)?\s*[:.-]?\s*([a-z0-9][a-z0-9-]{0,39})/giu)].map(m=>catalogStyleKey(m[1]));
+ if(styles.length){
+  const chosen:CatalogProduct[]=[];
+  for(const style of new Set(styles)){
+   const matches=catalog.products.filter(p=>p.style_number&&catalogStyleKey(p.style_number)===style);
+   if(matches.length!==1)return {requested:true,products:[],ambiguous:true};
+   chosen.push(matches[0]);
+  }
+  return {requested:true,products:chosen,ambiguous:false};
+ }
+ // A standalone "2" is a design choice only in an existing product-selection conversation.
  const bare=input.trim().match(/^(?:0?[1-9]|[1-9]\d)$/u);
  const designContext=history.slice(-12).some(m=>/(?:\bstyle\b|design|photos?|catalog|frame|फ्रेम|स्टाइल|डिज़ाइन|डिजाइन|फोटो)/iu.test(String(m?.content||'')));
  if(bare&&designContext){
-  const number=Number(bare[0]);
+  const selectedNumber=Number(bare[0]);
   const candidates=catalog.products.filter(p=>{
-   const key=catalogStyleKey(p.style_number||'');
-   return key===String(number)||new RegExp('(?:^|[-_])0*'+number+',third:3,fourth:4,fifth:5,sixth:6,seventh:7,eighth:8,ninth:9,tenth:10,'पहला':1,'पहले':1,'दूसरा':2,'दूसरे':2,'तीसरा':3,'चौथा':4,'पाँचवाँ':5,'पांचवां':5,'छठा':6,'सातवाँ':7,'सातवां':7,'आठवाँ':8,'आठवां':8,'नौवाँ':9,'नौवां':9,'दसवाँ':10,'दसवां':10,pehla:1,dusra:2,teesra:3,chautha:4,saatva:7,saatwan:7,satva:7};
+   const styleKey=catalogStyleKey(p.style_number||'');
+   return styleKey===String(selectedNumber)||new RegExp('(?:^|[-_])0*'+selectedNumber+'$','iu').test(styleKey);
+  });
+  if(candidates.length===1)return {requested:true,products:candidates,ambiguous:false};
+  if(candidates.length>1){
+   for(const entry of history.slice(-12).reverse()){
+    const sentence=String(entry?.content||'').toLocaleLowerCase();
+    const found=candidates.filter(p=>{
+     const key=catalogStyleKey(p.style_number||'');
+     return new RegExp('(?:^|[^a-z0-9])(?:style\\s*)?'+key+'(?=$|[^a-z0-9])','iu').test(sentence);
+    });
+    if(found.length===1)return {requested:true,products:found,ambiguous:false};
+   }
+  }
+  return {requested:true,products:[],ambiguous:true};
+ }
+ const words:Record<string,number>={first:1,second:2,third:3,fourth:4,fifth:5,sixth:6,seventh:7,eighth:8,ninth:9,tenth:10,'पहला':1,'पहले':1,'दूसरा':2,'दूसरे':2,'तीसरा':3,'चौथा':4,'पाँचवाँ':5,'पांचवां':5,'छठा':6,'सातवाँ':7,'सातवां':7,'आठवाँ':8,'आठवां':8,'नौवाँ':9,'नौवां':9,'दसवाँ':10,'दसवां':10,pehla:1,dusra:2,teesra:3,chautha:4,saatva:7,saatwan:7,satva:7};
  const match=input.match(/(?:^|\s)(\d{1,3})(?:st|nd|rd|th|वाँ|वां|वा|वीं)\s*(?:frame|photo|design|फ्रेम|फोटो|डिजाइन|डिज़ाइन)/iu)||input.match(/(?:frame|photo|फ्रेम|फोटो)\s*(?:no\.?|number|नंबर|#)?\s*(\d{1,3})(?:\s|$)/iu);
  const ordinal=match?Number(match[1]):Object.entries(words).find(([word])=>new RegExp('(?:^|\\s)'+word+'(?:\\s+(?:वाला|वाली))?\\s+(?:frame|photo|design|फ्रेम|फोटो|डिजाइन|डिज़ाइन)(?:\\b|\\s|$)','iu').test(input))?.[1];
  if(!ordinal)return {requested:false,products:[],ambiguous:false};
