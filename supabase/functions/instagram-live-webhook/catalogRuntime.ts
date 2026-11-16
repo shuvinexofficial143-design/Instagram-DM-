@@ -328,7 +328,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   const prefersHindi=catalogHindi(options.text)||options.history.slice(-10).some(m=>m?.role==='user'&&catalogHindi(String(m?.content||'')));
   const formatted={...selected,reply_language:prefersHindi?'hi' as const:'en' as const};
   const userSelectedStyle=/^\s*[0-9०-९]{1,2}\s*$/u.test(options.text)&&reference.products.length===1;
-  if(elements.length&&elements.every(e=>recentUrls.has(e.image_url))&&!explicitCatalogResend(options.text)&&!userSelectedStyle)return {text:(formatted.reply_language==='hi'?'📸 इस डिज़ाइन की फोटो ऊपर भेजी गई है।\n':'📸 This design photo was sent above.\n')+catalogMessage(formatted),warning:''};
+  if(elements.length&&elements.every(e=>recentUrls.has(e.image_url))&&!explicitCatalogResend(options.text)&&!userSelectedStyle&&!images.length)return {text:(formatted.reply_language==='hi'?'📸 इस डिज़ाइन की फोटो ऊपर भेजी गई है।\n':'📸 This design photo was sent above.\n')+catalogMessage(formatted),warning:''};
   return {text:catalogDeliveryStyle(formatted.delivery_style)==='cards'?'[Product photos: '+formatted.products.map(p=>p.name).join(', ')+']':catalogMessage(formatted)||'[Product photos: '+formatted.products.map(p=>p.name).join(', ')+']',catalog:formatted,warning:''};
  };
  const specificPhotos=(products:CatalogProduct[],indexes:number[]=[])=>({...selectProductPhotos(catalog!,products.map((p,i)=>({product_id:p.id,image_indexes:[indexes[i]||0]}))),caption:catalogDeliveryStyle(catalog!.delivery_style)==='photos_ai'?(catalogHindi(options.text)?'आपको यह डिज़ाइन पसंद आया?':'Do you like this design?'):''});
@@ -346,11 +346,13 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   if(images.length){
    try{
     const recognition=await recognizeCatalogImages(catalog,images,async(messages:any[])=>request(messages,[],true));
-    if(!recognition.certain)return {text:catalogClarification(options.text),warning:'Image match needs customer confirmation.'};
+    if(!recognition.certain)return {text:(catalogHindi(options.text)||options.history.some(m=>m?.role==='user'&&catalogHindi(String(m?.content||'')))?'📸 फोटो के डिज़ाइन की पक्की पहचान नहीं हो पाई। फोटो पर लिखा Style नंबर (जैसे 03 या FR-05) बता दीजिए, मैं उसी की सही फोटो दिखाऊँगा।':'📸 I could not confidently match this picture. Please share the printed Style number (for example 03 or FR-05) so I can show the exact saved design.'),warning:'Image match needs customer confirmation.'};
     const matches=recognition.matches;
     if(reference.requested&&matches.some(m=>!reference.products.some(p=>p.id===m.product_id)))return {text:catalogHindi(options.text)?'फोटो और बताए गए Style Number का डिज़ाइन अलग लग रहा है। आप किसे चुनना चाहते हैं?':'The photo and Style Number point to different designs. Which one would you like?',warning:'Conflicting catalog references.'};
     identified=matches.map(m=>catalog.products.find(p=>p.id===m.product_id)!);matchedIndexes=matches.map(m=>m.image_index);
     description='High-confidence catalog comparison candidate: '+identified.map(p=>p.name+(p.style_number?' Style '+p.style_number:'')).join(', ');
+    // A clearly matched incoming design is an explicit request for identification: show the actual saved photo.
+    if(!/(?:text only|only price|no photo|photo mat|मत भेजो|सिर्फ कीमत|केवल कीमत)/iu.test(options.text))return photoResult(specificPhotos(identified,matchedIndexes));
    }catch(error){if(options.signal?.aborted)throw error;return {text:catalogClarification(options.text),warning:'The customer image could not be inspected.'};}
   }
   // Keep the ordinary business prompt / handoff decision even for a resolved
