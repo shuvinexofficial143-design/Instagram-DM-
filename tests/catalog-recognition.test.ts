@@ -25,7 +25,7 @@ test('seventh frame uses saved post mappings and asks when multiple posts disagr
 });
 test('explicit Style Number sends one photo with authoritative details and no vision call',async()=>{
  let calls=0;const result=await generateCatalogReply({...base,fetcher:async(_url,init)=>{calls++;assert.equal(JSON.parse(String(init?.body)).response_format,undefined);return photoTool();}});
- assert.equal(calls,1);assert.equal(result.catalog?.elements?.length,1);assert.equal(result.catalog?.products[0].id,'heart');
+ assert.equal(calls,0);assert.equal(result.catalog?.elements?.length,1);assert.equal(result.catalog?.products[0].id,'heart');
  const parts=catalogDeliveryParts(result.catalog!);assert.equal(parts[0].message.attachment.payload.url,catalog.products[0].images[0]);assert.match(parts.at(-1)?.text||'',/₹250/);assert.match(parts.at(-1)?.text||'',/Cash on Delivery/);assert.match(parts.at(-1)?.text||'',/5–7 days/);
 });
 test('ambiguous Style Number and post order never send guessed catalog photos',async()=>{
@@ -249,4 +249,36 @@ test('a screenshot with verified printed Style 03 sends the matching photo witho
  assert.equal(result.catalog?.elements?.[0].image_url,regular.images[0]);
  assert.equal(result.catalog?.reply_language,'hi');
  assert.ok(calls>0);
+});
+
+
+test('bare Style 04 after a customer picture selects its printed SKU, not the unrelated FR-04 variant',async()=>{
+ const ordinary={...frame('style04','Style 4'),post_refs:[]};
+ const fr={...frame('fr04','FR-04'),post_refs:[]};
+ const combined={...catalog,id:'workspace_active_catalogs',delivery_style:'premium_cards' as const,products:[ordinary,fr]};
+ const history=[{role:'user',content:'[Customer sent an image]'},{role:'assistant',content:'यह फोटो पहचान नहीं पा रहा हूँ। Style नंबर बताइए।'}];
+ let visionCalls=0;
+ const result=await generateCatalogReply({...base,catalog:combined,text:'4',history,previousCustomerImages:['https://images.example/customer.jpg'],fetcher:async(_url,init)=>{
+  visionCalls++;
+  const payload=JSON.parse(String(init?.body));
+  assert.ok(payload.response_format,'Only the screenshot label reader should need AI');
+  return answer({styles:[{input_index:0,style_number:'STYLE 04',visible:true,confidence:0.99}]});
+ }});
+ assert.equal(visionCalls,1);
+ assert.equal(result.catalog?.products[0].id,'style04');
+ assert.equal(result.catalog?.elements?.[0].image_url,ordinary.images[0]);
+ assert.doesNotMatch(result.text||'',/2 फ्रेम|2 frames?/iu);
+ const cards=catalogDeliveryParts(result.catalog!);
+ assert.equal(cards[0].kind,'cards');
+ assert.equal(cards[0].catalog.elements[0].image_url,ordinary.images[0]);
+});
+
+test('explicit FR-04 stays separate from printed Style 04; gallery URL disambiguates bare number',()=>{
+ const first={...frame('style04','Style 4'),post_refs:[]};
+ const other={...frame('fr04','FR-04'),post_refs:[]};
+ const selected={...catalog,products:[first,other]};
+ assert.equal(resolveCatalogReference(selected,'Style 04').products[0].id,'style04');
+ assert.equal(resolveCatalogReference(selected,'FR-04').products[0].id,'fr04');
+ assert.equal(resolveCatalogReference(selected,'4','',[{role:'assistant',content:'Choose a style'}],[first.images[0]]).products[0].id,'style04');
+ assert.equal(resolveCatalogReference(selected,'4','',[{role:'assistant',content:'Choose a style'}],[other.images[0]]).products[0].id,'fr04');
 });
