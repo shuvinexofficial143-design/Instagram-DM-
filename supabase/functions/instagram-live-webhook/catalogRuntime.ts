@@ -322,14 +322,39 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
  * Records are read-only, scoped to this workspace, and the saved individual catalogs remain untouched.
  */
 export async function loadWorkspaceCatalogs(admin:any,workspaceId:string):Promise<RuntimeCatalog|null>{
- const {data,error}=await admin.from('autoreply_documents').select('id,data').eq('user_id',workspaceId).eq('collection','catalogs').range(0,99);
- if(error)throw Error('Could not load active catalogs.');
- const ids=(data||[]).filter((row:any)=>row.data?.active===true).map((row:any)=>String(row.id)).filter((id:string)=>/^[a-zA-Z0-9_-]{1,100}$/.test(id));
- const results=await Promise.all(ids.map(async(id:string)=>{try{return await loadCatalog(admin,workspaceId,id);}catch{return null;}}));
- const valid=results.filter((c):c is RuntimeCatalog=>Boolean(c));
+ // One workspace-wide product read, shared by all active collections. Before this
+ // each catalog independently re-fetched the entire workspace product list.
+ const [catalogResult,firstPage]=await Promise.all([
+  admin.from('autoreply_documents').select('id,data').eq('user_id',workspaceId).eq('collection','catalogs').range(0,99),
+  admin.from('autoreply_documents').select('id,data').eq('user_id',workspaceId).eq('collection','catalog_products').order('id',{ascending:true}).range(0,499)
+ ]);
+ if(catalogResult.error||firstPage.error)throw Error('Could not load active product catalogs.');
+ const active=(catalogResult.data||[]).filter((row:any)=>row.data?.active===true)
+  .filter((row:any)=>/^[a-zA-Z0-9_-]{1,100}$/.test(String(row.id)));
+ if(!active.length)return null;
+ const rows:any[]=[...(firstPage.data||[])];
+ for(let offset=500;rows.length===offset;offset+=500){
+  if(offset>=10000)throw Error('This workspace has too many products to load.');
+  const {data,error}=await admin.from('autoreply_documents').select('id,data')
+   .eq('user_id',workspaceId).eq('collection','catalog_products').order('id',{ascending:true}).range(offset,offset+499);
+  if(error)throw Error('Could not load active product catalogs.');
+  rows.push(...(data||[]));if((data||[]).length<500)break;
+ }
+ const valid=active.map((row:any)=>{
+  const id=String(row.id),name=String(row.data?.name||'Catalog').slice(0,150);
+  const products=rows.filter(r=>(r.data?.catalog_id||'default')===id&&r.data?.active===true&&String(r.data.name||'').trim()).map(r=>({
+   ...catalogProductMetadata(r.data),id:String(r.id),name:String(r.data.name).trim().slice(0,150),
+   price:String(r.data.price||'').slice(0,200),description:String(r.data.description||'').slice(0,4000),
+   url:safeImageUrl(r.data.url),images:[...new Set<string>((Array.isArray(r.data.images)?r.data.images:[]).map((url:any)=>safeImageUrl(url)).filter(Boolean))].slice(0,10)
+  } as CatalogProduct)).flatMap(expandCatalogProduct).map(p=>({...p,collection_name:name}));
+  return {name,delivery_style:catalogDeliveryStyle(row.data.delivery_style),products};
+ }).filter(c=>c.products.length);
  if(!valid.length)return null;
- return {id:'workspace_active_catalogs',name:'Product Catalog',products:valid.flatMap(c=>c.products.map(p=>({...p,collection_name:c.name}))),delivery_style:valid.every(c=>c.delivery_style==='premium_cards')?'premium_cards':'photos_ai'};
+ return {id:'workspace_active_catalogs',name:'Product Catalog',
+  products:valid.flatMap(c=>c.products),
+  delivery_style:valid.every(c=>c.delivery_style==='premium_cards')?'premium_cards':'photos_ai'};
 }
+
 function discountPriceLabel(price:string,percent:number):string {
  const match=String(price||'').trim().match(/^₹\s*(\d+(?:\.\d{1,2})?)\s*(?:\/-)?$/u);
  if(!match||percent!==10)return price;
