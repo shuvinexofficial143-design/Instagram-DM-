@@ -40,7 +40,8 @@ function catalogPostKey(text:string){return text.trim().replace(/\/$/,'').split(
 export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postId='',history:any[]=[],recentPhotoUrls:string[]=[]):{requested:boolean;products:CatalogProduct[];ambiguous:boolean}{
  const input=catalogDigits(text);
  postId=postId||text.match(/https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[^\s?#]+/i)?.[0]||'';
- const styles=[...input.matchAll(/(?:\bstyle|\bfr\b|स्टाइल)\s*(?:no\.?|number|नंबर|#)?\s*[:.-]?\s*([a-z0-9][a-z0-9-]{0,39})/giu)].map(m=>catalogStyleKey(m[1]));
+ const styles=[...input.matchAll(/(?:\bstyle|स्टाइल)\s*(?:no\.?|number|नंबर|#)?\s*[:.-]?\s*([a-z0-9][a-z0-9-]{0,39})/giu)].map(m=>catalogStyleKey(m[1]));
+ for(const match of input.matchAll(/\bfr\s*[-:#]?\s*(\d{1,2})\b/giu))styles.push('fr-'+String(Number(match[1])).padStart(2,'0'));
  if(styles.length){
   const chosen:CatalogProduct[]=[];
   for(const style of new Set(styles)){
