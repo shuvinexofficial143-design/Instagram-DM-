@@ -373,7 +373,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
  }
  const photoResult=(selected:RuntimeCatalog):CatalogReply=>{
   const elements=selected.elements||[];
-  const prefersHindi=catalogHindi(options.text)||options.history.slice(-10).some(m=>m?.role==='user'&&catalogHindi(String(m?.content||'')));
+  const prefersHindi=catalogHindi(options.text)||options.history.slice(-10).some(m=>catalogHindi(String(m?.content||'')));
   const formatted={...selected,reply_language:prefersHindi?'hi' as const:'en' as const};
   const userSelectedStyle=/^\s*[0-9०-९]{1,2}\s*$/u.test(options.text)&&reference.products.length===1;
   if(elements.length&&elements.every(e=>recentUrls.has(e.image_url))&&!explicitCatalogResend(options.text)&&!userSelectedStyle&&!images.length)return {text:(formatted.reply_language==='hi'?'📸 इस डिज़ाइन की फोटो ऊपर भेजी गई है।\n':'📸 This design photo was sent above.\n')+catalogMessage(formatted),warning:''};
