@@ -133,7 +133,7 @@ export async function selectSalesLayoutAI(args:{
  if(!args.key)return {layout:rule,source:'rules'};
  const redact=(s:string)=>String(s||'').replace(/(?:\+?\d[\d\s-]{8,}\d)/gu,'[number]').replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/giu,'[email]').replace(/https?:\/\/\S+/giu,'[link]').slice(0,420);
  try{
-  const timeout=Math.min(3500,Math.max(500,args.timeoutMs||2700));
+  const timeout=Math.min(1800,Math.max(500,args.timeoutMs||1600));
   const controller=AbortSignal.timeout(timeout);
   const signal=args.signal?AbortSignal.any([controller,args.signal]):controller;
   const response=await (args.fetcher||fetch)('https://api.openai.com/v1/chat/completions',{
