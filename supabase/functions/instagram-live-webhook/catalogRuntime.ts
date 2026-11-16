@@ -1,5 +1,5 @@
 import {DM_AI_MODEL,chatModelParams} from './openaiConfig.js';
-import {matchInstagramAdProduct,type InstagramAdSource} from './adAttribution.ts';
+import {matchInstagramAdProduct,type InstagramAdSource} from './adAttribution.js';
 import {customerFactsInstructions,customerFactValues,canonicalCustomerField,repeatedCustomerQuestion,customerDetailFallback,type CustomerFacts} from './customerFacts.js';
 import {memoryBuildContext,memorySettings,memoryBytes,isReturnGreeting,isSalesRestart,continuityFallback,type MemorySnapshot} from './smartMemory.js';
 /** Shared by live Instagram replies and the builder preview. No credentials or browser state. */
