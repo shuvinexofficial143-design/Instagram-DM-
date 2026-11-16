@@ -49,7 +49,7 @@ export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postI
  const input=catalogDigits(text);
  postId=postId||text.match(/https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[^\s?#]+/i)?.[0]||'';
  const styles=[...input.matchAll(/(?:(?:\bstyle\b|स्टाइल)\s*(?:no\.?|number|नंबर|#)?\s*[:.-]?\s*([a-z0-9][a-z0-9-]{0,39})|\b(fr[-_:\s]*\d{1,2})\b)/giu)].map(m=>catalogStyleKey(m[1]||m[2]));
- for(const match of input.matchAll(/\bfr\s*[-:#]?\s*(\d{1,2})\b/giu))styles.push('fr-'+String(Number(match[1])).padStart(2,'0'));
+ for(const match of input.matchAll(/\bfr\s*[-:#]?\s*(\d{1,2})\b/giu))styles.push(catalogStyleKey('FR-'+match[1]));
  if(styles.length){
   const chosen:CatalogProduct[]=[];
   for(const style of new Set(styles)){
