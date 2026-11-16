@@ -26,7 +26,7 @@ test('seventh frame uses saved post mappings and asks when multiple posts disagr
 test('explicit Style Number sends one photo with authoritative details and no vision call',async()=>{
  let calls=0;const result=await generateCatalogReply({...base,fetcher:async(_url,init)=>{calls++;assert.equal(JSON.parse(String(init?.body)).response_format,undefined);return photoTool();}});
  assert.equal(calls,1);assert.equal(result.catalog?.elements?.length,1);assert.equal(result.catalog?.products[0].id,'heart');
- const parts=catalogDeliveryParts(result.catalog!);assert.equal(parts[0].message.attachment.payload.url,catalog.products[0].images[0]);assert.match(parts.at(-1)?.text||'',/₹250/);assert.match(parts.at(-1)?.text||'',/COD: Available/);assert.match(parts.at(-1)?.text||'',/5–7 days/);
+ const parts=catalogDeliveryParts(result.catalog!);assert.equal(parts[0].message.attachment.payload.url,catalog.products[0].images[0]);assert.match(parts.at(-1)?.text||'',/₹250/);assert.match(parts.at(-1)?.text||'',/Cash on Delivery/);assert.match(parts.at(-1)?.text||'',/5–7 days/);
 });
 test('ambiguous Style Number and post order never send guessed catalog photos',async()=>{
  for(const text of ['Style 99 दिखाओ','सातवाँ फ्रेम चाहिए']){
