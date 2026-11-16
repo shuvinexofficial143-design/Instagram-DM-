@@ -1047,7 +1047,7 @@ async function persistOutboundMessage(
     from_username: profile.username || item.senderId,
     from_avatar: profile.avatar_url || "",
     message_text: responseText,
-    ...(catalog?.image_urls?{catalog_id:catalog.id,catalog_name:catalog.name,image_urls:catalog.image_urls}:catalog?{catalog_id:catalog.id,catalog_name:catalog.name,catalog_elements:catalog.elements}:{}),
+    ...(catalog?{catalog_id:catalog.id,catalog_name:catalog.name,...(catalog.image_urls?.length?{image_urls:catalog.image_urls}:{}),...(catalog.elements?.length?{catalog_elements:catalog.elements}:{})}:{}),
     direction: "out",
     is_automated: true,
     automation_id: automation?.id || "",
