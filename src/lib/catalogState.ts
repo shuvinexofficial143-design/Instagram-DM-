@@ -1,6 +1,6 @@
 import type {CatalogProductMetadata} from '../../supabase/functions/instagram-live-webhook/catalogRuntime';
 /** Catalog data shared by the picker and the builder's validation. */
-export type Catalog = { id:string; name:string; description:string; active:boolean; deleted?:boolean; delivery_style?:'cards'|'photos_details'|'photos_ai'|'photos_only' };
+export type Catalog = { id:string; name:string; description:string; active:boolean; deleted?:boolean; delivery_style?:'cards'|'premium_cards'|'photos_details'|'photos_ai'|'photos_only' };
 export type CatalogProduct = CatalogProductMetadata&{ id:string; catalog_id?:string; name:string; price:string; description:string; url:string; active:boolean; images?:string[] };
 export const defaultCatalog:Catalog = {id:'default',name:'Main Catalog',description:'Your product collection',active:true};
 export function resolveCatalogs(records:Catalog[]):Catalog[] {
@@ -27,6 +27,7 @@ export function watchCatalogs(scope:string,subscribe:Subscribe,onData:(data:Cata
 
 export const catalogDeliveryStyles=[
  {value:'cards',label:'Product cards',description:'Swipeable photos with names, prices and links.'},
+ {value:'premium_cards',label:'Premium cards + sales message',description:'Clean Instagram swipeable product cards showing real prices, followed by a short selling message.'},
  {value:'photos_details',label:'Photos + details',description:'Photos together, then your saved product information.'},
  {value:'photos_ai',label:'Photos + AI message',description:'Photo groups, saved details and a natural AI introduction.'},
  {value:'photos_only',label:'Photos only',description:'Photo groups without a separate information message.'},
