@@ -237,6 +237,7 @@ export async function recognizePrintedCatalogStyles(catalog:RuntimeCatalog,image
    if(catalog.products.some(p=>p.id!==product.id&&p.images.some(url=>product.images.includes(url))))return empty;
    if(!identified.some(m=>m.product_id===product.id))identified.push({input_index:i,product_id:product.id,image_index:0});
   }
+  console.log('[DM_PRINTED_STYLE_RESULT]',{certain:identified.length>0,matchedProducts:identified.length,inputImages:images.length});
   return {certain:identified.length>0,matches:identified};
  }catch(error:any){console.warn('[DM_PRINTED_STYLE_FAILED]',{reason:error?.name==='TimeoutError'?'timeout':'unavailable'});return empty;}
 }
@@ -354,8 +355,10 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   // A fast image-capable model reads printed labels; the existing sales model handles conversation.
   const vision=json&&messages.some(m=>Array.isArray(m.content)&&m.content.some((part:any)=>part?.type==='image_url'));
   const modelArgs=vision?{model:'gpt-4o-mini',max_completion_tokens:500}:chatModelParams(json?600:(options.maxTokens||600),options.model||DM_AI_MODEL,json?'low':'none');
+  if(vision){const parts=messages.flatMap(m=>Array.isArray(m.content)?m.content:[]).filter((x:any)=>x?.type==='image_url');console.log('[DM_VISION_REQUEST_DISPATCH]',{model:'gpt-4o-mini',imageCount:parts.length,inlineImageCount:parts.filter((x:any)=>String(x.image_url?.url||'').startsWith('data:image/')).length});}
   const response=await callFetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:options.signal?AbortSignal.any([options.signal,AbortSignal.timeout(Math.min(remaining,json?8500:(options.timeoutMs||10000)))]):AbortSignal.timeout(Math.min(remaining,json?8500:(options.timeoutMs||10000))),headers:{Authorization:'Bearer '+options.key,'Content-Type':'application/json'},body:JSON.stringify({...modelArgs,messages,...(json?{response_format:{type:'json_object'}}:{tools,tool_choice:'auto',parallel_tool_calls:false})})});
   const payload:any=await response.json().catch(()=>null);
+  if(vision)console.log('[DM_VISION_RESPONSE_RECEIVED]',{ok:response.ok,status:response.status,hasContent:typeof payload?.choices?.[0]?.message?.content==='string',elapsedMs:Date.now()-requestStarted});
   if(!response.ok){if(json)console.warn('[DM_VISION_MODEL_FAILED]',{status:response.status,invalidImage:/image|url|download/i.test(String(payload?.error?.message||''))});throw Object.assign(Error('AI request failed. Please retry.'),{status:response.status,providerMessage:String(payload?.error?.message||'').slice(0,300),invalidImage:response.status===400&&/image|url|download/i.test(String(payload?.error?.message||''))});}
   options.onUsage?.({input_tokens:Number(payload?.usage?.prompt_tokens||0),output_tokens:Number(payload?.usage?.completion_tokens||0),cached_input_tokens:Number(payload?.usage?.prompt_tokens_details?.cached_tokens||0),calls:1,usage_available:Boolean(payload?.usage),provider_ms:Date.now()-requestStarted});
   return payload?.choices?.[0]?.message;
