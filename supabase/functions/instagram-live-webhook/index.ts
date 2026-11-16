@@ -828,22 +828,38 @@ async function getVerifiedFollowStatus(senderId:string,token:string):Promise<boo
  * This is limited to Instagram's image CDN to prevent SSRF and large downloads.
  */
 async function imageForVision(raw:string):Promise<string>{
+ const source=String(raw||'');
  try{
-  const url=new URL(String(raw||''));
-  if(url.protocol!=='https:'||url.hostname!=='lookaside.fbsbx.com')return raw;
-  const response=await fetch(url.href,{redirect:'error',signal:AbortSignal.timeout(3200)});
-  if(!response.ok)return raw;
+  let target=new URL(source);
+  if(target.protocol!=='https:'||target.hostname!=='lookaside.fbsbx.com')return raw;
+  const safeHost=(host:string)=>host==='lookaside.fbsbx.com'||host.endsWith('.fbcdn.net')||host.endsWith('.fbsbx.com')||host.endsWith('.cdninstagram.com');
+  const signal=AbortSignal.timeout(6500);
+  let response:Response|null=null,redirects=0;
+  for(;redirects<4;redirects++){
+   if(target.protocol!=='https:'||!safeHost(target.hostname.toLowerCase())||target.username||target.password||target.port&&target.port!=='443')break;
+   response=await fetch(target.href,{redirect:'manual',signal,headers:{Accept:'image/jpeg,image/png,image/webp'}});
+   if(response.status<300||response.status>=400)break;
+   const location=response.headers.get('location');
+   if(!location){response=null;break;}
+   target=new URL(location,target);
+  }
+  if(!response?.ok){console.warn('[DM_VISION_IMAGE_PREP_FAILED]',{reason:'http_or_redirect'});return raw;}
   const mime=String(response.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
-  if(!['image/jpeg','image/png','image/webp'].includes(mime))return raw;
+  if(!['image/jpeg','image/png','image/webp'].includes(mime)){console.warn('[DM_VISION_IMAGE_PREP_FAILED]',{reason:'unsupported_mime'});return raw;}
+  // A base64 URL is capped by safeImageUrl at 2.8MB. Never store or log image bytes.
   if(Number(response.headers.get('content-length')||0)>1800000)return raw;
   const bytes=new Uint8Array(await response.arrayBuffer());
   if(!bytes.length||bytes.length>1800000)return raw;
   let binary='';
   for(let pos=0;pos<bytes.length;pos+=8192)binary+=String.fromCharCode(...bytes.subarray(pos,pos+8192));
-  return 'data:'+mime+';base64,'+btoa(binary);
- }catch{return raw;}
+  const data='data:'+mime+';base64,'+btoa(binary);
+  console.log('[DM_VISION_IMAGE_PREP_READY]',{mode:'inline_image',redirects,bytes:bytes.length});
+  return data;
+ }catch(error:any){
+  console.warn('[DM_VISION_IMAGE_PREP_FAILED]',{reason:error?.name==='TimeoutError'?'timeout':'fetch_error'});
+  return raw;
+ }
 }
-
 async function getSenderProfile(
   senderId: string,
   accessToken: string,
