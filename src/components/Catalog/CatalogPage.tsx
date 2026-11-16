@@ -10,6 +10,7 @@ import { CatalogDeleteDialog } from './CatalogDeleteDialog';
 import { catalogDeliveryStyles } from '../../lib/catalogState';
 import { deleteCatalogRecords } from '../../lib/catalogManagement';
 import {catalogProductMetadata,catalogStyleKey} from '../../../supabase/functions/instagram-live-webhook/catalogRuntime';
+import {mediaReferenceKey} from '../../../supabase/functions/instagram-live-webhook/adAttribution';
 import './catalog.css';
 
 type Panel = { type: 'new' | 'settings' | 'preview' | 'delete' } | { type: 'product'; product?: CatalogProduct };
@@ -88,6 +89,8 @@ export const CatalogPage: React.FC = () => {
     if (!allCatalogs.some(c => c.id === catalogId)) throw Error('This catalog was removed. Close this form and choose another catalog.');
     if(product.style_number&&products.some(other=>other.id!==product.id&&(other.catalog_id||DEFAULT_ID)===catalogId&&other.style_number&&catalogStyleKey(other.style_number)===catalogStyleKey(product.style_number!)))throw Error('This Style Number is already used in this catalog.');
     if((product.post_refs||[]).some(ref=>!ref.post_id.trim()||!Number.isInteger(ref.position)||ref.position<1||ref.position>100))throw Error('Each post reference needs a post link or ID and a photo number from 1 to 100.');
+    if((product.ad_refs||[]).some(id=>!/^\d{5,40}$/.test(id.trim())))throw Error('Meta Ad IDs must contain 5–40 digits. Remove any empty or invalid IDs.');
+    if((product.reel_refs||[]).some(ref=>!mediaReferenceKey(ref)))throw Error('Enter an Instagram Reel URL or a valid Media ID for each reference.');
     const saved = { ...product, ...catalogProductMetadata(product), name: product.name.trim(), catalog_id: catalogId, updated_at: new Date().toISOString() };
     await saveUserDocument(scope, 'catalog_products', saved);
     if (currentScope.current !== scope) return;
