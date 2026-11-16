@@ -35,7 +35,14 @@ export function catalogProductMetadata(value:any):CatalogProductMetadata {
  return {variants:normalizeCatalogVariants(value?.variants),required_customer_fields:cleanList(value?.required_customer_fields,20),customer_photo_min:photoCount(value?.customer_photo_min),customer_photo_max:photoCount(value?.customer_photo_max),customer_instructions:String(value?.customer_instructions||'').trim().slice(0,1200),sales_notes:String(value?.sales_notes||'').trim().slice(0,1200),...Object.fromEntries(fields.map(key=>[key,String(value?.[key]||'').trim().slice(0,key==='style_number'?40:500)])),ad_refs:[...new Set<string>((Array.isArray(value?.ad_refs)?value.ad_refs:[]).map((id:any)=>String(id||'').trim()).filter((id:string)=>/^[a-z\d_-]{1,100}$/i.test(id)))].slice(0,30),reel_refs:[...new Set<string>((Array.isArray(value?.reel_refs)?value.reel_refs:[]).map((ref:any)=>String(ref||'').trim()).filter((ref:string)=>/^(?:[a-z\d_-]{1,100}|https:\/\/(?:www\.)?instagram\.com\/(?:reel|p|tv)\/[a-z\d_-]{1,100}\/?(?:[?#][^\s]*)?)$/i.test(ref)))].slice(0,30),post_refs:(Array.isArray(value?.post_refs)?value.post_refs:[]).filter((ref:any)=>typeof ref?.post_id==='string'&&ref.post_id.trim()&&Number.isInteger(ref.position)&&ref.position>0&&ref.position<=100).slice(0,20).map((ref:any)=>({post_id:ref.post_id.trim().slice(0,200),position:ref.position}))};
 }
 function catalogDigits(text:string){return text.normalize('NFKC').replace(/[०-९]/g,c=>String(c.charCodeAt(0)-2406));}
-export function catalogStyleKey(text:string){const raw=catalogDigits(text).toLowerCase().replace(/^(?:style|स्टाइल)\s*/u,'').replace(/[\s_]+/g,'');return /^\d+$/.test(raw)?String(Number(raw)):raw;}
+export function catalogStyleKey(text:string){
+ const raw=catalogDigits(String(text||'')).toLowerCase().trim()
+   .replace(/^(?:style|स्टाइल)[\s:._#-]*(?:no|number|नंबर)?[\s:._#-]*/u,'')
+   .replace(/[\s_]+/g,'');
+ const fr=raw.match(/^fr[-:#.]?0*(\d{1,2})$/u);
+ if(fr)return 'fr-'+Number(fr[1]);
+ return /^\d+$/.test(raw)?String(Number(raw)):raw;
+}
 function catalogPostKey(text:string){return text.trim().replace(/\/$/,'').split(/[?#]/)[0].replace(/^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\//i,'').replace(/\/$/,'');}
 export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postId='',history:any[]=[],recentPhotoUrls:string[]=[]):{requested:boolean;products:CatalogProduct[];ambiguous:boolean}{
  const input=catalogDigits(text);
@@ -219,10 +226,10 @@ export async function recognizePrintedCatalogStyles(catalog:RuntimeCatalog,image
    {role:'user',content:images.flatMap((url,input_index)=>[{type:'text',text:'Customer photograph '+input_index+'; identify the clearly printed main-product style label only.'},{type:'image_url',image_url:{url,detail:'high'}}])}
   ]);
   const parsed=JSON.parse(result?.content||'{}');
-  if(!Array.isArray(parsed.styles))return empty;
+  if(!Array.isArray(parsed.styles)){console.warn('[DM_PRINTED_STYLE_MISSING]',{reason:'missing_styles_array'});return empty;}
   const identified:{input_index:number;product_id:string;image_index:number}[]=[];
   for(let i=0;i<images.length;i++){
-   const options=parsed.styles.filter((v:any)=>v?.input_index===i&&v?.visible===true&&v?.confidence>=0.96&&v?.confidence<=1&&typeof v?.style_number==='string'&&/^(?:style[\s#-]*|fr[-\s]*)?\d{1,2}$/iu.test(v.style_number.trim()));
+   const options=parsed.styles.filter((v:any)=>v?.input_index===i&&v?.visible===true&&v?.confidence>=0.78&&v?.confidence<=1&&typeof v?.style_number==='string'&&/^(?:style[\s#-]*|fr[-\s]*)?\d{1,2}$/iu.test(v.style_number.trim()));
    if(options.length!==1)return empty;
    const key=catalogStyleKey(options[0].style_number);
    const products=catalog.products.filter(p=>p.images.length&&catalogStyleKey(p.style_number||'')===key);
@@ -232,14 +239,14 @@ export async function recognizePrintedCatalogStyles(catalog:RuntimeCatalog,image
    if(!identified.some(m=>m.product_id===product.id))identified.push({input_index:i,product_id:product.id,image_index:0});
   }
   return {certain:identified.length>0,matches:identified};
- }catch{return empty;}
+ }catch(error:any){console.warn('[DM_PRINTED_STYLE_FAILED]',{reason:error?.name==='TimeoutError'?'timeout':'unavailable'});return empty;}
 }
 
 export async function recognizeCatalogImages(catalog:RuntimeCatalog,images:string[],request:(messages:any[])=>Promise<any>){
  const refs=catalog.products.flatMap(product=>product.images.map((url,image_index)=>({product_id:product.id,image_index,url,name:product.name,style_number:product.style_number||''})));
  // Incomplete comparisons must never be reported as a unique catalog match.
  if(!refs.length||refs.length>120)return {certain:false,matches:[] as {input_index:number;product_id:string;image_index:number}[]};
- const printedFirst=catalog.id==='workspace_active_catalogs'&&refs.length>=12&&images.length<=3;
+ const printedFirst=images.length<=3&&catalog.products.some(p=>p.images.length&&p.style_number);
  if(printedFirst){const recognized=await recognizePrintedCatalogStyles(catalog,images,request);if(recognized.certain)return recognized;}
  const batches=Array.from({length:Math.ceil(refs.length/12)},(_,i)=>refs.slice(i*12,i*12+12));
  const candidates:any[]=[];
@@ -254,7 +261,7 @@ export async function recognizeCatalogImages(catalog:RuntimeCatalog,images:strin
  for(let input_index=0;input_index<images.length;input_index++){
   const ranked=candidates.filter(m=>m.input_index===input_index).sort((a,b)=>b.confidence-a.confidence),top=ranked[0];
   const competitor=ranked.find(m=>m.product_id!==top?.product_id);
-  if(!top||top.confidence<0.93||top.distinctive!==true||top.ambiguous!==false||competitor&&top.confidence-competitor.confidence<0.12)return printedFirst?{certain:false,matches:[]}:recognizePrintedCatalogStyles(catalog,images,request);
+  if(!top||top.confidence<0.93||top.distinctive!==true||top.ambiguous!==false||competitor&&top.confidence-competitor.confidence<0.12)return {certain:false,matches:[]};
   const photo=refs.find(ref=>ref.product_id===top.product_id&&ref.image_index===top.image_index)!;
   if(refs.some(ref=>ref.url===photo.url&&ref.product_id!==top.product_id))return {certain:false,matches:[]};
   if(!matches.some(m=>m.product_id===top.product_id))matches.push({input_index,product_id:top.product_id,image_index:top.image_index});
@@ -345,9 +352,12 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   const remaining=deadline-Date.now();if(remaining<500)throw Error('AI reply deadline reached. Please retry.');
   // Luna permits Chat Completions function tools with reasoning_effort=none.
   // The preceding structured customer-detail scan uses low reasoning.
-  const response=await callFetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:options.signal?AbortSignal.any([options.signal,AbortSignal.timeout(Math.min(remaining,json?5000:(options.timeoutMs||10000)))]):AbortSignal.timeout(Math.min(remaining,json?5000:(options.timeoutMs||10000))),headers:{Authorization:'Bearer '+options.key,'Content-Type':'application/json'},body:JSON.stringify({...chatModelParams(json?600:(options.maxTokens||600),options.model||DM_AI_MODEL,json?'low':'none'),messages,...(json?{response_format:{type:'json_object'}}:{tools,tool_choice:'auto',parallel_tool_calls:false})})});
+  // A fast image-capable model reads printed labels; the existing sales model handles conversation.
+  const vision=json&&messages.some(m=>Array.isArray(m.content)&&m.content.some((part:any)=>part?.type==='image_url'));
+  const modelArgs=vision?{model:'gpt-4o-mini',max_completion_tokens:500}:chatModelParams(json?600:(options.maxTokens||600),options.model||DM_AI_MODEL,json?'low':'none');
+  const response=await callFetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:options.signal?AbortSignal.any([options.signal,AbortSignal.timeout(Math.min(remaining,json?8500:(options.timeoutMs||10000)))]):AbortSignal.timeout(Math.min(remaining,json?8500:(options.timeoutMs||10000))),headers:{Authorization:'Bearer '+options.key,'Content-Type':'application/json'},body:JSON.stringify({...modelArgs,messages,...(json?{response_format:{type:'json_object'}}:{tools,tool_choice:'auto',parallel_tool_calls:false})})});
   const payload:any=await response.json().catch(()=>null);
-  if(!response.ok)throw Object.assign(Error('AI request failed. Please retry.'),{status:response.status,providerMessage:String(payload?.error?.message||'').slice(0,300),invalidImage:response.status===400&&/image|url|download/i.test(String(payload?.error?.message||''))});
+  if(!response.ok){if(json)console.warn('[DM_VISION_MODEL_FAILED]',{status:response.status,invalidImage:/image|url|download/i.test(String(payload?.error?.message||''))});throw Object.assign(Error('AI request failed. Please retry.'),{status:response.status,providerMessage:String(payload?.error?.message||'').slice(0,300),invalidImage:response.status===400&&/image|url|download/i.test(String(payload?.error?.message||''))});}
   options.onUsage?.({input_tokens:Number(payload?.usage?.prompt_tokens||0),output_tokens:Number(payload?.usage?.completion_tokens||0),cached_input_tokens:Number(payload?.usage?.prompt_tokens_details?.cached_tokens||0),calls:1,usage_available:Boolean(payload?.usage),provider_ms:Date.now()-requestStarted});
   return payload?.choices?.[0]?.message;
  };
