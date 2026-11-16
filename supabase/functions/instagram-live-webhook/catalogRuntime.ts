@@ -194,12 +194,14 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
  const message=String(text||'').trim();
  if(!message||recentPhotoUrls.length)return null;
  if(/(?:unsubscribe|stop\s*(?:dm|messages)|do not contact|spam|शिकायत|रिफंड|बंद करो|मत भेजो|नहीं चाहिए|not interested|no thanks|cancel order|ऑर्डर कैंसल)/iu.test(message))return null;
- if(/(?:where is my order|order status|tracking|delivery status|refund status|ऑर्डर कहाँ|ट्रैकिंग|रिटर्न|रिफंड)/iu.test(message))return null;
+ if(/(?:my order|order status|order delay|not delivered|tracking|delivery status|refund status|ऑर्डर कहाँ|मेरे ऑर्डर|ट्रैकिंग|रिटर्न|रिफंड|payment issue|invoice|support|complaint)/iu.test(message))return null;
  if(isReturnGreeting(message))return null;
  const context=history.slice(-8).map(x=>String(x.content||'')).join(' ');
  if(/(?:order (?:confirmed|placed)|ऑर्डर (?:कन्फर्म|हो गया)|order number|payment completed|नाम.*(?:नंबर|पता)|name.*(?:phone|address))/iu.test(context))return null;
  const greeting=/^(?:hi+|hello+|hey+|hlo+|hy+|namaste|नमस्ते|हाय|हेलो|hello sir|hi sir)[\s!?.🙂😊👋]*$/iu.test(message);
- const interest=/(?:price|cost|rate|kitna|how much|show|photo|image|design|style|available|details|gift|frame|pendant|necklace|buy|order|catalog|collection|option|variety|₹|कीमत|दाम|कितने|कितना|फोटो|डिज़ाइन|डिजाइन|स्टाइल|फ्रेम|दिखाओ|भेजो|खरीद|गिफ्ट|वेराइटी|कैटलॉग)/iu.test(message);
+ const affirmative=/^(?:yes|yeah|yep|ok|okay|sure|send|haan|ha+|ji|theek|haan ji|हाँ|हां|जी|ठीक है|भेजो|और|और दिखाओ)[.!?\s😊🙏]*$/iu.test(message);
+ const priorStyleOffer=history.slice(-4).some(m=>m.role==='assistant'&&/(?:photo|design|style|catalog|options|फोटो|डिज़ाइन|डिजाइन|स्टाइल|कैटलॉग|तस्वीर)/iu.test(String(m.content||'')));
+ const interest=/(?:price|cost|rate|kitna|how much|show|photo|image|design|style|available|details|gift|frame|pendant|necklace|catalog|collection|option|variety|₹|कीमत|दाम|कितने|कितना|फोटो|डिज़ाइन|डिजाइन|स्टाइल|फ्रेम|दिखाओ|भेजो|गिफ्ट|वेराइटी|कैटलॉग)/iu.test(message)||(affirmative&&priorStyleOffer);
  if(!interest&&!greeting)return null;
  const photos=catalog.products.filter(p=>p.images?.length);
  if(!photos.length)return null;
