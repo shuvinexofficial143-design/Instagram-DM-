@@ -36,6 +36,25 @@ function addShipping(p:SalesProduct,hi:boolean):string[]{
  if(p.delivery_time)lines.push((hi?'🚚 डिलीवरी: ':'🚚 Delivery: ')+String(p.delivery_time).replace(/\s+/g,' ').slice(0,65));
  return lines;
 }
+/** Mobile-first Instagram plain text: meaningful emoji labels and word-boundary
+ * wrapping, never HTML/bold markup (Meta controls DM font and line rendering).
+ */
+export function formatMobileSalesText(text:string,maxLineChars=42):string{
+ const width=Math.min(48,Math.max(30,Math.floor(maxLineChars)));
+ const source=String(text||'').replace(/\r\n/g,'\n').replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+ return source.split('\n').map(raw=>{
+  const words=raw.trim().split(/\s+/u).filter(Boolean);
+  if(!words.length)return '';
+  let line='';const rows:string[]=[];
+  for(const word of words){
+   const next=line?line+' '+word:word;
+   if([...next].length>width&&line){rows.push(line);line=word;}else line=next;
+  }
+  if(line)rows.push(line);
+  return rows.join('\n');
+ }).join('\n');
+}
+
 export function renderSalesTemplate(input:SalesRenderInput):string{
  const hi=input.language==='hi'||(!input.language&&customerLanguage(input.customerText||'')==='hi');
  const p=input.product||null,layout=input.layout;
@@ -44,7 +63,7 @@ export function renderSalesTemplate(input:SalesRenderInput):string{
  if(layout==='order'){
   if(!input.order?.verified)return safeDraft;
   const order=input.order;
-  return [
+  return formatMobileSalesText([
    hi?'✅ आपका ऑर्डर दर्ज और कन्फर्म हो गया है।':'✅ Your order is confirmed.',
    order.id?(hi?'🧾 ऑर्डर नंबर: ':'🧾 Order: ')+order.id.slice(0,65):'',
    order.product_name?(hi?'🎁 प्रोडक्ट: ':'🎁 Product: ')+cleanName(order.product_name):'',
@@ -52,7 +71,7 @@ export function renderSalesTemplate(input:SalesRenderInput):string{
    order.total?(hi?'💰 कुल कीमत: ':'💰 Total: ')+cleanPrice(order.total):'',
    order.delivery_time?(hi?'🚚 अनुमानित डिलीवरी: ':'🚚 Estimated delivery: ')+order.delivery_time:'',
    hi?'💖 खरीदारी के लिए धन्यवाद!':'💖 Thank you for your order!'
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).join('\n'));
  }
  const name=p?cleanName(p.name):'';
  const style=p?.style_number?String(p.style_number).trim().slice(0,40):'';
@@ -61,41 +80,41 @@ export function renderSalesTemplate(input:SalesRenderInput):string{
  if(layout==='gallery'){
   const products=(input.products||[]).filter(x=>x.name).slice(0,10);
   if(!products.length)return safeDraft;
-  return [
+  return formatMobileSalesText([
     hi?'✨ हमारे उपलब्ध डिज़ाइन':'✨ Available designs',
     ...products.map((v,i)=>(i+1)+'. '+(v.style_number?String(v.style_number).trim()+' — ':'')+cleanName(v.name)+(v.price?' | '+cleanPrice(v.price):'')),
     hi?'💝 अपना पसंदीदा स्टाइल चुनिए; उपलब्ध विकल्पों में कस्टमाइजेशन किया जा सकता है।':'💝 Choose your favourite style. Ask about available customization.'
-  ].join('\n');
+  ].join('\n'));
  }
  if(!p)return safeDraft;
  const priceLine=price?(hi?'💰 कीमत: ':'💰 Price: ')+price:'';
  const custom=p.customization||p.customer_photo_min!==undefined;
  const use=String(p.description||'').replace(/\s+/g,' ').slice(0,130);
  if(layout==='price'){
-  return [
+  return formatMobileSalesText([
    '✨ '+heading,priceLine,...addShipping(p,hi),
    custom?(hi?'💖 तस्वीरों के साथ कस्टमाइजेशन उपलब्ध है।':'💖 Photo customization is available.'):'',
    hi?'🎁 चाहें तो इस डिज़ाइन की फोटो भी दिखा सकता हूँ।':'🎁 I can show this design as well.'
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).join('\n'));
  }
  if(layout==='photo'){
-  return [
+  return formatMobileSalesText([
    '📸 '+(hi?'यह रहा आपका चुना हुआ डिज़ाइन!':'Here is your chosen design!'),
    '✨ '+heading,priceLine,
    use?'🌟 '+use:'',...addShipping(p,hi),
    custom?(hi?'💖 इसे आपकी तस्वीरों से कस्टमाइज किया जा सकता है।':'💖 It can be personalized with your photos.'):'',
    hi?'🎁 यह स्टाइल पसंद आया?':'🎁 Is this your favourite style?'
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).join('\n'));
  }
  if(layout==='buying'){
-  return [
+  return formatMobileSalesText([
    (hi?'💝 आपकी पसंद शानदार है!':'💝 Great choice!'),
    '✨ '+heading,priceLine,
    use?'🌟 '+use:'',
    ...addShipping(p,hi),
    hi?'🎁 अगर यही डिज़ाइन लेना है, तो ऑर्डर आगे बढ़ा सकते हैं।':'🎁 If you like this style, we can start your order.',
    hi?'😊 ऑर्डर शुरू करें?':'😊 Shall we get started?'
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).join('\n'));
  }
  return safeDraft;
 }
