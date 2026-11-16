@@ -2080,7 +2080,7 @@ Instagram DM style rules:
           turnImages=[...new Set<string>([...(batch||[]).flatMap((row:any)=>row.data?.image_urls||[]),...turnImages])];
         }
         // Screenshot recognition runs on actual CDN bytes, not an expiring signed URL.
-        turnImages=await Promise.all(turnImages.slice(0,5).map(imageForVision));
+        turnImages=turnImages.length<=5?await Promise.all(turnImages.map(imageForVision)):turnImages;
         let previousCustomerImages:string[]=[];
         if(selectedCatalog&&/^\s*[0-9०-९]{1,2}\s*$/u.test(item.text)){
           const {data:priorImages,error:priorError}=await admin.from('autoreply_documents').select('data')
