@@ -37,10 +37,10 @@ export function catalogProductMetadata(value:any):CatalogProductMetadata {
 function catalogDigits(text:string){return text.normalize('NFKC').replace(/[०-९]/g,c=>String(c.charCodeAt(0)-2406));}
 export function catalogStyleKey(text:string){const raw=catalogDigits(text).toLowerCase().replace(/^(?:style|स्टाइल)\s*/u,'').replace(/[\s_]+/g,'');return /^\d+$/.test(raw)?String(Number(raw)):raw;}
 function catalogPostKey(text:string){return text.trim().replace(/\/$/,'').split(/[?#]/)[0].replace(/^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\//i,'').replace(/\/$/,'');}
-export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postId='',history:any[]=[]):{requested:boolean;products:CatalogProduct[];ambiguous:boolean}{
+export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postId='',history:any[]=[],recentPhotoUrls:string[]=[]):{requested:boolean;products:CatalogProduct[];ambiguous:boolean}{
  const input=catalogDigits(text);
  postId=postId||text.match(/https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[^\s?#]+/i)?.[0]||'';
- const styles=[...input.matchAll(/(?:\bstyle|स्टाइल)\s*(?:no\.?|number|नंबर|#)?\s*[:.-]?\s*([a-z0-9][a-z0-9-]{0,39})/giu)].map(m=>catalogStyleKey(m[1]));
+ const styles=[...input.matchAll(/(?:\bstyle|\bfr\b|स्टाइल)\s*(?:no\.?|number|नंबर|#)?\s*[:.-]?\s*([a-z0-9][a-z0-9-]{0,39})/giu)].map(m=>catalogStyleKey(m[1]));
  if(styles.length){
   const chosen:CatalogProduct[]=[];
   for(const style of new Set(styles)){
@@ -52,7 +52,7 @@ export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postI
  }
  // A standalone "2" is a design choice only in an existing product-selection conversation.
  const bare=input.trim().match(/^(?:0?[1-9]|[1-9]\d)$/u);
- const designContext=history.slice(-12).some(m=>/(?:\bstyle\b|design|photos?|catalog|frame|फ्रेम|स्टाइल|डिज़ाइन|डिजाइन|फोटो)/iu.test(String(m?.content||'')));
+ const designContext=recentPhotoUrls.length>0||history.slice(-12).some(m=>/(?:\bstyle\b|design|photos?|catalog|frame|फ्रेम|स्टाइल|डिज़ाइन|डिजाइन|फोटो)/iu.test(String(m?.content||'')));
  if(bare&&designContext){
   const selectedNumber=Number(bare[0]);
   const candidates=catalog.products.filter(p=>{
@@ -61,6 +61,8 @@ export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postI
   });
   if(candidates.length===1)return {requested:true,products:candidates,ambiguous:false};
   if(candidates.length>1){
+   const fromRecent=candidates.filter(p=>p.images.some(url=>recentPhotoUrls.includes(url)));
+   if(fromRecent.length===1)return {requested:true,products:fromRecent,ambiguous:false};
    for(const entry of history.slice(-12).reverse()){
     const sentence=String(entry?.content||'').toLocaleLowerCase();
     const found=candidates.filter(p=>{
@@ -329,7 +331,7 @@ function discountPriceLabel(price:string,percent:number):string {
  return '₹'+discounted.toLocaleString('en-IN',{maximumFractionDigits:2})+' (10% verified follow offer; regular '+price+')';
 }
 
-export async function generateCatalogReply(options:{key:string;model?:string;systemPrompt:string;history:any[];text:string;images?:string[];catalog?:RuntimeCatalog|null;catalogWarning?:string;timeoutMs?:number;maxTokens?:number;temperature?:number;fetcher?:typeof fetch;memory?:MemorySnapshot|null;memorySettings?:any;continuity?:any;manualAnchorId?:string;customerFacts?:(CustomerFacts&{configuredFields?:string[]})|null;historySearch?:(query:string)=>Promise<any>;onUsage?:(usage:any)=>void;signal?:AbortSignal;postId?:string;adSource?:InstagramAdSource|null;sharedMediaRefs?:string[];sharedMediaUnknown?:boolean;recentPhotoUrls?:string[];followStatus?:boolean|null;followDiscountPercent?:number}):Promise<CatalogReply>{
+export async function generateCatalogReply(options:{key:string;model?:string;systemPrompt:string;history:any[];text:string;images?:string[];catalog?:RuntimeCatalog|null;catalogWarning?:string;timeoutMs?:number;maxTokens?:number;temperature?:number;fetcher?:typeof fetch;memory?:MemorySnapshot|null;memorySettings?:any;continuity?:any;manualAnchorId?:string;customerFacts?:(CustomerFacts&{configuredFields?:string[]})|null;historySearch?:(query:string)=>Promise<any>;onUsage?:(usage:any)=>void;signal?:AbortSignal;postId?:string;adSource?:InstagramAdSource|null;sharedMediaRefs?:string[];sharedMediaUnknown?:boolean;recentPhotoUrls?:string[];followStatus?:boolean|null;followDiscountPercent?:number;previousCustomerImages?:string[]}):Promise<CatalogReply>{
  const callFetch=options.fetcher||fetch;
  const images=[...new Set((options.images||[]).map(url=>safeImageUrl(url,true)).filter(Boolean))];
  if(images.length>5)return {text:catalogHindi(options.text)?'एक बार में अधिकतम पाँच फोटो भेजिए, ताकि हर डिज़ाइन सही से देखा जा सके।':'Please send up to five photos at a time so I can check every design.',warning:'Too many customer images for one comparison.'};
@@ -353,8 +355,21 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
  const sharedMatch=matchSharedInstagramMedia(catalog?.products||[],sharedMediaRefs);
  // Explicitly shared media takes priority over a possibly stale ad referral.
  const adMatch=sharedMediaRefs.length||options.sharedMediaUnknown?{status:'none' as const}:matchInstagramAdProduct(catalog?.products||[],options.adSource);
- const reference=catalog?resolveCatalogReference(catalog,options.text,options.postId,options.history):{requested:false,products:[],ambiguous:false};
+ let reference=catalog?resolveCatalogReference(catalog,options.text,options.postId,options.history,options.recentPhotoUrls||[]):{requested:false,products:[],ambiguous:false};
  const recentUrls=new Set(options.recentPhotoUrls||[]);
+ // A customer's bare "4" can refer to the screenshot sent immediately before it.
+ // The printed label distinguishes STYLE 04 from the separate FR-04 design.
+ if(catalog&&reference.ambiguous&&/^[0-9०-९]{1,2}$/u.test(options.text.trim())&&(options.previousCustomerImages||[]).length){
+  const previous=(options.previousCustomerImages||[]).map(url=>safeImageUrl(url,true)).filter(Boolean).slice(0,2);
+  const selectedNumber=Number(catalogDigits(options.text.trim()));
+  const printed=await recognizePrintedCatalogStyles(catalog,previous,async(messages:any[])=>request(messages,[],true));
+  if(printed.certain&&printed.matches.length===1){
+   const found=catalog.products.find(p=>p.id===printed.matches[0].product_id);
+   if(found&&Number((catalogStyleKey(found.style_number||'').match(/\d+$/u)||[])[0])===selectedNumber){
+    reference={requested:true,products:[found],ambiguous:false};
+   }
+  }
+ }
  const photoResult=(selected:RuntimeCatalog):CatalogReply=>{
   const elements=selected.elements||[];
   const prefersHindi=catalogHindi(options.text)||options.history.slice(-10).some(m=>m?.role==='user'&&catalogHindi(String(m?.content||'')));
@@ -363,6 +378,13 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   if(elements.length&&elements.every(e=>recentUrls.has(e.image_url))&&!explicitCatalogResend(options.text)&&!userSelectedStyle&&!images.length)return {text:(formatted.reply_language==='hi'?'📸 इस डिज़ाइन की फोटो ऊपर भेजी गई है।\n':'📸 This design photo was sent above.\n')+catalogMessage(formatted),warning:''};
   return {text:['cards','premium_cards'].includes(catalogDeliveryStyle(formatted.delivery_style))?'[Product photos: '+formatted.products.map(p=>p.name).join(', ')+']':catalogMessage(formatted)||'[Product photos: '+formatted.products.map(p=>p.name).join(', ')+']',catalog:formatted,warning:''};
  };
+ // A verified numeric or explicit style selection must actually send its catalog photo.
+ // Avoid a stale conversational quantity ("2 frames") leaking into a new photo request.
+ if(catalog&&reference.requested&&!reference.ambiguous&&reference.products.length===1&&!images.length&&!sharedMediaRefs.length&&!options.sharedMediaUnknown&&
+    !/(?:handoff|hand off|send to human|staff handles|agent takeover|मानव एजेंट)/iu.test(options.systemPrompt)){
+  const selected=reference.products[0];
+  if(selected.images.length)return photoResult(selectProductPhotos(catalog,[{product_id:selected.id,image_indexes:[0]}]));
+ }
  const specificPhotos=(products:CatalogProduct[],indexes:number[]=[])=>({...selectProductPhotos(catalog!,products.map((p,i)=>({product_id:p.id,image_indexes:[indexes[i]||0]}))),caption:catalogDeliveryStyle(catalog!.delivery_style)==='photos_ai'?(catalogHindi(options.text)?'आपको यह डिज़ाइन पसंद आया?':'Do you like this design?'):''});
 
  const handoffRequest=/\b(?:human|person|agent|staff)\b|इंसान|मालिक|कर्मचारी/iu.test(options.text);
