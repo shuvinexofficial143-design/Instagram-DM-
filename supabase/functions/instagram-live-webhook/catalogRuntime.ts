@@ -270,10 +270,32 @@ export async function recognizeCatalogImages(catalog:RuntimeCatalog,images:strin
 }
 
 export type CatalogReply={text?:string;catalog?:RuntimeCatalog;warning?:string;handoff?:{reason:string;summary:string}};
+/** Conversation-aware rescue: show the *same product family* after several browsing
+ * turns, without nagging a customer or replaying a catalog that is already visible.
+ * No timers or unsolicited outbound DMs; only runs in response to an inbound turn.
+ */
+export function shouldOfferGalleryAfterStall(text:string,history:any[]=[],recentPhotoUrls:string[]=[]):boolean{
+ if(recentPhotoUrls.length>=3)return false; // a swipeable gallery has already been delivered
+ const prior=history.slice(-14);
+ const users=prior.filter(m=>m.role==='user'),assistants=prior.filter(m=>m.role==='assistant');
+ if(users.length<2||assistants.length<2)return false;
+ const current=String(text||'').trim();
+ if(!current||current.length>130)return false;
+ const exclude=/(?:stop|unsubscribe|spam|not interested|no thanks|don't send|do not send|cancel|refund|tracking|where.*order|report|complaint|मत भेज|नहीं चाहिए|बंद करो|रिफंड|कैंसल|ऑर्डर कहाँ|पता|मोबाइल नंबर|payment|पेमेंट|खरीदना है|ऑर्डर करना है)/iu;
+ if(exclude.test(current))return false;
+ const conversation=prior.map(m=>String(m.content||'')).join(' ');
+ if(!/(?:design|style|catalog|frame|photo|gift|pendant|necklace|price|₹|डिज़ाइन|डिजाइन|स्टाइल|फ्रेम|फोटो|गिफ्ट|कैटलॉग|कीमत)/iu.test(conversation))return false;
+ if(/(?:\[(?:Product cards:|Catalog:)|सभी.*(?:डिज़ाइन|फोटो).*भेज|swipe to|swipeable|all (?:designs|photos) (?:sent|shown))/iu.test(assistants.slice(-6).map(m=>String(m.content||'')).join(' ')))return false;
+ return /^(?:h+m+|hmm+|ok(?:ay)?|achha|acha|theek|h[a]+n|yes|ji|huh|hmmm|ठीक(?: है)?|अच्छा|हम्म|हाँ|हां|जी|और|और दिखाओ|कुछ और|देख रहा हूँ)[\s.!?😊👍]*$/iu.test(current)
+  || /(design|style|frame|photo|price|option|और डिज़ाइन|दूसरा दिखाओ|वेराइटी|कैटलॉग)/iu.test(current);
+}
+
 /** Relevant styles may be offered on an inbound DM without making the buyer ask for photos. */
 export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,history:any[]=[],recentPhotoUrls:string[]=[],adProductId='',priorityName=''):RuntimeCatalog|null {
  const message=String(text||'').trim();
- if(!message||recentPhotoUrls.length)return null;
+ if(!message)return null;
+ const stalled=shouldOfferGalleryAfterStall(message,history,recentPhotoUrls);
+ if(recentPhotoUrls.length&&!stalled)return null;
  if(/(?:unsubscribe|stop\s*(?:dm|messages)|do not contact|spam|शिकायत|रिफंड|बंद करो|मत भेजो|नहीं चाहिए|not interested|no thanks|cancel order|ऑर्डर कैंसल)/iu.test(message))return null;
  if(/(?:my order|order status|order delay|not delivered|tracking|delivery status|refund status|ऑर्डर कहाँ|मेरे ऑर्डर|ट्रैकिंग|रिटर्न|रिफंड|payment issue|invoice|support|complaint)/iu.test(message))return null;
  if(isReturnGreeting(message))return null;
@@ -283,7 +305,7 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
  const affirmative=/^(?:yes|yeah|yep|ok|okay|sure|send|haan|ha+|ji|theek|haan ji|हाँ|हां|जी|ठीक है|भेजो|और|और दिखाओ)[.!?\s😊🙏]*$/iu.test(message);
  const priorStyleOffer=history.slice(-4).some(m=>m.role==='assistant'&&/(?:photo|design|style|catalog|options|फोटो|डिज़ाइन|डिजाइन|स्टाइल|कैटलॉग|तस्वीर)/iu.test(String(m.content||'')));
  const interest=/(?:price|cost|rate|kitna|how much|show|photo|image|design|style|available|details|gift|frame|pendant|necklace|catalog|collection|option|variety|₹|कीमत|दाम|कितने|कितना|फोटो|डिज़ाइन|डिजाइन|स्टाइल|फ्रेम|दिखाओ|भेजो|गिफ्ट|वेराइटी|कैटलॉग)/iu.test(message)||(affirmative&&priorStyleOffer);
- if(!interest&&!greeting)return null;
+ if(!interest&&!greeting&&!stalled)return null;
  const photos=catalog.products.filter(p=>p.images?.length);
  if(!photos.length)return null;
  const parentIds=new Set(photos.map(p=>p.parent_product_id).filter(Boolean));
@@ -303,7 +325,9 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
  const groups=new Map<string,CatalogProduct[]>();
  for(const p of eligible){const key=p.collection_name||catalog.name;groups.set(key,[...(groups.get(key)||[]),p]);}
  const primaryGroup=[...groups.values()].sort((a,b)=>b.length-a.length)[0]||eligible;
- const source=adProductId?eligible.filter(p=>p.id===adProductId||p.parent_product_id===adProductId):requestedCategory&&categoryMatches.length?categoryMatches:byConversation.length?byConversation:byPriority.length?byPriority:primaryGroup;
+ const linkedAd=eligible.find(p=>p.id===adProductId);
+ const adFamily=linkedAd?.parent_product_id?eligible.filter(p=>p.parent_product_id===linkedAd.parent_product_id):eligible.filter(p=>p.id===adProductId||p.parent_product_id===adProductId);
+ const source=adProductId&&adFamily.length?adFamily:requestedCategory&&categoryMatches.length?categoryMatches:byConversation.length?byConversation:byPriority.length?byPriority:primaryGroup;
  const selected=(source.length?source:eligible).slice().sort((a,b)=>{
   const sa=Number((a.style_number||'').match(/\d+/)?.[0]||Infinity);
   const sb=Number((b.style_number||'').match(/\d+/)?.[0]||Infinity);
