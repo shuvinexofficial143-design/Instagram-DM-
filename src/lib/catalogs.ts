@@ -1,4 +1,4 @@
-import { safeImageUrl } from '../../supabase/functions/instagram-live-webhook/catalogRuntime';
+import { safeImageUrl, expandCatalogProduct, cleanCatalogDisplayName } from '../../supabase/functions/instagram-live-webhook/catalogRuntime';
 export { safeImageUrl as safeCatalogUrl };
 import { useCallback, useEffect, useState } from 'react';
 import { auth, supabase, subscribeToUserCollection } from './supabase';
@@ -7,7 +7,21 @@ export { defaultCatalog, resolveCatalogs };
 export type { Catalog, CatalogProduct };
 export const CATALOG_BUCKET = 'catalog-images';
 export function catalogCards(products:CatalogProduct[]) {
- return products.filter(p=>p.active).flatMap(p=>(p.images||[]).map(image=>({image,title:p.name,subtitle:[p.style_number?'Style '+p.style_number:'',p.price,p.description].filter(Boolean).join(' · '),url:p.url})));
+ return products.filter(p=>p.active).flatMap(p=>{
+  const expanded=expandCatalogProduct({...p,images:p.images||[],url:p.url||''});
+  const variants=expanded.filter(item=>item.variant_id);
+  const show=variants.length?variants:expanded;
+  return show.flatMap(item=>(item.images||[]).filter(safeImageUrl).map(image=>{
+   const title=cleanCatalogDisplayName(item.name,item.style_number);
+   const style=item.style_number ? 'Style '+item.style_number.replace(/^(?:style|स्टाइल)\s*/iu,'') : '';
+   const subtitle=[style,item.price,item.delivery_time,item.cod].filter(Boolean).join(' · ');
+   return {
+    image,title,subtitle,url:item.url,price:item.price,style,description:item.description,
+    delivery:item.delivery_time||'',cod:item.cod||'',
+    customization:item.customization? 'Customizable with your photos when supported' : '',
+   };
+  }));
+ });
 }
 export function catalogProblem(catalog:Catalog|undefined, products:CatalogProduct[], ai=false) {
  if(!catalog||catalog.deleted) return 'This catalog no longer exists.';
