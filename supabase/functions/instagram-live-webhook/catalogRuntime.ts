@@ -29,7 +29,7 @@ export function normalizeCatalogVariants(raw:unknown):CatalogVariant[]{
 }
 
 export type CatalogProductMetadata={style_number?:string;post_refs?:CatalogPostReference[];ad_refs?:string[];reel_refs?:string[];cod?:string;delivery_time?:string;availability?:string;customization?:string;variants?:CatalogVariant[];required_customer_fields?:string[];customer_photo_min?:number;customer_photo_max?:number;customer_instructions?:string;sales_notes?:string};
-export type CatalogProduct = CatalogProductMetadata&{id:string;name:string;price:string;description:string;url:string;images:string[];parent_product_id?:string;variant_id?:string};
+export type CatalogProduct = CatalogProductMetadata&{id:string;name:string;price:string;description:string;url:string;images:string[];parent_product_id?:string;variant_id?:string;collection_name?:string};
 export function catalogProductMetadata(value:any):CatalogProductMetadata {
  const fields=['style_number','cod','delivery_time','availability','customization'];
  return {variants:normalizeCatalogVariants(value?.variants),required_customer_fields:cleanList(value?.required_customer_fields,20),customer_photo_min:photoCount(value?.customer_photo_min),customer_photo_max:photoCount(value?.customer_photo_max),customer_instructions:String(value?.customer_instructions||'').trim().slice(0,1200),sales_notes:String(value?.sales_notes||'').trim().slice(0,1200),...Object.fromEntries(fields.map(key=>[key,String(value?.[key]||'').trim().slice(0,key==='style_number'?40:500)])),ad_refs:[...new Set<string>((Array.isArray(value?.ad_refs)?value.ad_refs:[]).map((id:any)=>String(id||'').trim()).filter((id:string)=>/^[a-z\d_-]{1,100}$/i.test(id)))].slice(0,30),reel_refs:[...new Set<string>((Array.isArray(value?.reel_refs)?value.reel_refs:[]).map((ref:any)=>String(ref||'').trim()).filter((ref:string)=>/^(?:[a-z\d_-]{1,100}|https:\/\/(?:www\.)?instagram\.com\/(?:reel|p|tv)\/[a-z\d_-]{1,100}\/?(?:[?#][^\s]*)?)$/i.test(ref)))].slice(0,30),post_refs:(Array.isArray(value?.post_refs)?value.post_refs:[]).filter((ref:any)=>typeof ref?.post_id==='string'&&ref.post_id.trim()&&Number.isInteger(ref.position)&&ref.position>0&&ref.position<=100).slice(0,20).map((ref:any)=>({post_id:ref.post_id.trim().slice(0,200),position:ref.position}))};
@@ -193,7 +193,7 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
  if(!message||recentPhotoUrls.length)return null;
  if(/(?:unsubscribe|stop\s*(?:dm|messages)|do not contact|spam|शिकायत|रिफंड|बंद करो|मत भेजो|नहीं चाहिए|not interested|no thanks|cancel order|ऑर्डर कैंसल)/iu.test(message))return null;
  if(/(?:where is my order|order status|tracking|delivery status|refund status|ऑर्डर कहाँ|ट्रैकिंग|रिटर्न|रिफंड)/iu.test(message))return null;
- if(history.length&&isReturnGreeting(message))return null;
+ if(isReturnGreeting(message))return null;
  const context=history.slice(-8).map(x=>String(x.content||'')).join(' ');
  if(/(?:order (?:confirmed|placed)|ऑर्डर (?:कन्फर्म|हो गया)|order number|payment completed|नाम.*(?:नंबर|पता)|name.*(?:phone|address))/iu.test(context)&&history.length>2)return null;
  const greeting=/^(?:hi+|hello+|hey+|hlo+|hy+|namaste|नमस्ते|हाय|हेलो|hello sir|hi sir)[\s!?.🙂😊👋]*$/iu.test(message);
@@ -203,7 +203,16 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
  if(!photos.length)return null;
  const parentIds=new Set(photos.map(p=>p.parent_product_id).filter(Boolean));
  const eligible=photos.filter(p=>!parentIds.has(p.id));
- const source=adProductId?eligible.filter(p=>p.id===adProductId||p.parent_product_id===adProductId):eligible;
+ // Honor specific product requests; leave exact selection to the AI tool, not a whole-gallery fallback.
+ const words=message.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu)||[];
+ const specific=eligible.filter(p=>{
+  const label=cleanCatalogDisplayName(p.name,p.style_number).toLocaleLowerCase();
+  return words.some(w=>w.length>=4&&label.includes(w)&&!/(frame|photo|image|gift|design|style|फ्रेम|फोटो|डिज़ाइन|गिफ्ट)/iu.test(w));
+ });
+ if(specific.length===1&&eligible.length>1)return null;
+ const requestedCategory=/(?:necklace|pendant|pearl|हार|पेंडेंट)/iu.test(message)?/(?:necklace|pendant|pearl|हार|पेंडेंट)/iu:/(?:photo frame|frame|फोटो फ्रेम|फ्रेम)/iu.test(message)?/(?:frame|फ्रेम)/iu:null;
+ const categoryMatches=requestedCategory?eligible.filter(p=>requestedCategory.test(p.name+' '+p.description)):eligible;
+ const source=adProductId?eligible.filter(p=>p.id===adProductId||p.parent_product_id===adProductId):categoryMatches.length?categoryMatches:eligible;
  const selected=(source.length?source:eligible).slice().sort((a,b)=>{
   const sa=Number((a.style_number||'').match(/\d+/)?.[0]||Infinity);
   const sb=Number((b.style_number||'').match(/\d+/)?.[0]||Infinity);
@@ -217,7 +226,29 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
 }
 
 
-export async function generateCatalogReply(options:{key:string;model?:string;systemPrompt:string;history:any[];text:string;images?:string[];catalog?:RuntimeCatalog|null;catalogWarning?:string;timeoutMs?:number;maxTokens?:number;temperature?:number;fetcher?:typeof fetch;memory?:MemorySnapshot|null;memorySettings?:any;continuity?:any;manualAnchorId?:string;customerFacts?:(CustomerFacts&{configuredFields?:string[]})|null;historySearch?:(query:string)=>Promise<any>;onUsage?:(usage:any)=>void;signal?:AbortSignal;postId?:string;adSource?:InstagramAdSource|null;sharedMediaRefs?:string[];sharedMediaUnknown?:boolean;recentPhotoUrls?:string[]}):Promise<CatalogReply>{
+
+/** Merge existing active product catalogs when an AI automation has not selected just one.
+ * Records are read-only, scoped to this workspace, and the saved individual catalogs remain untouched.
+ */
+export async function loadWorkspaceCatalogs(admin:any,workspaceId:string):Promise<RuntimeCatalog|null>{
+ const {data,error}=await admin.from('autoreply_documents').select('id,data').eq('user_id',workspaceId).eq('collection','catalogs').range(0,99);
+ if(error)throw Error('Could not load active catalogs.');
+ const ids=(data||[]).filter((row:any)=>row.data?.active===true).map((row:any)=>String(row.id)).filter((id:string)=>/^[a-zA-Z0-9_-]{1,100}$/.test(id));
+ const results=await Promise.all(ids.map(async(id:string)=>{try{return await loadCatalog(admin,workspaceId,id);}catch{return null;}}));
+ const valid=results.filter((c):c is RuntimeCatalog=>Boolean(c));
+ if(!valid.length)return null;
+ return {id:'workspace_active_catalogs',name:'Product Catalog',products:valid.flatMap(c=>c.products.map(p=>({...p,collection_name:c.name}))),delivery_style:'photos_ai'};
+}
+function discountPriceLabel(price:string,percent:number):string {
+ const match=String(price||'').trim().match(/^₹\s*(\d+(?:\.\d{1,2})?)\s*(?:\/-)?$/u);
+ if(!match||percent!==10)return price;
+ const amount=Number(match[1]);
+ if(!Number.isFinite(amount)||amount<=0)return price;
+ const discounted=Math.round(amount*(100-percent))/100;
+ return '₹'+discounted.toLocaleString('en-IN',{maximumFractionDigits:2})+' (10% verified follow offer; regular '+price+')';
+}
+
+export async function generateCatalogReply(options:{key:string;model?:string;systemPrompt:string;history:any[];text:string;images?:string[];catalog?:RuntimeCatalog|null;catalogWarning?:string;timeoutMs?:number;maxTokens?:number;temperature?:number;fetcher?:typeof fetch;memory?:MemorySnapshot|null;memorySettings?:any;continuity?:any;manualAnchorId?:string;customerFacts?:(CustomerFacts&{configuredFields?:string[]})|null;historySearch?:(query:string)=>Promise<any>;onUsage?:(usage:any)=>void;signal?:AbortSignal;postId?:string;adSource?:InstagramAdSource|null;sharedMediaRefs?:string[];sharedMediaUnknown?:boolean;recentPhotoUrls?:string[];followStatus?:boolean|null;followDiscountPercent?:number}):Promise<CatalogReply>{
  const callFetch=options.fetcher||fetch;
  const images=[...new Set((options.images||[]).map(url=>safeImageUrl(url,true)).filter(Boolean))];
  if(images.length>5)return {text:catalogHindi(options.text)?'एक बार में अधिकतम पाँच फोटो भेजिए, ताकि हर डिज़ाइन सही से देखा जा सके।':'Please send up to five photos at a time so I can check every design.',warning:'Too many customer images for one comparison.'};
@@ -236,7 +267,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   options.onUsage?.({input_tokens:Number(payload?.usage?.prompt_tokens||0),output_tokens:Number(payload?.usage?.completion_tokens||0),cached_input_tokens:Number(payload?.usage?.prompt_tokens_details?.cached_tokens||0),calls:1,usage_available:Boolean(payload?.usage),provider_ms:Date.now()-requestStarted});
   return payload?.choices?.[0]?.message;
  };
- const catalog=options.catalog;let description='',imageWarning='';
+ const catalog=options.catalog&&options.followStatus===true&&options.followDiscountPercent===10?{...options.catalog,products:options.catalog.products.map(p=>({...p,price:discountPriceLabel(p.price,10)}))}:options.catalog;let description='',imageWarning='';
  const sharedMediaRefs=[...new Set((options.sharedMediaRefs||[]).filter(ref=>typeof ref==='string'))].slice(0,8);
  const sharedMatch=matchSharedInstagramMedia(catalog?.products||[],sharedMediaRefs);
  // Explicitly shared media takes priority over a possibly stale ad referral.
@@ -300,6 +331,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   'An Instagram ad or Reel referral is an optional Meta-reported source, not proof that anyone watched a Reel. If the current request is a greeting or vague product question, discuss the uniquely matched source product first; never restart an existing order, override an explicit different product request, or infer that an unknown source is a match. Ask which product when multiple mappings conflict. Do not send the full catalog unless the customer requests it.',
   sharedMatch.status==='matched'?'Customer-shared Reel/Post matches approved catalog DATA: '+JSON.stringify({references:sharedMediaRefs,product:{id:sharedMatch.product!.id,name:(sharedMatch.product as CatalogProduct).name,price:(sharedMatch.product as CatalogProduct).price}})+'. Respond only with the matching product or its variants, unless the customer explicitly switches product.':sharedMediaRefs.length?'The customer shared a Reel/Post which does NOT have a unique catalog match. Do not guess.':'',
   adMatch.status==='matched'?'Meta-reported product source DATA: '+JSON.stringify({source:options.adSource,product:{id:adMatch.product!.id,name:(adMatch.product as CatalogProduct).name,price:(adMatch.product as CatalogProduct).price,description:(adMatch.product as CatalogProduct).description},match_type:adMatch.via}):adMatch.status==='ambiguous'?'Meta source is mapped to more than one product. Ask the customer which product they mean; do not guess.':'',
+  options.followDiscountPercent===10?(options.followStatus===true?'Instagram verified this user follows the business. The approved catalog quote includes the 10% follower discount. Do not change the verified rate or invent order confirmations.':options.followStatus===false?'Instagram verified this user does not currently follow the business. Do NOT apply a follower-only discount yet. Explain the follow offer when relevant.':'Follow status is unverified/unavailable. Never state the customer followed or apply the 10% discount without an API verification.'):'',
   'If sending photos, call the photo tool. Never claim delivery before the tool is used. The saved delivery style controls cards or plain photos. For photos_ai, provide a short neutral caption in the customer language: an introduction or preference question only. Saved product details are appended by the server; never include prices, properties, policies or promises in the caption. When no photos exist, answer from product text without promising photos.',
   catalog?'Current approved catalog DATA: '+JSON.stringify(catalogContext(catalog,query,sharedMatch.status==='matched'?sharedMatch.product!.id:adMatch.status==='matched'?adMatch.product!.id:'')):'No active catalog is connected for this reply. Do not invent catalog products or claim to send a catalog.',
   options.catalogWarning?'Catalog unavailable: '+options.catalogWarning+'. Continue answering unrelated questions from the business instructions; explain unavailable product information if asked. Do not quote old catalog product prices or details copied into the prompt or history when the catalog is unavailable.':'',
@@ -418,6 +450,6 @@ export function prepareCatalogDelivery(catalog:RuntimeCatalog,page=1,caption?:un
  const prepared=style==='cards'||page!==1?buildCatalogPage(catalog,page):{...catalog,elements:catalog.products.flatMap(p=>p.images.map(image=>card(p,image))),page:1,pages:1};
  if(!prepared.elements?.length)throw Error('No product photos are available. Answer from the written product details instead.');
  const fallback=String(caption||'').match(/[\u0900-\u097f]/)?'आपको कौन-सा डिज़ाइन पसंद आया?':'Which design would you like?';
- if(style!=='cards'&&page!==1)prepared.products=catalog.products.filter(p=>p.images.some(image=>prepared.elements!.some(element=>element.image_url===image&&element.title===p.name.slice(0,80))));
+ if(style!=='cards'&&page!==1)prepared.products=catalog.products.filter(p=>p.images.some(image=>prepared.elements!.some(element=>element.image_url===image&&element.title===cleanCatalogDisplayName(p.name,p.style_number).slice(0,80))));
  return {...prepared,caption:style==='photos_ai'?safeCatalogCaption(caption,fallback):''};
 }
