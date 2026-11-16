@@ -81,7 +81,8 @@ export function renderSalesTemplate(input:SalesRenderInput):string{
  if(layout==='photo'){
   return [
    '📸 '+(hi?'यह रहा आपका चुना हुआ डिज़ाइन!':'Here is your chosen design!'),
-   '✨ '+heading,priceLine,...addShipping(p,hi),
+   '✨ '+heading,priceLine,
+   use?'🌟 '+use:'',...addShipping(p,hi),
    custom?(hi?'💖 इसे आपकी तस्वीरों से कस्टमाइज किया जा सकता है।':'💖 It can be personalized with your photos.'):'',
    hi?'🎁 यह स्टाइल पसंद आया?':'🎁 Is this your favourite style?'
   ].filter(Boolean).join('\n');
