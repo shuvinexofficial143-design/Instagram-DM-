@@ -13,7 +13,7 @@ test('proactive sales gallery prioritizes saved product group, orders styles and
  assert.deepEqual(selected.products.map(p=>p.style_number),[1,2,3,4,5,6,7,8].map(n=>'Style '+n));
  assert.equal(selected.elements?.length,8);
  assert.equal(selected.delivery_style,'photos_ai');
- assert.match(catalogMessage(selected),/Style 7 — Birthday Frame · ₹250/);
+ assert.match(catalogMessage(selected),/Style 7 — Birthday Frame \| ₹250/);
  assert.doesNotMatch(catalogMessage(selected),/Style Style|\.png/i);
  assert.match(catalogMessage(selected),/कस्टमाइज/);
 });
