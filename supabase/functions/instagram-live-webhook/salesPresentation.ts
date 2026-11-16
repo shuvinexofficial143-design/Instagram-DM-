@@ -9,7 +9,6 @@ export const SALES_LAYOUTS:SalesLayout[]=['price','photo','gallery','buying','or
 export type SalesProduct={id?:string;name:string;style_number?:string;price?:string;cod?:string;delivery_time?:string;description?:string;customization?:string;images?:string[];customer_photo_min?:number};
 export type VerifiedOrder={verified:true;id?:string;product_name?:string;quantity?:number;total?:string;delivery_time?:string};
 export type SalesRenderInput={layout:SalesLayout;product?:SalesProduct|null;products?:SalesProduct[];draft?:string;customerText?:string;language?:'hi'|'en';order?:VerifiedOrder|null};
-const privateInfo=/customer photos needed|extra order details|notes:|internal|system prompt|staff instructions/iu;
 export function customerLanguage(text:string):'hi'|'en'{
  return /[\u0900-\u097f]|\b(?:mujhe|aap|aapki|ki|ka|ke|bhejo|dikhao|chahiye|kya|kitna|haan|nahi|bhai)\b/iu.test(text)?'hi':'en';
 }
@@ -31,7 +30,6 @@ function cleanPrice(value:string):string{
  return /^₹[\s\d,.]+(?:\/-)?$/u.test(price)?price:price.slice(0,50);
 }
 function availableCod(value:string):boolean{return /(?:available|yes|उपलब्ध|cod)/iu.test(value)&&!/(?:not|no\b|नहीं|unavailable)/iu.test(value);}
-function isFreeDelivery(value:string):boolean{return /\bfree\b|फ्री|मुफ्त/iu.test(value);}
 function addShipping(p:SalesProduct,hi:boolean):string[]{
  const lines:string[]=[];
  if(availableCod(p.cod||''))lines.push(hi?'📦 COD उपलब्ध':'📦 Cash on Delivery available');
@@ -129,7 +127,7 @@ export async function selectSalesLayoutAI(args:{
   const body:any=await response.json();
   const parsed=JSON.parse(String(body?.choices?.[0]?.message?.content||'{}'));
   const value=parsed?.layout;
-  if(value==='price'||value==='buying'||value==='general')return {layout:value,source:'secondary_ai'};
+  if(value==='price'||value==='buying'||value==='general')return {layout:rule==='price'||rule==='buying'?rule:value,source:'secondary_ai'};
  }catch{}
  return {layout:rule,source:'rules'};
 }
