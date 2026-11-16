@@ -267,6 +267,23 @@ test('manual context remains complete beyond twelve recent turns and is kept in 
  assert.ok(huge.reduce((n,m)=>n+m.content.length,0)<=24000);assert.equal(huge[0].content.length,5000);
 });
 
+test('signed ad referral is stored on the customer message and guides the selected catalog product',async()=>{
+ const seller={...ai,actions:ai.actions.map(action=>action.type==='ai_chatbot'?{...action,catalog_id:'products'}:action)};
+ const f=fixture([seller],{catalogs:[{id:'products',name:'Gift catalog',active:true}],products:[
+  {id:'frame',catalog_id:'products',name:'Photo Frame',price:'₹250',description:'Gift photo frame',active:true,images:[],ad_refs:['12000111111']},
+  {id:'necklace',catalog_id:'products',name:'Love Pair Necklace',price:'₹360',description:'Gift necklace',active:true,images:[],ad_refs:['12000222222']},
+ ]});
+ const event=dm('ad-referral','What is the price?',{referral:{ad_id:'12000222222',source:'ADS'}});
+ assert.equal((await f.direct(event,'wrong')).status,403);
+ assert.equal(f.writes.length,0);
+ const result=await f.direct(event);
+ assert.equal(result.body.sent,1);
+ const inbound=f.writes.find(w=>w.collection==='inbox_messages'&&w.id==='ad-referral');
+ assert.equal(inbound?.data?.ad_source?.ad_id,'12000222222');
+ assert.equal(f.writes.find(w=>w.collection==='contacts')?.data?.last_ad_source?.ad_id,'12000222222');
+ assert.match(f.aiInputs[0][0].content,/Meta-reported product source DATA/);
+ assert.match(f.aiInputs[0][0].content,/"name":"Love Pair Necklace"/);
+});
 test('first AI DM generates and sends a confirmed reply against real schema', async () => {
   const f = fixture(); const r = await f.post(dm());
   assert.equal(r.status, 200); assert.equal(r.body.sent, 1); assert.equal(f.aiInputs.length, 1);
