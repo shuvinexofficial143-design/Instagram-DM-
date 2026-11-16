@@ -360,7 +360,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
  const recentUrls=new Set(options.recentPhotoUrls||[]);
  // A customer's bare "4" can refer to the screenshot sent immediately before it.
  // The printed label distinguishes STYLE 04 from the separate FR-04 design.
- if(catalog&&reference.ambiguous&&/^[0-9०-९]{1,2}$/u.test(options.text.trim())&&(options.previousCustomerImages||[]).length){
+ if(catalog&&reference.requested&&/^[0-9०-९]{1,2}$/u.test(options.text.trim())&&(options.previousCustomerImages||[]).length){
   const previous=(options.previousCustomerImages||[]).map(url=>safeImageUrl(url,true)).filter(Boolean).slice(0,2);
   const selectedNumber=Number(catalogDigits(options.text.trim()));
   const printed=await recognizePrintedCatalogStyles(catalog,previous,async(messages:any[])=>request(messages,[],true));
