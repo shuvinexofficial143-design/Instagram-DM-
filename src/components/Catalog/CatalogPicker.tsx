@@ -1,10 +1,25 @@
 import React,{useState} from 'react';
-import { Package, X } from 'lucide-react';
+import { Package, X, Sparkles } from 'lucide-react';
+import { ProductShowcase } from './ProductShowcase';
 import { useApp } from '../../context/AppContext';
 import { catalogDeliveryStyle, catalogMessage } from '../../../supabase/functions/instagram-live-webhook/catalogRuntime';
 import { CatalogData, CatalogProduct, catalogCards, catalogProblem, useCatalogs } from '../../lib/catalogs';
 export function CatalogPreview({products,deliveryStyle='cards',name='Catalog',messageText}:{products:CatalogProduct[];deliveryStyle?:string;name?:string;messageText?:string}) {
  const [page,setPage]=useState(0);const cards=catalogCards(products);const pages=Math.max(1,Math.ceil(cards.length/10));const current=Math.min(page,pages-1);
+ if(catalogDeliveryStyle(deliveryStyle)==='premium_cards'){
+  const start=current*10;
+  return <section className="space-y-3" aria-label="Premium Instagram product card preview">
+    <div className="flex items-start gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+      <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600"/>
+      <div><p className="text-sm font-semibold text-indigo-950">AI + Catalog Image Lookup + Product Card UI</p>
+      <p className="mt-1 text-xs leading-5 text-indigo-700">Your website shows real catalog photos, exact saved prices and shipping details. Instagram sends its own supported swipeable card format.</p></div>
+    </div>
+    {pages>1&&<div className="flex items-center justify-between gap-2 text-xs"><button disabled={current===0} onClick={()=>setPage(current-1)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 disabled:opacity-40">Previous</button><span>Styles {start+1}–{Math.min(start+10,cards.length)} of {cards.length}</span><button disabled={current===pages-1} onClick={()=>setPage(current+1)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 disabled:opacity-40">Next</button></div>}
+    <ProductShowcase items={cards.slice(start,start+10)} label="Verified catalog product cards"/>
+    <p className="rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-sm leading-6 text-slate-700">💝 अपनी पसंद का डिज़ाइन चुनिए। हम उपलब्ध विकल्पों के अनुसार इसे आपके लिए कस्टमाइज कर सकते हैं।</p>
+    {messageText&&<p className="whitespace-pre-wrap rounded-lg border border-slate-100 bg-white p-3 text-sm text-slate-700">{messageText}</p>}
+  </section>;
+ }
  if(catalogDeliveryStyle(deliveryStyle)!=='cards'){
   const text=messageText??catalogMessage({id:'preview',name,delivery_style:catalogDeliveryStyle(deliveryStyle),products:products.filter(p=>p.active).map(p=>({...p,images:p.images||[]}))});
   return <div className="space-y-3"><p className="text-xs text-slate-500">Photos arrive together in groups of up to 10{deliveryStyle==='photos_only'?'.':', followed by product details.'}</p>{Array.from({length:Math.ceil(cards.length/10)},(_,group)=><div key={group} className="rounded-xl border border-slate-200 bg-white p-3"><p className="mb-2 text-xs font-semibold text-slate-500">Photo group {group+1} · {Math.min(10,cards.length-group*10)} photos</p><div className="grid grid-cols-2 gap-2">{cards.slice(group*10,group*10+10).map((card,i)=><img key={i} src={card.image} alt={card.title} loading="lazy" className="aspect-square w-full rounded-xl border border-slate-200 object-cover"/>)}</div></div>)}{text&&<p className="whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">{text}</p>}{deliveryStyle==='photos_ai'&&messageText===undefined&&<p className="text-xs text-indigo-600">AI adds an introduction or preference question in the customer's language. Saved prices and details stay unchanged.</p>}</div>;
