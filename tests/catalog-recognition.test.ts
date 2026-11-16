@@ -256,7 +256,7 @@ test('bare Style 04 after a customer picture selects its printed SKU, not the un
  const ordinary={...frame('style04','Style 4'),post_refs:[]};
  const fr={...frame('fr04','FR-04'),post_refs:[]};
  const combined={...catalog,id:'workspace_active_catalogs',delivery_style:'premium_cards' as const,products:[ordinary,fr]};
- const history=[{role:'user',content:'[Customer sent an image]'},{role:'assistant',content:'यह फोटो पहचान नहीं पा रहा हूँ। Style नंबर बताइए।'}];
+ const history=[{role:'user',content:'[Customer sent an image]'},{role:'assistant',content:'यह फोटो पहचान नहीं पा रहा हूँ। Style FR-04 नंबर बताइए।'}];
  let visionCalls=0;
  const result=await generateCatalogReply({...base,catalog:combined,text:'4',history,previousCustomerImages:['https://images.example/customer.jpg'],fetcher:async(_url,init)=>{
   visionCalls++;
