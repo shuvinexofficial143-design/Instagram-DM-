@@ -39,7 +39,7 @@ export function matchInstagramAdProduct(products,source) {
 
 /** Extract only explicit Instagram Reel/Post links and shared media IDs, never CDN thumbnails. */
 export function extractInstagramSharedMedia(message){
- const refs=[],attachments=Array.isArray(message?.attachments)?message.attachments:[];
+ const refs=[],attachments=Array.isArray(message?.attachments)?message.attachments:message?.attachment?[message.attachment]:[];
  let hasSharedMedia=false;
  const add=(raw)=>{
   const value=limited(raw,400);
@@ -47,12 +47,16 @@ export function extractInstagramSharedMedia(message){
   for(const match of value.matchAll(/https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel|tv)\/[a-zA-Z0-9_-]{1,100}\/?(?:\?[^\s]*)?/gi))
    if(mediaReferenceKey(match[0]))refs.push(match[0]);
  };
- add(message?.text);add(message?.share?.link);add(message?.share?.url);
+ add(message?.text);add(message?.share?.link);add(message?.share?.url);add(message?.share?.permalink);
+ for(const ref of [message?.share?.media?.id,message?.share?.media_id,message?.reply_to?.media?.id]){
+  if(mediaReferenceKey(ref))refs.push(String(ref).trim());
+ }
  for(const attachment of attachments){
   const type=limited(attachment?.type,40).toLowerCase(),payload=attachment?.payload||{};
   const isShared=['share','ig_reel','ig_post','reel','post','instagram_share','ig_media'].includes(type);
   const structured=Boolean(payload?.media?.id||payload?.reel?.id||payload?.post_id||payload?.media_id||payload?.reel_id);
-  if(!isShared&&!structured)continue;
+  const canonicalLink=[payload?.url,payload?.link,payload?.permalink].some(raw=>typeof raw==='string'&&/https?:\/\/(?:www\.)?instagram\.com\/(?:reel|p|tv)\//i.test(raw));
+  if(!isShared&&!structured&&!canonicalLink)continue;
   hasSharedMedia=true;
   for(const raw of [payload?.url,payload?.link,payload?.permalink,payload?.media?.permalink,payload?.media?.url,payload?.reel?.permalink,payload?.reel?.url])add(raw);
   for(const raw of [payload?.media?.id,payload?.reel?.id,payload?.post_id,payload?.media_id,payload?.reel_id,...(isShared?[payload?.id]:[])])
