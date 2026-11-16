@@ -29,3 +29,33 @@ test('large grouped catalogs send every photo group before any information messa
  const catalog={...base,delivery_style:'photos_details' as const,products:[{...product,images:Array.from({length:11},(_,i)=>'https://img.example/'+i+'.jpg')}]};
  const parts=catalogDeliveryParts(prepareCatalogDelivery(catalog));assert.deepEqual(parts.map(p=>p.kind),['image','image','text']);
 });
+
+
+test('premium Instagram product card uses only the real catalog image, price and concise sales message',()=>{
+ const p={...product,name:'Style-02-Floral-Birthday-Frame.png',style_number:'Style 02',price:'₹250',
+  cod:'Available',delivery_time:'5-6 days • free delivery',
+  customer_photo_min:7,required_customer_fields:['Customer phone'],sales_notes:'Private staff notes must never appear'};
+ const prepared=prepareCatalogDelivery({...base,delivery_style:'premium_cards',products:[p]},1);
+ const parts=catalogDeliveryParts({...prepared,reply_language:'hi'});
+ assert.deepEqual(parts.map(part=>part.kind),['cards','text']);
+ const card=parts[0].message.attachment.payload.elements[0];
+ assert.equal(card.image_url,product.images[0]);
+ assert.match(card.title,/Style 02/);
+ assert.match(card.subtitle,/₹250/);
+ assert.match(card.subtitle,/COD/);
+ assert.ok(card.subtitle.length<=80);
+ assert.match(parts[1].text,/डिज़ाइन/);
+ assert.doesNotMatch(parts[1].text,/Customer phone|Private staff notes|Customer photos needed|Notes:/);
+ assert.ok(new TextEncoder().encode(parts[1].text).length<=900);
+});
+
+test('premium gallery contains up to 10 swipeable cards in one Meta template',()=>{
+ const products=Array.from({length:8},(_,i)=>({...product,id:'style-'+i,name:'Birthday Frame '+(i+1),style_number:'Style '+(i+1),price:'₹250',images:['https://img.example/style'+i+'.jpg']}));
+ const prepared=prepareCatalogDelivery({...base,delivery_style:'premium_cards',products});
+ const parts=catalogDeliveryParts({...prepared,reply_language:'hi'});
+ assert.equal(parts[0].message.attachment.payload.template_type,'generic');
+ assert.equal(parts[0].message.attachment.payload.elements.length,8);
+ assert.equal(parts[0].message.attachment.payload.elements[5].image_url,products[5].images[0]);
+ assert.equal(parts.filter(part=>part.kind==='text').length,1);
+ assert.doesNotMatch(parts[1].text,/Notes:|Customer photos needed/);
+});
