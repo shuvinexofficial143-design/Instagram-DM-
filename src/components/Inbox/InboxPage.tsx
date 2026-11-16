@@ -1,4 +1,3 @@
-import { CatalogPreview } from '../Catalog/CatalogPicker';
 import { ProductShowcase } from '../Catalog/ProductShowcase';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
