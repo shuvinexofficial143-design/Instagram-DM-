@@ -188,7 +188,7 @@ export async function recognizeCatalogImages(catalog:RuntimeCatalog,images:strin
 
 export type CatalogReply={text?:string;catalog?:RuntimeCatalog;warning?:string;handoff?:{reason:string;summary:string}};
 /** Relevant styles may be offered on an inbound DM without making the buyer ask for photos. */
-export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,history:any[]=[],recentPhotoUrls:string[]=[],adProductId=''):RuntimeCatalog|null {
+export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,history:any[]=[],recentPhotoUrls:string[]=[],adProductId='',priorityName=''):RuntimeCatalog|null {
  const message=String(text||'').trim();
  if(!message||recentPhotoUrls.length)return null;
  if(/(?:unsubscribe|stop\s*(?:dm|messages)|do not contact|spam|शिकायत|रिफंड|बंद करो|मत भेजो|नहीं चाहिए|not interested|no thanks|cancel order|ऑर्डर कैंसल)/iu.test(message))return null;
@@ -212,7 +212,13 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
  if(specific.length===1&&eligible.length>1)return null;
  const requestedCategory=/(?:necklace|pendant|pearl|हार|पेंडेंट)/iu.test(message)?/(?:necklace|pendant|pearl|हार|पेंडेंट)/iu:/(?:photo frame|frame|फोटो फ्रेम|फ्रेम)/iu.test(message)?/(?:frame|फ्रेम)/iu:null;
  const categoryMatches=requestedCategory?eligible.filter(p=>requestedCategory.test(p.name+' '+p.description)):eligible;
- const source=adProductId?eligible.filter(p=>p.id===adProductId||p.parent_product_id===adProductId):categoryMatches.length?categoryMatches:eligible;
+ const conversationText=[...history.slice(-6).filter(m=>m.role==='user').map(m=>String(m.content||'')),message].join(' ');
+ const byConversation=eligible.filter(p=>(p.collection_name&&conversationText.toLocaleLowerCase().includes(p.collection_name.toLocaleLowerCase()))||(/(?:pearl|necklace|pendant|पेंडेंट)/iu.test(conversationText)&&/(?:pearl|necklace|pendant)/iu.test(p.name))||(/(?:frame|फ्रेम)/iu.test(conversationText)&&/(?:frame|फ्रेम)/iu.test(p.name)));
+ const byPriority=priorityName?eligible.filter(p=>(p.collection_name||'').toLocaleLowerCase().includes(priorityName.toLocaleLowerCase())||p.name.toLocaleLowerCase().includes(priorityName.toLocaleLowerCase())):[];
+ const groups=new Map<string,CatalogProduct[]>();
+ for(const p of eligible){const key=p.collection_name||catalog.name;groups.set(key,[...(groups.get(key)||[]),p]);}
+ const primaryGroup=[...groups.values()].sort((a,b)=>b.length-a.length)[0]||eligible;
+ const source=adProductId?eligible.filter(p=>p.id===adProductId||p.parent_product_id===adProductId):requestedCategory&&categoryMatches.length?categoryMatches:byConversation.length?byConversation:byPriority.length?byPriority:primaryGroup;
  const selected=(source.length?source:eligible).slice().sort((a,b)=>{
   const sa=Number((a.style_number||'').match(/\d+/)?.[0]||Infinity);
   const sb=Number((b.style_number||'').match(/\d+/)?.[0]||Infinity);
@@ -339,7 +345,10 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
  ].filter(Boolean).join('\n');
  // Only active inbound sales conversations can trigger this; never repeat a recent gallery.
  if(catalog&&!handoffRequest&&!images.length&&!reference.requested&&!sharedMediaRefs.length&&!isReturnGreeting(options.text)){
-  const proactive=proactiveCatalogSelection(catalog,options.text,options.history,options.recentPhotoUrls,adMatch.status==='matched'?adMatch.product!.id:'');
+  const priorityLine=options.systemPrompt.match(/(?:priority[_ -]?(?:product|catalog)|प्राथमिकता(?: वाला)?(?: प्रोडक्ट| उत्पाद)?|first product)\s*[:：-]\s*([^\r\n.;]+)/iu)?.[1]?.trim()||'';
+  const availableCollections=[...new Set(catalog.products.map(p=>p.collection_name).filter(Boolean))] as string[];
+  const promptCatalog=priorityLine?availableCollections.find(name=>priorityLine.toLocaleLowerCase().includes(name.toLocaleLowerCase()))||priorityLine:availableCollections.filter(name=>options.systemPrompt.toLocaleLowerCase().includes(name.toLocaleLowerCase())).sort((a,b)=>options.systemPrompt.toLocaleLowerCase().indexOf(a.toLocaleLowerCase())-options.systemPrompt.toLocaleLowerCase().indexOf(b.toLocaleLowerCase()))[0]||'';
+  const proactive=proactiveCatalogSelection(catalog,options.text,options.history,options.recentPhotoUrls,adMatch.status==='matched'?adMatch.product!.id:'',promptCatalog);
   if(proactive)return photoResult(proactive);
  }
  const userContent=options.text||'A customer sent an image. '+imageWarning;
