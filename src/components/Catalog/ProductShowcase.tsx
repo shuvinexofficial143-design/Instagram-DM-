@@ -23,7 +23,6 @@ const savedPrice = (item: ProductShowcaseItem) =>
   item.price || (item.subtitle || '').match(/₹\s*[\d,]+(?:\.\d{1,2})?/u)?.[0] || '';
 const isCodAvailable = (value: string) =>
   /(?:cod|cash on delivery|available|yes|उपलब्ध)/iu.test(value) && !/(?:not available|no cod|नहीं)/iu.test(value);
-const freeDelivery = (value: string) => /free|मुफ्त|फ्री/iu.test(value);
 
 export function ProductShowcase({
   items,
