@@ -151,7 +151,15 @@ export function expandCatalogProduct(product:CatalogProduct):CatalogProduct[]{
  return [base,...list];
 }
 
-function card(product:CatalogProduct,image:string){return {title:cleanCatalogDisplayName(product.name,product.style_number).slice(0,80),image_url:image,subtitle:[product.style_number?'Style '+displayStyle(product.style_number):'',product.price,product.description].filter(Boolean).join(' · ').slice(0,80),...(product.url?{buttons:[{type:'web_url',title:'View product',url:product.url}]}:{})};}
+function card(product:CatalogProduct,image:string){
+ const name=cleanCatalogDisplayName(product.name,product.style_number);
+ const label=product.style_number?'Style '+displayStyle(product.style_number):'';
+ const title=[label,name].filter(Boolean).join(' — ').slice(0,80);
+ const delivery=/free|फ्री|मुफ्त/iu.test(product.delivery_time||'')?'Free Delivery':'';
+ const cod=/available|yes|उपलब्ध/iu.test(product.cod||'')&&!/not|no\b|नहीं/iu.test(product.cod||'')?'COD':'';
+ const subtitle=[product.price,delivery,cod].filter(Boolean).join(' • ').slice(0,80)||String(product.description||'').replace(/\s+/g,' ').slice(0,80);
+ return {title:title||name.slice(0,80),image_url:image,subtitle,...(product.url?{buttons:[{type:'web_url',title:'View product',url:product.url}]}:{})};
+}
 export function buildCatalogPage(catalog:RuntimeCatalog,page=1):RuntimeCatalog {
  const elements=catalog.products.flatMap(p=>p.images.map(image=>card(p,image)));
  const pages=Math.max(1,Math.ceil(elements.length/10));
@@ -191,7 +199,7 @@ export function catalogTools(catalog?:RuntimeCatalog|null,historySearch=false){
  const handoff={type:'function',function:{name:'handoff_to_human',description:'Stop automated replies and ask a human to take over when requested or when business instructions require it.',strict:true,parameters:{type:'object',properties:{reason:{type:'string',enum:['customer_requested','needs_staff','prompt_rule']},summary:{type:'string'}},required:['reason','summary'],additionalProperties:false}}};
  if(!catalog)return historySearch?[handoff,historyTool]:[handoff];
  return [handoff,...(historySearch?[historyTool]:[]),
- {type:'function',function:{name:'send_catalog',description:catalogDeliveryStyle(catalog.delivery_style)==='cards'?'Send a catalog page as photo cards. Use for browsing/all products; use send_product_photos for a specific product.':'Send ALL photos of this catalog followed by product information in the saved delivery style. Use page 1 for the entire catalog. Use send_product_photos for specific products.',strict:true,parameters:{type:'object',properties:{page:{type:'integer'},caption:{type:'string',description:'Optional brief introduction or preference question in the customer language. No product properties, numbers, prices, policies, stock, offers or promises. Product facts are added from saved records.'}},required:['page','caption'],additionalProperties:false}}},
+ {type:'function',function:{name:'send_catalog',description:['cards','premium_cards'].includes(catalogDeliveryStyle(catalog.delivery_style))?'Send a catalog page as photo cards. Use for browsing/all products; use send_product_photos for a specific product.':'Send ALL photos of this catalog followed by product information in the saved delivery style. Use page 1 for the entire catalog. Use send_product_photos for specific products.',strict:true,parameters:{type:'object',properties:{page:{type:'integer'},caption:{type:'string',description:'Optional brief introduction or preference question in the customer language. No product properties, numbers, prices, policies, stock, offers or promises. Product facts are added from saved records.'}},required:['page','caption'],additionalProperties:false}}},
  {type:'function',function:{name:'send_product_photos',description:'Send only photos of the products the customer asked for. Select existing product IDs and zero-based photo indexes from the approved catalog. Maximum ten photos in one message. Never substitute a similar product as an exact match.',strict:true,parameters:{type:'object',properties:{caption:{type:'string',description:'Brief natural introduction or preference question only; no product properties, numbers, prices, policies, stock or promises.'},selections:{type:'array',items:{type:'object',properties:{product_id:{type:'string'},image_indexes:{type:'array',items:{type:'integer'}}},required:['product_id','image_indexes'],additionalProperties:false}}},required:['selections','caption'],additionalProperties:false}}},
  {type:'function',function:{name:'search_catalog',description:'Search the selected catalog for additional product details not in the current shortlist. Search by product name, category, color or customer request.',strict:true,parameters:{type:'object',properties:{query:{type:'string'}},required:['query'],additionalProperties:false}}}];
 }
@@ -295,7 +303,7 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
  const images=selected.length===1?selected[0].images.slice(0,10).map(url=>({product:selected[0],url})):selected.slice(0,10).map(p=>({product:p,url:p.images[0]}));
  if(!images.length)return null;
  const shown=selected.filter(p=>images.some(item=>item.product.id===p.id));
- return {...catalog,products:shown,elements:images.map(item=>card(item.product,item.url)),delivery_style:'photos_ai',proactive:true,caption:'अपनी पसंद का डिज़ाइन चुनिए ✨'};
+ return {...catalog,products:shown,elements:images.map(item=>card(item.product,item.url)),delivery_style:catalog.delivery_style==='premium_cards'?'premium_cards':'photos_ai',proactive:true,caption:'अपनी पसंद का डिज़ाइन चुनिए ✨'};
 }
 
 
@@ -353,7 +361,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   const formatted={...selected,reply_language:prefersHindi?'hi' as const:'en' as const};
   const userSelectedStyle=/^\s*[0-9०-९]{1,2}\s*$/u.test(options.text)&&reference.products.length===1;
   if(elements.length&&elements.every(e=>recentUrls.has(e.image_url))&&!explicitCatalogResend(options.text)&&!userSelectedStyle&&!images.length)return {text:(formatted.reply_language==='hi'?'📸 इस डिज़ाइन की फोटो ऊपर भेजी गई है।\n':'📸 This design photo was sent above.\n')+catalogMessage(formatted),warning:''};
-  return {text:catalogDeliveryStyle(formatted.delivery_style)==='cards'?'[Product photos: '+formatted.products.map(p=>p.name).join(', ')+']':catalogMessage(formatted)||'[Product photos: '+formatted.products.map(p=>p.name).join(', ')+']',catalog:formatted,warning:''};
+  return {text:['cards','premium_cards'].includes(catalogDeliveryStyle(formatted.delivery_style))?'[Product photos: '+formatted.products.map(p=>p.name).join(', ')+']':catalogMessage(formatted)||'[Product photos: '+formatted.products.map(p=>p.name).join(', ')+']',catalog:formatted,warning:''};
  };
  const specificPhotos=(products:CatalogProduct[],indexes:number[]=[])=>({...selectProductPhotos(catalog!,products.map((p,i)=>({product_id:p.id,image_indexes:[indexes[i]||0]}))),caption:catalogDeliveryStyle(catalog!.delivery_style)==='photos_ai'?(catalogHindi(options.text)?'आपको यह डिज़ाइन पसंद आया?':'Do you like this design?'):''});
 
@@ -465,7 +473,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
     const args=JSON.parse(selected.function.arguments||'{}');
     if(selected.function.name==='send_catalog'&&identified.length)return photoResult(specificPhotos(identified,matchedIndexes));
     if(selected.function.name==='send_catalog'&&!wantsManyCatalogPhotos(options.text)&&/(?:\bframe\b|फ्रेम|\bdesign\b)/iu.test(options.text)&&!/catalog|collection|options|कैटलॉग/iu.test(options.text))return {text:catalogClarification(options.text),warning:'Specific design needs confirmation.'};
-    if(selected.function.name==='send_catalog'){const chosen={...prepareCatalogDelivery(catalog,args.page??1,args.caption||''),reply_language:catalogHindi(options.text)?'hi' as const:'en' as const};return {text:catalogDeliveryStyle(chosen.delivery_style)==='cards'?'[Catalog: '+catalog.name+' · page '+(args.page??1)+']':catalogMessage(chosen)||'[Product photos: '+catalog.name+']',catalog:chosen,warning:imageWarning};}
+    if(selected.function.name==='send_catalog'){const chosen={...prepareCatalogDelivery(catalog,args.page??1,args.caption||''),reply_language:catalogHindi(options.text)?'hi' as const:'en' as const};return {text:['cards','premium_cards'].includes(catalogDeliveryStyle(chosen.delivery_style))?'[Catalog: '+catalog.name+' · page '+(args.page??1)+']':catalogMessage(chosen)||'[Product photos: '+catalog.name+']',catalog:chosen,warning:imageWarning};}
     if(selected.function.name==='send_product_photos'){if(identified.length){
       if(wantsManyCatalogPhotos(options.text)&&Array.isArray(args.selections)&&args.selections.length&&args.selections.every((selection:any)=>identified.some(p=>p.id===selection.product_id))&&identified.every(p=>args.selections.some((selection:any)=>selection.product_id===p.id)))return photoResult({...selectProductPhotos(catalog,args.selections),caption:catalogDeliveryStyle(catalog.delivery_style)==='photos_ai'?(catalogHindi(options.text)?'आपको यह डिज़ाइन पसंद आया?':'Do you like this design?'):''});
       return photoResult(specificPhotos(identified,matchedIndexes));
@@ -493,9 +501,9 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
  throw Error('AI could not resolve the product selection. Please clarify the product name.');
 }
 
-export type CatalogDeliveryStyle = 'cards'|'photos_details'|'photos_ai'|'photos_only';
+export type CatalogDeliveryStyle = 'cards'|'premium_cards'|'photos_details'|'photos_ai'|'photos_only';
 export function catalogDeliveryStyle(value:unknown):CatalogDeliveryStyle {
- return ['photos_details','photos_ai','photos_only'].includes(String(value))?value as CatalogDeliveryStyle:'cards';
+ return ['premium_cards','photos_details','photos_ai','photos_only'].includes(String(value))?value as CatalogDeliveryStyle:'cards';
 }
 /** Text-only embellishment must never replace the authoritative saved product facts. */
 export function safeCatalogCaption(value:unknown,fallback=''):string {
@@ -537,6 +545,14 @@ export function catalogMessage(catalog:RuntimeCatalog):string {
                      (single?'🎁 Like it? We can help you personalize your order.':'🎁 Pick your favourite style! We can help with available customization.');
  // For a photo-first AI reply, use a short customer-friendly summary even if the
  // selected product record contains several paragraphs of internal sales notes.
+ if(style==='premium_cards'){
+  // The template already displays saved price and design: keep the follow-up short.
+  return [
+   single?(hi?'✨ आपका चुना हुआ डिज़ाइन!':'✨ Your selected design!'):(hi?'✨ अपना पसंदीदा डिज़ाइन चुनिए!':'✨ Swipe to find your favourite!'),
+   ...(customizable?[hi?'💖 इसे उपलब्ध विकल्पों के अनुसार आपकी तस्वीरों से कस्टमाइज कर सकते हैं।':'💖 We can personalize it using your pictures where available.']:[]),
+   single?(hi?'🎁 पसंद हो तो यही स्टाइल बताइए।':'🎁 Let me know if this is your style.'):(hi?'🎁 जो स्टाइल पसंद आए उसका नंबर भेजिए।':'🎁 Reply with your favourite style number.')
+  ].join('\n');
+ }
  if(style==='photos_ai'||catalog.proactive)return [preface,rows.join('\n'),...details,conclusion].filter(Boolean).join('\n\n');
  // Photos + details remains concise; do not disclose staff notes or order-field definitions.
  const description=single&&p.description?String(p.description).replace(/\s+/g,' ').slice(0,125):'';
@@ -552,7 +568,17 @@ export type CatalogDeliveryPart = {message:any;kind:'cards'|'image'|'text';text:
 export function catalogDeliveryParts(catalog:RuntimeCatalog):CatalogDeliveryPart[]{
  const style=catalogDeliveryStyle(catalog.delivery_style),elements=catalog.elements||[];
  if(!elements.length)throw Error('No product photos are available.');
- if(style==='cards')return [{kind:'cards',text:`[Catalog: ${catalog.name}]`,catalog,message:{attachment:{type:'template',payload:{template_type:'generic',elements}}}}];
+ if(style==='cards'||style==='premium_cards'){
+  const groups:CatalogDeliveryPart[]=[];
+  for(let offset=0;offset<elements.length;offset+=10){
+   const slice=elements.slice(offset,offset+10);
+   groups.push({kind:'cards',text:'[Product cards: '+catalog.name+']',
+    catalog:{id:catalog.id,name:catalog.name,image_urls:slice.map(e=>e.image_url)},
+    message:{attachment:{type:'template',payload:{template_type:'generic',elements:slice}}}});
+  }
+  if(style==='premium_cards')for(const text of splitCatalogText(catalogMessage(catalog)))groups.push({kind:'text',text,catalog:null,message:{text}});
+  return groups;
+ }
  // A collection is one Send API message, never separate concurrent photo sends.
  const parts:CatalogDeliveryPart[]=[];
  for(let offset=0;offset<elements.length;offset+=10){
@@ -564,7 +590,7 @@ export function catalogDeliveryParts(catalog:RuntimeCatalog):CatalogDeliveryPart
 }
 export function prepareCatalogDelivery(catalog:RuntimeCatalog,page=1,caption?:unknown):RuntimeCatalog {
  const style=catalogDeliveryStyle(catalog.delivery_style);
- const prepared=style==='cards'||page!==1?buildCatalogPage(catalog,page):{...catalog,elements:catalog.products.flatMap(p=>p.images.map(image=>card(p,image))),page:1,pages:1};
+ const prepared=(style==='cards'||style==='premium_cards'||page!==1)?buildCatalogPage(catalog,page):{...catalog,elements:catalog.products.flatMap(p=>p.images.map(image=>card(p,image))),page:1,pages:1};
  if(!prepared.elements?.length)throw Error('No product photos are available. Answer from the written product details instead.');
  const fallback=String(caption||'').match(/[\u0900-\u097f]/)?'आपको कौन-सा डिज़ाइन पसंद आया?':'Which design would you like?';
  if(style!=='cards'&&page!==1)prepared.products=catalog.products.filter(p=>p.images.some(image=>prepared.elements!.some(element=>element.image_url===image&&element.title===cleanCatalogDisplayName(p.name,p.style_number).slice(0,80))));
