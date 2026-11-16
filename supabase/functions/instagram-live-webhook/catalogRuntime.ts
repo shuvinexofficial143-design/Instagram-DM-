@@ -197,7 +197,7 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
  if(/(?:where is my order|order status|tracking|delivery status|refund status|ऑर्डर कहाँ|ट्रैकिंग|रिटर्न|रिफंड)/iu.test(message))return null;
  if(isReturnGreeting(message))return null;
  const context=history.slice(-8).map(x=>String(x.content||'')).join(' ');
- if(/(?:order (?:confirmed|placed)|ऑर्डर (?:कन्फर्म|हो गया)|order number|payment completed|नाम.*(?:नंबर|पता)|name.*(?:phone|address))/iu.test(context)&&history.length>2)return null;
+ if(/(?:order (?:confirmed|placed)|ऑर्डर (?:कन्फर्म|हो गया)|order number|payment completed|नाम.*(?:नंबर|पता)|name.*(?:phone|address))/iu.test(context))return null;
  const greeting=/^(?:hi+|hello+|hey+|hlo+|hy+|namaste|नमस्ते|हाय|हेलो|hello sir|hi sir)[\s!?.🙂😊👋]*$/iu.test(message);
  const interest=/(?:price|cost|rate|kitna|how much|show|photo|image|design|style|available|details|gift|frame|pendant|necklace|buy|order|catalog|collection|option|variety|₹|कीमत|दाम|कितने|कितना|फोटो|डिज़ाइन|डिजाइन|स्टाइल|फ्रेम|दिखाओ|भेजो|खरीद|गिफ्ट|वेराइटी|कैटलॉग)/iu.test(message);
  if(!interest&&!greeting)return null;
