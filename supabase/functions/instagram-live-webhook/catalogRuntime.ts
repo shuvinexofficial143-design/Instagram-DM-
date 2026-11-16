@@ -596,7 +596,7 @@ export function catalogDeliveryParts(catalog:RuntimeCatalog):CatalogDeliveryPart
   for(let offset=0;offset<elements.length;offset+=10){
    const slice=elements.slice(offset,offset+10);
    groups.push({kind:'cards',text:'[Product cards: '+catalog.name+']',
-    catalog:{id:catalog.id,name:catalog.name,image_urls:slice.map(e=>e.image_url)},
+    catalog:{id:catalog.id,name:catalog.name,image_urls:slice.map(e=>e.image_url),elements:slice},
     message:{attachment:{type:'template',payload:{template_type:'generic',elements:slice}}}});
   }
   if(style==='premium_cards')for(const text of splitCatalogText(catalogMessage(catalog)))groups.push({kind:'text',text,catalog:null,message:{text}});
