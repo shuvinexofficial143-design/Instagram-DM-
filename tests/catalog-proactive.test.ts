@@ -30,6 +30,11 @@ test('specific design references remain with the AI instead of sending whole gal
  const two:RuntimeCatalog={...catalog,products:[{...frame(1),name:'Red Heart Frame'},{...frame(2),name:'Blue Round Frame'}]};
  assert.equal(proactiveCatalogSelection(two,'Show red frame photos'),null);
 });
+test('a buyer who says yes after a design offer receives pictures, while support stays text-only',()=>{
+ const selection=proactiveCatalogSelection(catalog,'हाँ',[{role:'assistant',content:'आपको कौन-सा डिज़ाइन पसंद है?'}],[],'','Photo Frame');
+ assert.equal(selection?.products.length,8);
+ assert.equal(proactiveCatalogSelection(catalog,'my order is late'),null);
+});
 test('verified follow pricing is derived from approved saved price, not from customer claims',async()=>{
  const result=await generateCatalogReply({key:'test',systemPrompt:'Priority Product: Photo Frame',history:[],text:'Price?',catalog,
   followStatus:true,followDiscountPercent:10,fetcher:async()=>{throw Error('Proactive gallery must not need AI call')}});
