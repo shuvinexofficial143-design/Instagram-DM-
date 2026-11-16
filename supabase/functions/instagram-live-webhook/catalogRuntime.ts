@@ -364,7 +364,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
    return {text:catalogHindi(options.text)?'शेयर की गई Reel या Post की पहचान Instagram से नहीं मिली। कृपया उसका Link या साफ़ Screenshot भेजें।':'The shared Reel/Post has no usable media ID. Please send its link or a clear screenshot.',warning:'Shared media contained no usable reference.'};
   if(sharedMediaRefs.length&&sharedMatch.status!=='matched'&&!images.length)
    return {text:catalogHindi(options.text)?'इस Reel या Post का Product Catalog में पक्का नहीं मिल रहा। कृपया Style Number, Product का नाम या Screenshot भेजें।':'The shared Reel/Post does not uniquely match the catalog. Please provide a Style Number, product name or screenshot.',warning:'Shared media is unmapped or ambiguous.'};
-  if(reference.ambiguous&&sharedMatch.status!=='matched')return {text:catalogClarification(options.text),warning:'Catalog reference is missing or ambiguous.'};
+  if(reference.ambiguous&&sharedMatch.status!=='matched')return {text:/^\s*[0-9०-९]{1,2}\s*$/u.test(options.text)?'✨ इस नंबर के एक से ज़्यादा डिज़ाइन हैं। आपको Photo Frame वाला Style चाहिए या FR वाला डिज़ाइन?':catalogClarification(options.text),warning:'Catalog reference is missing or ambiguous.'};
   if(sharedMatch.status==='matched'&&reference.products.length&&reference.products.some(p=>p.id!==sharedMatch.product!.id&&p.parent_product_id!==sharedMatch.product!.id))
    return {text:catalogHindi(options.text)?'आपकी Reel/Post और Style Number अलग डिज़ाइन दिखा रहे हैं। कृपया सही डिज़ाइन बताइए।':'Your shared Reel/Post and Style Number identify different designs. Which one did you mean?',warning:'Conflicting customer references.'};
   if(images.length){
@@ -377,7 +377,16 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
     description='High-confidence catalog comparison candidate: '+identified.map(p=>p.name+(p.style_number?' Style '+p.style_number:'')).join(', ');
     // A clearly matched incoming design is an explicit request for identification: show the actual saved photo.
     if(!/(?:text only|only price|no photo|photo mat|मत भेजो|सिर्फ कीमत|केवल कीमत)/iu.test(options.text))return photoResult(specificPhotos(identified,matchedIndexes));
-   }catch(error){if(options.signal?.aborted)throw error;return {text:catalogClarification(options.text),warning:'The customer image could not be inspected.'};}
+   }catch(error){
+    if(options.signal?.aborted)throw error;
+    // A reference-image comparison may time out; printed STYLE 03 / 05 can still be read directly.
+    const printed=await recognizePrintedCatalogStyles(catalog,images,async(messages:any[])=>request(messages,[],true));
+    if(printed.certain){
+     const selected=printed.matches.map(m=>catalog.products.find(p=>p.id===m.product_id)!).filter(Boolean);
+     if(selected.length)return photoResult(specificPhotos(selected,printed.matches.map(m=>m.image_index)));
+    }
+    return {text:(catalogHindi(options.text)||options.history.some(m=>m?.role==='user'&&catalogHindi(String(m?.content||'')))?'📸 यह फोटो अभी स्पष्ट पहचान नहीं पा रहा हूँ। कृपया उस पर लिखा Style नंबर बताइए, ताकि गलत डिज़ाइन न भेजूँ।':'📸 I could not verify this photo yet. Please share its printed Style number so I do not send a different design.'),warning:'The customer image could not be inspected.'};
+   }
   }
   // Keep the ordinary business prompt / handoff decision even for a resolved
   // design. Exact style lookup avoids vision calls, not conversation controls.
