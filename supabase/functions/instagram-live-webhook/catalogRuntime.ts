@@ -47,7 +47,7 @@ function catalogPostKey(text:string){return text.trim().replace(/\/$/,'').split(
 export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postId='',history:any[]=[],recentPhotoUrls:string[]=[]):{requested:boolean;products:CatalogProduct[];ambiguous:boolean}{
  const input=catalogDigits(text);
  postId=postId||text.match(/https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[^\s?#]+/i)?.[0]||'';
- const styles=[...input.matchAll(/(?:\bstyle|स्टाइल)\s*(?:no\.?|number|नंबर|#)?\s*[:.-]?\s*([a-z0-9][a-z0-9-]{0,39})/giu)].map(m=>catalogStyleKey(m[1]));
+ const styles=[...input.matchAll(/(?:(?:\bstyle\b|स्टाइल)\s*(?:no\.?|number|नंबर|#)?\s*[:.-]?\s*([a-z0-9][a-z0-9-]{0,39})|\b(fr[-_:\s]*\d{1,2})\b)/giu)].map(m=>catalogStyleKey(m[1]||m[2]));
  for(const match of input.matchAll(/\bfr\s*[-:#]?\s*(\d{1,2})\b/giu))styles.push('fr-'+String(Number(match[1])).padStart(2,'0'));
  if(styles.length){
   const chosen:CatalogProduct[]=[];
@@ -73,10 +73,8 @@ export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postI
    if(fromRecent.length===1)return {requested:true,products:fromRecent,ambiguous:false};
    for(const entry of history.slice(-12).reverse()){
     const sentence=String(entry?.content||'').toLocaleLowerCase();
-    const found=candidates.filter(p=>{
-     const key=catalogStyleKey(p.style_number||'');
-     return new RegExp('(?:^|[^a-z0-9])(?:style\\s*)?'+key+'(?=$|[^a-z0-9])','iu').test(sentence);
-    });
+    const mentioned=[...sentence.matchAll(/(?:(?:\bstyle\b|स्टाइल)\s*(?:no\.?|number|नंबर|#)?\s*[:.-]?\s*([a-z0-9][a-z0-9-]{0,39})|\b(fr[-_:\s]*\d{1,2})\b)/giu)].map(m=>catalogStyleKey(m[1]||m[2]));
+    const found=candidates.filter(p=>mentioned.includes(catalogStyleKey(p.style_number||'')));
     if(found.length===1)return {requested:true,products:found,ambiguous:false};
    }
   }
@@ -229,7 +227,7 @@ export async function recognizePrintedCatalogStyles(catalog:RuntimeCatalog,image
   if(!Array.isArray(parsed.styles)){console.warn('[DM_PRINTED_STYLE_MISSING]',{reason:'missing_styles_array'});return empty;}
   const identified:{input_index:number;product_id:string;image_index:number}[]=[];
   for(let i=0;i<images.length;i++){
-   const options=parsed.styles.filter((v:any)=>v?.input_index===i&&v?.visible===true&&v?.confidence>=0.78&&v?.confidence<=1&&typeof v?.style_number==='string'&&/^(?:style[\s#-]*|fr[-\s]*)?\d{1,2}$/iu.test(v.style_number.trim()));
+   const options=parsed.styles.filter((v:any)=>v?.input_index===i&&v?.visible===true&&v?.confidence>=0.78&&v?.confidence<=1&&typeof v?.style_number==='string'&&/^(?:(?:style|स्टाइल)[\s:#._-]*(?:no\.?|number)?[\s:#._-]*|fr[\s:#._-]*)?\d{1,2}$/iu.test(v.style_number.trim()));
    if(options.length!==1)return empty;
    const key=catalogStyleKey(options[0].style_number);
    const products=catalog.products.filter(p=>p.images.length&&catalogStyleKey(p.style_number||'')===key);
