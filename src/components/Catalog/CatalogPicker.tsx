@@ -1,6 +1,7 @@
 import React,{useState} from 'react';
 import { Package, X, Sparkles } from 'lucide-react';
 import { ProductShowcase } from './ProductShowcase';
+import { SmartTextDesigner,SmartMessageRenderer } from './SmartTextDesigner';
 import { useApp } from '../../context/AppContext';
 import { catalogDeliveryStyle, catalogMessage } from '../../../supabase/functions/instagram-live-webhook/catalogRuntime';
 import { CatalogData, CatalogProduct, catalogCards, catalogProblem, useCatalogs } from '../../lib/catalogs';
@@ -16,8 +17,9 @@ export function CatalogPreview({products,deliveryStyle='cards',name='Catalog',me
     </div>
     {pages>1&&<div className="flex items-center justify-between gap-2 text-xs"><button disabled={current===0} onClick={()=>setPage(current-1)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 disabled:opacity-40">Previous</button><span>Styles {start+1}–{Math.min(start+10,cards.length)} of {cards.length}</span><button disabled={current===pages-1} onClick={()=>setPage(current+1)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 disabled:opacity-40">Next</button></div>}
     <ProductShowcase items={cards.slice(start,start+10)} label="Verified catalog product cards"/>
+    <SmartTextDesigner products={products.filter(p=>p.active)}/>
     <p className="rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-sm leading-6 text-slate-700">💝 अपनी पसंद का डिज़ाइन चुनिए। हम उपलब्ध विकल्पों के अनुसार इसे आपके लिए कस्टमाइज कर सकते हैं।</p>
-    {messageText&&<p className="whitespace-pre-wrap rounded-lg border border-slate-100 bg-white p-3 text-sm text-slate-700">{messageText}</p>}
+    {messageText&&<div className="rounded-lg border border-slate-100 bg-white p-3 text-sm text-slate-700"><SmartMessageRenderer text={messageText}/></div>}
   </section>;
  }
  if(catalogDeliveryStyle(deliveryStyle)!=='cards'){
