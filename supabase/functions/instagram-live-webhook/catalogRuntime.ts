@@ -151,7 +151,7 @@ export function catalogContext(catalog:RuntimeCatalog,query:string,preferredProd
  const preferred=catalog.products.find(p=>p.id===preferredProductId);
  const ranked=preferred?[preferred,...ordered.filter(p=>p.id!==preferred.id)]:ordered;
  let budget=24000;const products:any[]=[];
- for(const p of ranked.slice(0,12)){const info={...catalogProductMetadata(p),id:p.id,name:p.name,price:p.price,description:p.description,url:p.url,photo_indexes:p.images.map((_,i)=>i),parent_product_id:p.parent_product_id,variant_id:p.variant_id};const size=JSON.stringify(info).length;if(size>budget)continue;products.push(info);budget-=size;}
+ for(const p of ranked.slice(0,12)){const info={...catalogProductMetadata(p),id:p.id,name:cleanCatalogDisplayName(p.name,p.style_number),style_number:displayStyle(p.style_number||''),price:p.price,description:p.description,url:p.url,photo_indexes:p.images.map((_,i)=>i),parent_product_id:p.parent_product_id,variant_id:p.variant_id};const size=JSON.stringify(info).length;if(size>budget)continue;products.push(info);budget-=size;}
  return {catalog_id:catalog.id,name:catalog.name,product_count:catalog.products.length,pages:Math.max(1,Math.ceil(catalog.products.reduce((n,p)=>n+p.images.length,0)/10)),products,more_products:catalog.products.length>products.length};
 }
 export function catalogTools(catalog?:RuntimeCatalog|null,historySearch=false){
