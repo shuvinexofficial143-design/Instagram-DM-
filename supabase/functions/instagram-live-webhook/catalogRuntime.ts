@@ -1,6 +1,7 @@
 import {DM_AI_MODEL,chatModelParams} from './openaiConfig.js';
 import {matchInstagramAdProduct,matchSharedInstagramMedia,type InstagramAdSource} from './adAttribution.js';
 import {customerFactsInstructions,customerFactValues,canonicalCustomerField,repeatedCustomerQuestion,customerDetailFallback,type CustomerFacts} from './customerFacts.js';
+import {selectSalesLayoutAI,renderSalesTemplate} from './salesPresentation.ts';
 import {memoryBuildContext,memorySettings,memoryBytes,isReturnGreeting,isSalesRestart,continuityFallback,type MemorySnapshot} from './smartMemory.js';
 /** Shared by live Instagram replies and the builder preview. No credentials or browser state. */
 export type CatalogPostReference={post_id:string;position:number};
@@ -540,6 +541,23 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
    if(!continuityRetried&&round<2){continuityRetried=true;messages[0].content+='\nThe previous draft restarted a sales introduction. Correct it: respond to this returning greeting using the existing conversation or order request, without asking the customer to buy again.';continue;}
    return {text:continuityFallback(built.continuity,options.history,options.memory),warning:imageWarning||options.catalogWarning||''};
   }
+  // Secondary AI selects the presentation layout only. Product data, prices and
+  // buying status are never accepted from this classifier's generated content.
+  const contextProduct=reference.products.length===1?reference.products[0]:
+   identified.length===1?identified[0]:
+   sharedMatch.status==='matched'?sharedMatch.product:
+   adMatch.status==='matched'?adMatch.product:
+   catalog?.products.length===1?catalog.products[0]:null;
+  if(catalog&&contextProduct&&!returningGreeting){
+   const {layout}=await selectSalesLayoutAI({
+    key:options.key,customerText:options.text,draft:text,fetcher:callFetch,signal:options.signal
+   });
+   if(layout==='price'||layout==='buying'){
+    const arranged=renderSalesTemplate({layout,product:contextProduct,draft:text,
+      customerText:options.text,language:catalogHindi(options.text)?'hi':'en'});
+    if(arranged)return {text:arranged,warning:imageWarning||options.catalogWarning||''};
+   }
+  }
   return {text,warning:imageWarning||options.catalogWarning||''};
  }
  if(returningGreeting)return {text:continuityFallback(built.continuity,options.history,options.memory),warning:imageWarning||options.catalogWarning||''};
@@ -598,7 +616,7 @@ export function catalogMessage(catalog:RuntimeCatalog):string {
    single?(hi?'🎁 पसंद हो तो यही स्टाइल बताइए।':'🎁 Let me know if this is your style.'):(hi?'🎁 जो स्टाइल पसंद आए उसका नंबर भेजिए।':'🎁 Reply with your favourite style number.')
   ].join('\n');
  }
- if(style==='photos_ai'||catalog.proactive)return [preface,rows.join('\n'),...details,conclusion].filter(Boolean).join('\n\n');
+ if(style==='photos_ai'||catalog.proactive)return renderSalesTemplate({layout:single?'photo':'gallery',product:single?p:null,products,language:lang,draft:preface+'\n'+rows.join('\n')+'\n'+details.join('\n')+'\n'+conclusion});
  // Photos + details remains concise; do not disclose staff notes or order-field definitions.
  const description=single&&p.description?String(p.description).replace(/\s+/g,' ').slice(0,125):'';
  return [preface,rows.join('\n'),description,...details,conclusion].filter(Boolean).join('\n\n');
