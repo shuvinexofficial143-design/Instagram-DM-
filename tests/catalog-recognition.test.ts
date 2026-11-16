@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {generateCatalogReply,resolveCatalogReference,catalogContext,catalogDeliveryParts,catalogProductMetadata,expandCatalogProduct,recognizeCatalogImages,type RuntimeCatalog} from '../supabase/functions/instagram-live-webhook/catalogRuntime';
+import {generateCatalogReply,resolveCatalogReference,catalogContext,catalogDeliveryParts,catalogProductMetadata,expandCatalogProduct,recognizeCatalogImages,recognizePrintedCatalogStyles,type RuntimeCatalog} from '../supabase/functions/instagram-live-webhook/catalogRuntime';
 import {normalizeInstagramAdSource,matchInstagramAdProduct,mediaReferenceKey,extractInstagramSharedMedia,matchSharedInstagramMedia} from '../supabase/functions/instagram-live-webhook/adAttribution';
 const frame=(id:string,style_number:string)=>({id,name:id+' frame',style_number,price:'₹250',description:'Custom photo frame',url:'',images:['https://images.example/'+id+'.jpg','https://images.example/'+id+'-side.jpg'],cod:'Available',delivery_time:'5–7 days',customization:'Customer photo',availability:'White only',post_refs:[{post_id:'post-a',position:7}]});
 const catalog:RuntimeCatalog={id:'frames',name:'Frames',delivery_style:'photos_details',products:[frame('heart','07'),{...frame('round','08'),post_refs:[{post_id:'post-b',position:7}]}]};
@@ -205,4 +205,48 @@ test('unmapped or opaque shares ask for clarification instead of guessing anothe
  const opts={...base,catalog:offer,text:'[Customer shared an Instagram Reel/Post]',fetcher:async()=>{throw Error('No guessing');}};
  assert.equal((await generateCatalogReply({...opts,sharedMediaUnknown:true})).catalog,undefined);
  assert.equal((await generateCatalogReply({...opts,sharedMediaRefs:['https://www.instagram.com/reel/Unknown/']})).catalog,undefined);
+});
+
+
+test('printed STYLE 03 and FR-03 labels resolve to different approved designs',async()=>{
+ const regular={...frame('regular','Style 3'),post_refs:[]};
+ const variant={...frame('variant','FR-03'),post_refs:[]};
+ const both={...catalog,products:[regular,variant]};
+ const recognize=(number:string)=>recognizePrintedCatalogStyles(both,['https://images.example/user.jpg'],async()=>({content:JSON.stringify({styles:[{input_index:0,style_number:number,visible:true,confidence:0.99}]})}));
+ assert.equal((await recognize('STYLE 03')).matches[0].product_id,'regular');
+ assert.equal((await recognize('FR-03')).matches[0].product_id,'variant');
+ assert.equal((await recognize('03')).matches[0].product_id,'regular');
+ const uncertain=await recognizePrintedCatalogStyles(both,['https://images.example/user.jpg'],async()=>({content:JSON.stringify({styles:[{input_index:0,style_number:'STYLE 03',visible:true,confidence:0.6}]})}));
+ assert.equal(uncertain.certain,false);
+});
+
+test('bare "2" chooses the style mentioned last, not an unrelated catalog variant',async()=>{
+ const regular={...frame('regular','Style 2'),post_refs:[]};
+ const variant={...frame('variant','FR-02'),post_refs:[]};
+ const both={...catalog,products:[regular,variant],delivery_style:'photos_ai' as const};
+ const history=[{role:'user',content:'Product ki phot'},{role:'assistant',content:'✨ Style FR-02 — Sister Floral Memory Frame | ₹250'}];
+ assert.equal(resolveCatalogReference(both,'2','',history).products[0]?.id,'variant');
+ assert.equal(resolveCatalogReference(both,'2').requested,false);
+ assert.equal(resolveCatalogReference(both,'2','',[{role:'user',content:'Choose a style please'}]).ambiguous,true);
+ const result=await generateCatalogReply({...base,catalog:both,text:'2',history,recentPhotoUrls:[variant.images[0]],fetcher:async()=>photoTool()});
+ assert.equal(result.catalog?.products[0].id,'variant');
+ assert.equal(result.catalog?.elements?.[0].image_url,variant.images[0]);
+ assert.match(result.catalog?.reply_language||'','hi');
+});
+
+test('a screenshot with verified printed Style 03 sends the matching photo without asking again',async()=>{
+ const regular={...frame('regular','Style 3'),post_refs:[]};
+ const variant={...frame('variant','FR-03'),post_refs:[]};
+ const both={...catalog,id:'workspace_active_catalogs',products:[regular,variant],delivery_style:'photos_ai' as const};
+ let calls=0;
+ const result=await generateCatalogReply({...base,catalog:both,text:'[Customer sent an image]',history:[{role:'user',content:'Photo ki pic'}],images:['https://images.example/customer-style03.jpg'],fetcher:async(_url,init)=>{
+  calls++;
+  const request=JSON.parse(String(init?.body));
+  assert.ok(request.response_format,'Visual recognition must not invoke regular sales AI for a confident match');
+  return answer(request.messages[0].content.includes('Read ONLY visibly printed')?{styles:[{input_index:0,style_number:'STYLE 03',visible:true,confidence:0.99}]}:{matches:[]});
+ }});
+ assert.equal(result.catalog?.products[0].id,'regular');
+ assert.equal(result.catalog?.elements?.[0].image_url,regular.images[0]);
+ assert.equal(result.catalog?.reply_language,'hi');
+ assert.ok(calls>0);
 });
