@@ -129,6 +129,8 @@ export interface Contact {
   last_interaction_at: string;
   interactions: ContactInteraction;
   tags?: string[];
+  first_ad_source?: import('../supabase/functions/instagram-live-webhook/adAttribution').InstagramAdSource;
+  last_ad_source?: import('../supabase/functions/instagram-live-webhook/adAttribution').InstagramAdSource;
   status?: 'lead' | 'converted' | 'contacted';
   is_test?: boolean;
 }
@@ -136,6 +138,7 @@ export interface Contact {
 export interface InboxMessage {
   server_updated_at?: string;
   image_urls?: string[];
+  ad_source?: import('../supabase/functions/instagram-live-webhook/adAttribution').InstagramAdSource;
   catalog_id?: string;
   catalog_name?: string;
   catalog_elements?: Array<{title:string;image_url:string;subtitle?:string;buttons?:Array<{url:string}>}>;
