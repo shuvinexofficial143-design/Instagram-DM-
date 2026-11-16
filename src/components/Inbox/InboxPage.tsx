@@ -1,4 +1,5 @@
 import { ProductShowcase } from '../Catalog/ProductShowcase';
+import { SmartMessageRenderer } from '../Catalog/SmartTextDesigner';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlarmClock, ArrowLeft, Bot, BotOff, CheckCircle2, ChevronDown, Circle, Clock3,
@@ -332,9 +333,9 @@ export const InboxPage: React.FC = () => {
                         <div className={'max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm ' + (outgoing ? (message.catalog_elements?.length?'rounded-br-sm border border-indigo-100 bg-white text-slate-800':'rounded-br-sm bg-indigo-600 text-white') : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800')}>{message.catalog_elements?.length?
   <div className="w-full min-w-0 space-y-2 text-slate-800">
     <ProductShowcase compact label="Product cards sent through Instagram" items={message.catalog_elements.map((card,i)=>({id:String(i),image:card.image_url,title:card.title,subtitle:card.subtitle||'',description:''}))}/>
-    {message.message_text&&!String(message.message_text).startsWith('[Product cards:')&&!String(message.message_text).startsWith('[Catalog:')&&<p className="whitespace-pre-wrap text-xs">{message.message_text}</p>}
+    {message.message_text&&!String(message.message_text).startsWith('[Product cards:')&&!String(message.message_text).startsWith('[Catalog:')&&<SmartMessageRenderer compact text={message.message_text}/>}
   </div>
- :message.image_urls?.length?<div className="space-y-2">{message.image_urls.map((url,i)=><CustomerImage key={url} url={url} index={i}/>)}{message.message_text!=="[Customer sent an image]"&&<p>{message.message_text}</p>}</div>:message.message_text}</div>
+ :message.image_urls?.length?<div className="space-y-2">{message.image_urls.map((url,i)=><CustomerImage key={url} url={url} index={i}/>)}{message.message_text!=="[Customer sent an image]"&&<p>{message.message_text}</p>}</div>:outgoing && Boolean((message as any).is_automated)?<SmartMessageRenderer compact text={String(message.message_text||'')}/>:message.message_text}</div>
                         {message.ad_source&&(message.ad_source.ad_id||message.ad_source.media_id)&&<span className="mt-1 px-1 text-xs font-semibold text-indigo-600">Meta referral · {message.ad_source.ad_id?'Ad '+message.ad_source.ad_id:'Reel / Media '+message.ad_source.media_id}</span>}
                         <span className="mt-1 px-1 text-xs font-medium text-slate-400">{new Date(message.timestamp).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}{outgoing && message.delivery_status ? ' · ' + message.delivery_status : ''}</span>
                       </div>
