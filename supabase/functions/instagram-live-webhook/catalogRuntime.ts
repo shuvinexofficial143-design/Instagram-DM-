@@ -209,7 +209,7 @@ export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,his
  const words=message.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu)||[];
  const specific=eligible.filter(p=>{
   const label=cleanCatalogDisplayName(p.name,p.style_number).toLocaleLowerCase();
-  return words.some(w=>w.length>=4&&label.includes(w)&&!/(frame|photo|image|gift|design|style|फ्रेम|फोटो|डिज़ाइन|गिफ्ट)/iu.test(w));
+  return words.some(w=>w.length>=3&&label.includes(w)&&!/(frame|photo|image|gift|design|style|फ्रेम|फोटो|डिज़ाइन|गिफ्ट)/iu.test(w));
  });
  if(specific.length===1&&eligible.length>1)return null;
  const requestedCategory=/(?:necklace|pendant|pearl|हार|पेंडेंट)/iu.test(message)?/(?:necklace|pendant|pearl|हार|पेंडेंट)/iu:/(?:photo frame|frame|फोटो फ्रेम|फ्रेम)/iu.test(message)?/(?:frame|फ्रेम)/iu:null;
