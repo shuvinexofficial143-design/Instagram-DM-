@@ -1731,19 +1731,36 @@ Deno.serve(async (req: Request) => {
   }
 
   const results: any[] = [];
-  const preparedDm=new Map<any,{context:any;turn:DmTurn|null;error?:boolean}>();
+  const preparedDm=new Map<any,{context:any;turn:DmTurn|null;error?:boolean;earlyTyping?:{session:ReturnType<typeof createTypingSession>;startedAt:number;ackAt?:number;accepted?:boolean}}>();
   // Register every DM in this payload before processing any reply. Other webhook
   // workers register against the same database revision, never isolate memory.
   for(const item of messages){
    if(item.triggerType!=='dm')continue;
+   let earlyTyping:{session:ReturnType<typeof createTypingSession>;startedAt:number;ackAt?:number;accepted?:boolean}|undefined;
    try{
     const context=await loadDmContext(admin,[item.entryId||item.recipientId],item.messageId,'',item.senderId,true);
     const automation=context?.campaign_automation?.status==='active'?context.campaign_automation:matchAutomation(context?.automations||[],item);
     const account=context?.account||{},business=String(account.ig_user_id||''),aliases=[business,account.ig_scoped_id,account.id,account.user_id,...(account.own_sender_ids||[])].map(String);
-    const eligible=context?.user_id&&context.message_state==='new'&&automation?.trigger_type==='dm_ai_conversation'&&automation.status==='active'&&!context.thread_human_handoff&&!context.thread_ai_paused&&aliases.includes(item.entryId||item.recipientId)&&aliases.includes(item.recipientId)&&!aliases.includes(item.senderId)&&(!item.senderUsername||item.senderUsername!==String(account.username||'').toLowerCase());
+    const eligible=context?.user_id&&context.message_state==='new'&&automation?.trigger_type==='dm_ai_conversation'&&automation.status==='active'&&!context.thread_human_handoff&&!context.thread_ai_paused&&aliases.includes(item.entryId||item.recipientId)&&aliases.includes(item.recipientId)&&!aliases.includes(item.senderId)&&(!item.senderUsername||item.senderUsername!==String(account.username||'').toLowerCase())&&
+      (context.quota?.unlimited===true||Number(context.quota?.aiUsed)<Number(context.quota?.aiLimit));
+    // Show typing immediately after verified DM eligibility, in parallel with
+    // durable turn registration. Only the latest session owns the indicator.
+    if(eligible&&business&&item.senderId&&cleanToken(account.access_token)){
+     const token=cleanToken(account.access_token),startedAt=performance.now();
+     earlyTyping={session:null as any,startedAt,accepted:false};
+     const tracker=earlyTyping;
+     tracker.session=createTypingSession(business+':'+item.senderId,
+      (action,valid)=>sendInstagramSenderAction(business,item.senderId,token,action,valid),
+      result=>{tracker.accepted=result!==null;tracker.ackAt=performance.now();});
+     runInBackground(tracker.session.first);
+    }
     const turn=eligible?await registerDmTurn(admin,String(context.user_id),item.senderId,item.messageId):null;
-    preparedDm.set(item,{context,turn});
-   }catch{preparedDm.set(item,{context:null,turn:null,error:true});}
+    if(eligible&&!turn&&earlyTyping){runInBackground(earlyTyping.session.abandon());earlyTyping=undefined;}
+    preparedDm.set(item,{context,turn,earlyTyping});
+   }catch{
+    if(earlyTyping)runInBackground(earlyTyping.session.abandon());
+    preparedDm.set(item,{context:null,turn:null,error:true});
+   }
   }
 
   for (const item of messages) {
@@ -1766,6 +1783,19 @@ Deno.serve(async (req: Request) => {
     let typingTask: Promise<any> = Promise.resolve(null);
     let typingSession: ReturnType<typeof createTypingSession> | null = null;
     const dmTurn=preparedDm.get(item)?.turn||null;
+    const earlyTyping=preparedDm.get(item)?.earlyTyping;
+    if(earlyTyping){
+      typingStarted=true;
+      typingSession=earlyTyping.session;
+      typingTask=typingSession.first;
+      typingContextSource='full_context';
+      typingOnDispatchedMs=0; // dispatched before this per-message timer began
+      runInBackground(typingTask.then(()=>{
+        typingAccepted=earlyTyping.accepted===true;
+        typingAckMs=typeof earlyTyping.ackAt==='number'?Math.max(0,Math.round(earlyTyping.ackAt-totalStart)):null;
+        typingApiMs=typeof earlyTyping.ackAt==='number'?Math.round(earlyTyping.ackAt-earlyTyping.startedAt):null;
+      }));
+    }
     const abandonTyping=()=>{typingStopRequested=true;if(typingSession)runInBackground(typingSession.abandon());};
 
     const startTyping = (runtime: any, source: "edge_memory" | "supabase_runtime_context" | "full_context") => {
