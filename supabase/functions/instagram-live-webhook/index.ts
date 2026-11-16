@@ -4,7 +4,7 @@ import {scanCustomerFacts,scanConfiguredCustomerFields,customerFactValues,canoni
 import {fetchConversationUsernames,cacheInstagramProfilePhoto} from './instagramProfiles.ts';
 import { memorySettings,memoryLogPreview } from './smartMemory.ts';
 import { loadCatalog, buildCatalogPage, prepareCatalogDelivery, catalogDeliveryParts, catalogDeliveryStyle, extractImageAttachments, generateCatalogReply } from "./catalogRuntime.ts";
-import {normalizeInstagramAdSource} from "./adAttribution.ts";
+import {normalizeInstagramAdSource} from "./adAttribution.js";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
