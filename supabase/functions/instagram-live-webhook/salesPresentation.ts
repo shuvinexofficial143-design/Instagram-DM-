@@ -110,7 +110,7 @@ export async function selectSalesLayoutAI(args:{
 }):Promise<{layout:SalesLayout;source:'secondary_ai'|'rules'}>{
  const rule=defaultSalesLayout(args.customerText,args.order);
  // These intents should be deterministic, fast, and must never be overridden.
- if(rule==='support'||rule==='order'||rule==='gallery'||rule==='photo')return {layout:rule,source:'rules'};
+ if(rule!=='general')return {layout:rule,source:'rules'};
  if(!args.key)return {layout:rule,source:'rules'};
  const redact=(s:string)=>String(s||'').replace(/(?:\+?\d[\d\s-]{8,}\d)/gu,'[number]').replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/giu,'[email]').replace(/https?:\/\/\S+/giu,'[link]').slice(0,420);
  try{
