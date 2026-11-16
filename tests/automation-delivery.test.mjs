@@ -6,7 +6,7 @@ import { transform } from 'esbuild';
 import { createHmac } from 'node:crypto';
 
 const source = (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/instagramProfiles.ts', import.meta.url), 'utf8')).replace(/^export /gm, '') + '\n' + (await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/index.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/dmTurns.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/openaiConfig.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/customerFacts.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { getSenderProfile, extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog, sendInstagramCatalog };', { loader: 'ts', format: 'esm' });
+const compiled = await transform((await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/dmTurns.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/openaiConfig.ts',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/customerFacts.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/smartMemory.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/adAttribution.js',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+(await fs.readFile(new URL('../supabase/functions/instagram-live-webhook/catalogRuntime.ts',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/^import .*;\n/gm,'')+'\n'+source + '\nglobalThis.helpers = { getSenderProfile, extractAutomationEvents, extractOutgoingMessages, conversationHistory, matchAutomation, executeStaticActions, createTypingSession, persistInboundMessage, loadSendableCatalog, sendInstagramCatalog };', { loader: 'ts', format: 'esm' });
 const ai = { id: 'ai-rule', name: 'AI', status: 'active', trigger_type: 'dm_ai_conversation', trigger_config: {},
   actions: [{ type: 'ai_chatbot', ai_system_instruction: 'Sell watches' }, { type: 'send_dm', message_text: 'Fallback reply' }] };
 const staticRule = (type, config = {}) => ({ id: type + '-rule', name: type, status: 'active', trigger_type: type, trigger_config: config,
@@ -267,6 +267,23 @@ test('manual context remains complete beyond twelve recent turns and is kept in 
  assert.ok(huge.reduce((n,m)=>n+m.content.length,0)<=24000);assert.equal(huge[0].content.length,5000);
 });
 
+test('signed ad referral is stored on the customer message and guides the selected catalog product',async()=>{
+ const seller={...ai,actions:ai.actions.map(action=>action.type==='ai_chatbot'?{...action,catalog_id:'products'}:action)};
+ const f=fixture([seller],{catalogs:[{id:'products',name:'Gift catalog',active:true}],products:[
+  {id:'frame',catalog_id:'products',name:'Photo Frame',price:'₹250',description:'Gift photo frame',active:true,images:[],ad_refs:['12000111111']},
+  {id:'necklace',catalog_id:'products',name:'Love Pair Necklace',price:'₹360',description:'Gift necklace',active:true,images:[],ad_refs:['12000222222']},
+ ]});
+ const event=dm('ad-referral','What is the price?',{referral:{ad_id:'12000222222',source:'ADS'}});
+ assert.equal((await f.direct(event,'wrong')).status,403);
+ assert.equal(f.writes.length,0);
+ const result=await f.direct(event);
+ assert.equal(result.body.sent,1);
+ const inbound=f.writes.find(w=>w.collection==='inbox_messages'&&w.id==='ad-referral');
+ assert.equal(inbound?.data?.ad_source?.ad_id,'12000222222');
+ assert.equal(f.writes.find(w=>w.collection==='contacts')?.data?.last_ad_source?.ad_id,'12000222222');
+ assert.match(f.aiInputs[0][0].content,/Meta-reported product source DATA/);
+ assert.match(f.aiInputs[0][0].content,/"name":"Love Pair Necklace"/);
+});
 test('first AI DM generates and sends a confirmed reply against real schema', async () => {
   const f = fixture(); const r = await f.post(dm());
   assert.equal(r.status, 200); assert.equal(r.body.sent, 1); assert.equal(f.aiInputs.length, 1);

@@ -10,6 +10,7 @@ import { CatalogDeleteDialog } from './CatalogDeleteDialog';
 import { catalogDeliveryStyles } from '../../lib/catalogState';
 import { deleteCatalogRecords } from '../../lib/catalogManagement';
 import {catalogProductMetadata,catalogStyleKey} from '../../../supabase/functions/instagram-live-webhook/catalogRuntime';
+import {mediaReferenceKey} from '../../../supabase/functions/instagram-live-webhook/adAttribution';
 import './catalog.css';
 
 type Panel = { type: 'new' | 'settings' | 'preview' | 'delete' } | { type: 'product'; product?: CatalogProduct };
@@ -88,6 +89,30 @@ export const CatalogPage: React.FC = () => {
     if (!allCatalogs.some(c => c.id === catalogId)) throw Error('This catalog was removed. Close this form and choose another catalog.');
     if(product.style_number&&products.some(other=>other.id!==product.id&&(other.catalog_id||DEFAULT_ID)===catalogId&&other.style_number&&catalogStyleKey(other.style_number)===catalogStyleKey(product.style_number!)))throw Error('This Style Number is already used in this catalog.');
     if((product.post_refs||[]).some(ref=>!ref.post_id.trim()||!Number.isInteger(ref.position)||ref.position<1||ref.position>100))throw Error('Each post reference needs a post link or ID and a photo number from 1 to 100.');
+    if((product.ad_refs||[]).some(id=>!/^\d{5,40}$/.test(id.trim())))throw Error('Meta Ad IDs must contain 5–40 digits. Remove any empty or invalid IDs.');
+    if((product.reel_refs||[]).some(ref=>!mediaReferenceKey(ref)))throw Error('Enter an Instagram Reel URL or a valid Media ID for each reference.');
+    // Preserve saved legacy products; validate new variant records instead of silently dropping incomplete designs.
+    const validPhotoRange=(min?:number,max?:number)=>[min,max].every(n=>n===undefined||(Number.isInteger(n)&&n>=0&&n<=30))&&(min===undefined||max===undefined||min<=max);
+    if(!validPhotoRange(product.customer_photo_min,product.customer_photo_max))throw Error('Product customer photo minimum/maximum must be 0–30 and in order.');
+    const variants=product.variants||[];
+    if(variants.length>100)throw Error('Use at most 100 variants per product.');
+    const seenVariantIds=new Set<string>(),seenStyles=new Set<string>();
+    for(const variant of variants){
+      if(!/^[a-zA-Z0-9_-]{1,100}$/.test(variant.id)||!variant.name.trim()||seenVariantIds.has(variant.id))throw Error('Every variant must have a unique ID and non-empty name.');
+      seenVariantIds.add(variant.id);
+      if(variant.style_number){
+        const key=catalogStyleKey(variant.style_number);
+        if(seenStyles.has(key)||product.style_number&&catalogStyleKey(product.style_number)===key||
+          products.some(other=>other.id!==product.id&&(other.catalog_id||DEFAULT_ID)===catalogId&&
+            [other.style_number,...(other.variants||[]).map(v=>v.style_number)].some(style=>style&&catalogStyleKey(style)===key)))
+          throw Error('Variant Style Numbers must be unique within this catalog.');
+        seenStyles.add(key);
+      }
+      if(!validPhotoRange(variant.customer_photo_min,variant.customer_photo_max))throw Error('Variant customer photo range must be 0–30 and ordered.');
+      if((variant.images||[]).length>10)throw Error('A variant can have up to 10 reference photos.');
+      if((variant.ad_refs||[]).some(id=>!/^\d{5,40}$/.test(id)))throw Error('Every variant Meta Ad ID must contain 5–40 digits.');
+      if((variant.reel_refs||[]).some(ref=>!mediaReferenceKey(ref)))throw Error('Every variant Reel reference must be a valid link or media ID.');
+    }
     const saved = { ...product, ...catalogProductMetadata(product), name: product.name.trim(), catalog_id: catalogId, updated_at: new Date().toISOString() };
     await saveUserDocument(scope, 'catalog_products', saved);
     if (currentScope.current !== scope) return;

@@ -4,6 +4,7 @@ import {scanCustomerFacts,scanConfiguredCustomerFields,customerFactValues,canoni
 import {fetchConversationUsernames,cacheInstagramProfilePhoto} from './instagramProfiles.ts';
 import { memorySettings,memoryLogPreview } from './smartMemory.ts';
 import { loadCatalog, buildCatalogPage, prepareCatalogDelivery, catalogDeliveryParts, catalogDeliveryStyle, extractImageAttachments, generateCatalogReply } from "./catalogRuntime.ts";
+import {normalizeInstagramAdSource} from "./adAttribution.js";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -911,6 +912,7 @@ async function persistInboundMessage(
       stories: Number(interactions?.stories || 0) + (countInteraction && item.triggerType === "story_reply" ? 1 : 0),
     },
     tags: [...new Set(matches.flatMap((row: any) => Array.isArray(row.data?.tags) ? row.data.tags : []))],
+    ...(item.adSource ? {first_ad_source:existing?.first_ad_source||{...item.adSource,received_at:nowIso},last_ad_source:{...item.adSource,received_at:nowIso}} : {}),
     status: existing?.status || "lead",
   };
 
@@ -928,6 +930,7 @@ async function persistInboundMessage(
     from_avatar: profile.avatar_url || (avatar.startsWith('data:image/') ? '' : avatar),
     message_text: item.text,
     ...(item.images?.length ? { image_urls: item.images } : {}),
+    ...(item.adSource ? {ad_source:{...item.adSource,received_at:nowIso}} : {}),
     direction: "in",
     is_automated: false,
     timestamp: nowIso,
@@ -1330,6 +1333,31 @@ function conversationHistory(context:any):any[] {
   return messages.filter((_:any,i:number)=>chosen.has(i)).map((m:any)=>({...m,content:asText(m.content,6000)}));
 }
 
+/** Referral-only webhooks carry no customer message and must NEVER trigger a DM. */
+async function saveStandaloneAdReferrals(admin:any,event:any) {
+  for(const entry of Array.isArray(event?.entry)?event.entry:[]){
+    const raw=[...(Array.isArray(entry?.messaging)?entry.messaging:[]).filter((m:any)=>m?.referral&&!m?.message),
+      ...(Array.isArray(entry?.changes)?entry.changes:[]).filter((c:any)=>['messaging_referral','messaging_referrals'].includes(c?.field)).map((c:any)=>c.value||{})];
+    for(const item of raw){
+      const source=normalizeInstagramAdSource(item.referral);
+      const senderId=String(item.sender?.id||''),businessId=String(item.recipient?.id||entry.id||'');
+      if(!source||!senderId||!businessId||senderId===businessId)continue;
+      try{
+        const context=await loadTypingRuntimeContext(admin,[String(entry.id||''),businessId]);
+        const account=context?.account||{};
+        const aliases=[account.ig_user_id,account.ig_scoped_id,account.id,account.user_id,...(account.own_sender_ids||[])].map(String);
+        if(!context?.user_id||!aliases.includes(businessId)||aliases.includes(senderId))continue;
+        const received_at=new Date(Number(item.timestamp||entry.time||Date.now())).toISOString();
+        const {error}=await admin.from('autoreply_documents').upsert({
+          user_id:String(context.user_id),collection:'customer_ad_sources',id:businessId+':'+senderId,
+          data:{...source,received_at,business_id:businessId}
+        },{onConflict:'user_id,collection,id'});
+        if(error)console.warn('[AD_SOURCE_STORE_FAILED]',error.code);
+      }catch{console.warn('[AD_SOURCE_STORE_FAILED]');}
+    }
+  }
+}
+
 function extractAutomationEvents(event: any): any[] {
   const items: any[] = [];
   const addMessage = (entry: any, value: any) => {
@@ -1337,6 +1365,7 @@ function extractAutomationEvents(event: any): any[] {
     const story = message.reply_to?.story || value.reply_to?.story || value.story;
     const mediaId = String(story?.id || message.reply_to?.story_id || value.reply_to?.story_id || value.story_id || "");
     const images = extractImageAttachments(message);
+    const adSource = normalizeInstagramAdSource(value.referral || message.referral);
     const text = asText(message.text || value.text, 6000) || (images.length ? "[Customer sent an image]" : (Array.isArray(message.attachments)&&message.attachments.some((a:any)=>a?.type==="image") ? "[Customer image unavailable. Ask for a new clear photo or product name.]" : ""));
     const senderId = String(value.sender?.id || value.from?.id || "");
     const entryId = String(entry.id || "");
@@ -1344,7 +1373,7 @@ function extractAutomationEvents(event: any): any[] {
     const senderUsername = String(value.from?.username || value.sender?.username || "").trim().toLowerCase();
     if (!text || !senderId || !recipientId || message.is_echo || value.is_echo || message.is_self || value.is_self || senderId === entryId) return;
     const timestamp = Number(value.timestamp || entry.time || Date.now());
-    items.push({ entryId, senderId, senderUsername, recipientId, text, timestamp, mediaId, images, postId:String(value.referral?.media?.id||message.referral?.media?.id||message.reply_to?.media?.id||''),
+    items.push({ entryId, senderId, senderUsername, recipientId, text, timestamp, mediaId, images, adSource, postId:String(value.referral?.media?.id||message.referral?.media?.id||message.reply_to?.media?.id||''),
       triggerType: story || mediaId ? "story_reply" : "dm",
       messageId: String(message.mid || value.mid || `dm_${senderId}_${timestamp}_${text}`),
     });
@@ -1636,6 +1665,7 @@ Deno.serve(async (req: Request) => {
       })());
     }
   }
+  await saveStandaloneAdReferrals(admin,event);
   const messages = extractAutomationEvents(event);
   if (!messages.length) {
     return reply(200, { ok: true, processed: 0, outgoingSaved, reason: "no_automation_events" });
@@ -1796,6 +1826,17 @@ Deno.serve(async (req: Request) => {
         (item.triggerType !== "comment" && !businessAliases.includes(item.recipientId))) {
       results.push({ messageId: item.messageId, ok: true, ignored: true, reason: "outgoing_message" });
       continue;
+    }
+
+    // A separate signed messaging_referral event can precede the actual DM.
+    // Attach only a recent source for this exact connected account and sender.
+    if(item.triggerType==="dm" && !item.adSource){
+      const {data:sourceRow,error:sourceError}=await admin.from("autoreply_documents").select("data")
+        .eq("user_id",workspaceId).eq("collection","customer_ad_sources")
+        .eq("id",igUserId+":"+item.senderId).maybeSingle();
+      if(!sourceError&&sourceRow?.data&&Date.now()-Date.parse(sourceRow.data.received_at)<7*86400000){
+        item.adSource=normalizeInstagramAdSource(sourceRow.data);
+      }
     }
 
     // The RPC has already durably claimed this event. Inbox/contact writes must
@@ -2002,7 +2043,7 @@ Instagram DM style rules:
           isGreeting,
           selectedCatalog ? {...selectedCatalog,onSelect:(chosen:any)=>{selectedCatalog=chosen;sendCatalog=true;}} : undefined,
           turnImages, catalogWarning, {
-            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,customerFacts:scannedCustomerFacts,signal:turnWatch?.signal,postId:item.postId,recentPhotoUrls,
+            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,customerFacts:scannedCustomerFacts,signal:turnWatch?.signal,postId:item.postId,adSource:item.adSource,recentPhotoUrls,
             historySearch:async(query:string)=>{const {data,error}=await admin.rpc('autoreply_search_conversation',{p_workspace:workspaceId,p_sender:item.senderId,p_query:query});if(error)throw Error('Historical search unavailable');return data;},
             onUsage:(usage:any)=>{for(const key of ['input_tokens','output_tokens','cached_input_tokens','calls','provider_ms'])replyUsage[key]+=usage[key]||0;replyUsage.usage_available=replyUsage.usage_available||usage.usage_available;},
           }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {generateCatalogReply,resolveCatalogReference,catalogContext,catalogDeliveryParts,catalogProductMetadata,recognizeCatalogImages,type RuntimeCatalog} from '../supabase/functions/instagram-live-webhook/catalogRuntime';
+import {generateCatalogReply,resolveCatalogReference,catalogContext,catalogDeliveryParts,catalogProductMetadata,expandCatalogProduct,recognizeCatalogImages,type RuntimeCatalog} from '../supabase/functions/instagram-live-webhook/catalogRuntime';
+import {normalizeInstagramAdSource,matchInstagramAdProduct,mediaReferenceKey} from '../supabase/functions/instagram-live-webhook/adAttribution';
 const frame=(id:string,style_number:string)=>({id,name:id+' frame',style_number,price:'₹250',description:'Custom photo frame',url:'',images:['https://images.example/'+id+'.jpg','https://images.example/'+id+'-side.jpg'],cod:'Available',delivery_time:'5–7 days',customization:'Customer photo',availability:'White only',post_refs:[{post_id:'post-a',position:7}]});
 const catalog:RuntimeCatalog={id:'frames',name:'Frames',delivery_style:'photos_details',products:[frame('heart','07'),{...frame('round','08'),post_refs:[{post_id:'post-b',position:7}]}]};
 const answer=(content:any)=>Response.json({choices:[{message:typeof content==='string'?{content}:{content:JSON.stringify(content)}}]});
@@ -87,4 +88,82 @@ test('resolved designs still respect business prompt human handoff decisions',as
 });
 test('explicit front and back requests retain the requested views of the resolved product',async()=>{
  const result=await generateCatalogReply({...base,text:'Show Style 07 front and back photos',fetcher:async()=>Response.json({choices:[{message:{tool_calls:[{id:'photos',function:{name:'send_product_photos',arguments:JSON.stringify({selections:[{product_id:'heart',image_indexes:[0,1]}]})}}]}}]})});assert.equal(result.catalog?.elements?.length,2);assert.equal(result.catalog?.products.length,1);
+});
+
+test('signed Meta referral fields are sanitized; a mere view is never attributed',()=>{
+ assert.equal(normalizeInstagramAdSource(null),null);
+ assert.equal(normalizeInstagramAdSource({source:'ADS'}),null);
+ assert.deepEqual(normalizeInstagramAdSource({ad_id:'1200123456789',ads_context_data:{post_id:'18001234'},source:'ADS'}),{ad_id:'1200123456789',media_id:'18001234',source:'ADS'});
+ assert.equal(normalizeInstagramAdSource({ad_id:'unsafe!!'}),null);
+ assert.equal(mediaReferenceKey('https://www.instagram.com/reel/AbCdEf/?utm_source=test'),'abcdef');
+});
+test('source mapping prefers exact Ad ID, handles Reel links and rejects ambiguous products',()=>{
+ const products=[{id:'frame',ad_refs:['12001'],reel_refs:['https://www.instagram.com/reel/FrameOne/']},
+  {id:'necklace',ad_refs:['12002'],reel_refs:['https://www.instagram.com/reel/NecklaceTwo/']}];
+ assert.equal(matchInstagramAdProduct(products,{ad_id:'12002',media_id:'https://www.instagram.com/reel/FrameOne/'}).product?.id,'necklace');
+ assert.equal(matchInstagramAdProduct(products,{media_id:'frameone'}).product?.id,'frame');
+ assert.equal(matchInstagramAdProduct(products,{ad_id:'9999'}).status,'none');
+ assert.equal(matchInstagramAdProduct([...products,{id:'duplicate',ad_refs:['12001']}],{ad_id:'12001'}).status,'ambiguous');
+ assert.equal(matchInstagramAdProduct(products,null).status,'none');
+});
+test('catalog metadata retains safe ad mapping and remains backward compatible',()=>{
+ const saved=catalogProductMetadata({ad_refs:['12000123','12000123','bad!'],reel_refs:['https://www.instagram.com/reel/AbC/','javascript:bad'],name:'Frame'});
+ assert.deepEqual(saved.ad_refs,['12000123']);
+ assert.deepEqual(saved.reel_refs,['https://www.instagram.com/reel/AbC/']);
+ assert.deepEqual(catalogProductMetadata({}).ad_refs,[]);
+});
+test('a unique ad referral prioritizes its product in AI context without replacing the master prompt',async()=>{
+ const products=[...catalog.products.map((p,i)=>({...p,ad_refs:[i===0?'12001':'12002']}))];
+ let calls=0;
+ const result=await generateCatalogReply({...base,catalog:{...catalog,products},text:'Hi',adSource:{ad_id:'12002',source:'ADS'},fetcher:async(_url,init)=>{
+  calls++;const payload=JSON.parse(String(init?.body));
+  assert.match(payload.messages[0].content,/Sell frames/);
+  assert.match(payload.messages[0].content,/Meta-reported product source DATA/);
+  assert.match(payload.messages[0].content,/"ad_id":"12002"/);
+  const data=payload.messages[0].content.match(/Current approved catalog DATA: (\{[^\n]+\})/);
+  assert.equal(JSON.parse(data?.[1]||'{}').products[0].id,'round');
+  return answer('Hello! Are you interested in the round frame?');
+ }});
+ assert.equal(calls,1);
+ assert.match(result.text||'',/round frame/);
+});
+test('an ambiguous ad mapping is never presented as a unique product attribution',async()=>{
+ const products=catalog.products.map(p=>({...p,ad_refs:['12001']}));
+ await generateCatalogReply({...base,catalog:{...catalog,products},text:'Price?',adSource:{ad_id:'12001'},fetcher:async(_url,init)=>{
+  const instructions=JSON.parse(String(init?.body)).messages[0].content;
+  assert.match(instructions,/mapped to more than one product/);
+  assert.doesNotMatch(instructions,/Meta-reported product source DATA:/);
+  return answer('Which product are you interested in?');
+ }});
+});
+
+test('a parent product expands into variant SKUs without changing legacy items',()=>{
+ const source={...frame('family','20'),id:'family',name:'Photo Frame',price:'₹249',required_customer_fields:['Custom name'],
+  customer_photo_min:15,customer_photo_max:20,sales_notes:'Great for gifts',variants:[
+  {id:'heart',name:'Heart Design',style_number:'FR-01',price:'₹299',color:'Red',size:'6x8',images:['https://images.example/heart.jpg'],required_customer_fields:['Gift message'],customer_photo_min:18,ad_refs:['12000000001']},
+  {id:'round',name:'Round Design',style_number:'FR-02',price:'₹349',images:['https://images.example/round.jpg'],reel_refs:['https://www.instagram.com/reel/round1/']}
+ ]};
+ const normalized={...source,...catalogProductMetadata(source)};
+ const expanded=expandCatalogProduct(normalized);
+ assert.deepEqual(expanded.map(p=>p.id),['family','family--heart','family--round']);
+ assert.equal(expanded[1].price,'₹299');
+ assert.equal(expanded[2].price,'₹349');
+ assert.equal(expanded[1].images[0],'https://images.example/heart.jpg');
+ assert.equal(expanded[1].customer_photo_min,18);
+ assert.equal(expanded[2].customer_photo_min,15);
+ assert.deepEqual(expanded[1].required_customer_fields,['Custom name','Gift message']);
+ assert.equal(matchInstagramAdProduct(expanded,{ad_id:'12000000001'}).product?.id,'family--heart');
+ assert.equal(matchInstagramAdProduct(expanded,{media_id:'round1'}).product?.id,'family--round');
+ assert.equal(resolveCatalogReference({id:'master',name:'Master',products:expanded},'Style FR-02').products[0].id,'family--round');
+ assert.equal(expandCatalogProduct({...frame('old','01'),name:'Legacy product'})[0].id,'old');
+});
+test('variant normalization ignores duplicate identifiers and unsafe photos or references',()=>{
+ const normalized=catalogProductMetadata({variants:[
+  {id:'x',name:'Heart',price:'₹250',images:['javascript:bad','https://images.example/ok.jpg'],ad_refs:['unsafe!!','12000001111']},
+  {id:'x',name:'duplicate'},
+  {id:'bad!',name:'invalid'}
+ ]});
+ assert.equal(normalized.variants?.length,1);
+ assert.deepEqual(normalized.variants?.[0].images,['https://images.example/ok.jpg']);
+ assert.deepEqual(normalized.variants?.[0].ad_refs,['12000001111']);
 });

@@ -154,6 +154,7 @@ export const InboxPage: React.FC = () => {
   const selectedSummary = selectedUser ? summaryFor(selectedUser) : { messages: [], last: undefined, unread: 0 };
   const currentThread = [...selectedSummary.messages].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
   const selectedContact = threadFor(selectedUser)?.contact;
+  const selectedAdSource = selectedContact?.last_ad_source;
   const selectedNotes = notes.filter((note) => threadFor(selectedUser)?.aliases.includes(cleanKey(note.thread_id))).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   const selectedActionKey=actionKeyFor(selectedUser);
   const paging=inboxPaging?.[selectedActionKey];
@@ -303,7 +304,7 @@ export const InboxPage: React.FC = () => {
                   <div className="flex min-w-0 items-center gap-2.5">
                     <button onClick={() => setMobileChatOpen(false)} className="rounded-lg p-2 text-slate-500 md:hidden"><ArrowLeft className="h-4 w-4" /></button>
                     <UserAvatar src={getAvatar(selectedUser)} username={selectedUser} size="md" isAiPaused={aiPaused} />
-                    <div className="min-w-0"><h2 className="truncate text-sm font-bold text-slate-900">{labelFor(selectedUser)}</h2><p className="text-xs text-slate-500">{selectedMeta.assignee ? 'Assigned to ' + selectedMeta.assignee : 'Unassigned'} · {selectedMeta.status}</p></div>
+                    <div className="min-w-0"><h2 className="truncate text-sm font-bold text-slate-900">{labelFor(selectedUser)}</h2><p className="text-xs text-slate-500">{selectedMeta.assignee ? 'Assigned to ' + selectedMeta.assignee : 'Unassigned'} · {selectedMeta.status}</p>{selectedAdSource&&(selectedAdSource.ad_id||selectedAdSource.media_id)&&<p className="mt-1 truncate text-xs font-semibold text-indigo-700" title="Last Meta-reported referral, not proof of viewing">Last source: {selectedAdSource.ad_id?'Ad '+selectedAdSource.ad_id:'Reel / Media '+selectedAdSource.media_id}</p>}</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button onClick={() => void toggleCustomerPriority()} className={'rounded-lg border p-2 ' + ((selectedContact?.customer_insight?.priority || selectedMeta.priority) === 'high' ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-slate-200 text-slate-500')} title="Toggle priority"><Star className="h-4 w-4" /></button>
@@ -329,6 +330,7 @@ export const InboxPage: React.FC = () => {
                     return (
                       <div key={message.id} className={'flex flex-col ' + (outgoing ? 'items-end' : 'items-start')}>
                         <div className={'max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm ' + (outgoing ? 'rounded-br-sm bg-indigo-600 text-white' : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800')}>{message.image_urls?.length?<div className="space-y-2">{message.image_urls.map((url,i)=><CustomerImage key={url} url={url} index={i}/>)}{message.message_text!=="[Customer sent an image]"&&<p>{message.message_text}</p>}</div>:message.catalog_elements?.length?<CatalogPreview products={message.catalog_elements.map((card,i)=>({id:String(i),name:card.title,images:[card.image_url],description:card.subtitle||'',price:'',url:card.buttons?.[0]?.url||'',active:true}))}/>:message.message_text}</div>
+                        {message.ad_source&&(message.ad_source.ad_id||message.ad_source.media_id)&&<span className="mt-1 px-1 text-xs font-semibold text-indigo-600">Meta referral · {message.ad_source.ad_id?'Ad '+message.ad_source.ad_id:'Reel / Media '+message.ad_source.media_id}</span>}
                         <span className="mt-1 px-1 text-xs font-medium text-slate-400">{new Date(message.timestamp).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}{outgoing && message.delivery_status ? ' · ' + message.delivery_status : ''}</span>
                       </div>
                     );
@@ -359,6 +361,7 @@ export const InboxPage: React.FC = () => {
               <div className="border-b border-slate-200 p-4">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Contact</p>
                 <div className="mt-3 flex items-center gap-3"><UserAvatar src={getAvatar(selectedUser)} username={selectedUser} size="lg" /><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{labelFor(selectedUser)}</p><p className="mt-1 text-xs text-slate-500">{selectedContact?.status || 'lead'} · {(selectedContact?.tags || []).join(', ') || 'No contact tags'}</p></div></div>
+                {selectedAdSource&&(selectedAdSource.ad_id||selectedAdSource.media_id)&&<div className="mt-3 rounded-xl bg-indigo-50 p-3 text-xs text-indigo-900"><strong>Last Instagram referral</strong><p className="mt-1 break-all">{selectedAdSource.ad_id?'Ad ID: '+selectedAdSource.ad_id:'Reel / Media ID: '+selectedAdSource.media_id}</p>{selectedAdSource.media_id&&selectedAdSource.ad_id&&<p className="mt-1 break-all">Reel / Media: {selectedAdSource.media_id}</p>}<p className="mt-1 text-indigo-600">Meta source when available; views without a referral cannot be attributed.</p></div>}
               </div>
 
               <div className="border-b border-slate-200 p-4">
