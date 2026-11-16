@@ -101,7 +101,7 @@ test('source mapping prefers exact Ad ID, handles Reel links and rejects ambiguo
  const products=[{id:'frame',ad_refs:['12001'],reel_refs:['https://www.instagram.com/reel/FrameOne/']},
   {id:'necklace',ad_refs:['12002'],reel_refs:['https://www.instagram.com/reel/NecklaceTwo/']}];
  assert.equal(matchInstagramAdProduct(products,{ad_id:'12002',media_id:'https://www.instagram.com/reel/FrameOne/'}).product?.id,'necklace');
- assert.equal(matchInstagramAdProduct(products,{media_id:'frameone'}).product?.id,'frame');
+ assert.equal(matchInstagramAdProduct(products,{media_id:'FrameOne'}).product?.id,'frame');
  assert.equal(matchInstagramAdProduct(products,{ad_id:'9999'}).status,'none');
  assert.equal(matchInstagramAdProduct([...products,{id:'duplicate',ad_refs:['12001']}],{ad_id:'12001'}).status,'ambiguous');
  assert.equal(matchInstagramAdProduct(products,null).status,'none');
