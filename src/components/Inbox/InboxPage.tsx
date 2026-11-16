@@ -330,7 +330,7 @@ export const InboxPage: React.FC = () => {
                     const outgoing = message.direction === 'out';
                     return (
                       <div key={message.id} className={'flex flex-col ' + (outgoing ? 'items-end' : 'items-start')}>
-                        <div className={'max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm ' + (outgoing ? ((message.catalog_elements?.length||(Boolean((message as any).is_automated)&&/^[✨📸💰📦🚚💖💝🎁🧾✅🌟😊]/u.test(String(message.message_text||''))))?'rounded-br-sm border border-indigo-100 bg-white text-slate-800':'rounded-br-sm bg-indigo-600 text-white') : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800')}>{message.catalog_elements?.length?
+                        <div className={'min-w-0 max-w-[90%] sm:max-w-[82%] rounded-2xl px-3 py-2.5 text-sm leading-6 shadow-sm ' + (outgoing ? ((message.catalog_elements?.length||(Boolean((message as any).is_automated)&&/^[✨📸💰📦🚚💖💝🎁🧾✅🌟😊]/u.test(String(message.message_text||''))))?'rounded-br-sm border border-indigo-100 bg-white text-slate-800':'rounded-br-sm bg-indigo-600 text-white') : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800')}>{message.catalog_elements?.length?
   <div className="w-full min-w-0 space-y-2 text-slate-800">
     <ProductShowcase compact label="Product cards sent through Instagram" items={message.catalog_elements.map((card,i)=>({id:String(i),image:card.image_url,title:card.title,subtitle:card.subtitle||'',description:''}))}/>
     {message.message_text&&!String(message.message_text).startsWith('[Product cards:')&&!String(message.message_text).startsWith('[Catalog:')&&<SmartMessageRenderer compact text={message.message_text}/>}
