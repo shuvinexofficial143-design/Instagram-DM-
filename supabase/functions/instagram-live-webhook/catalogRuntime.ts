@@ -448,7 +448,6 @@ export function catalogMessage(catalog:RuntimeCatalog):string {
  const p=products[0];
  const customizable=products.some(p=>Boolean(p.customization||p.customer_photo_min!==undefined||p.customer_instructions));
  const cod=single&&p.cod&&/^(?!.*(?:not|no\b|नहीं))(?:.*(?:available|yes|उपलब्ध|cod))/iu.test(p.cod);
- const free=single&&/free|मुफ्त|फ्री/iu.test(p.delivery_time||'');
  const delivery=single?String(p.delivery_time||'').trim().slice(0,70):'';
  const details=single?[
   ...(cod?[hi?'📦 Cash on Delivery उपलब्ध':'📦 Cash on Delivery available']:[]),
