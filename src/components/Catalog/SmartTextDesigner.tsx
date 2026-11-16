@@ -9,16 +9,16 @@ export function SmartMessageRenderer({text,compact=false}:{text:string;compact?:
  const lines=String(text||'').split(/\r?\n/u).map(value=>value.trim()).filter(Boolean);
  if(!lines.length)return null;
  const styled=lines.some(value=>/^[✨📸💰📦🚚💖💝🎁🧾✅🌟😊]/u.test(value));
- if(!styled)return <p className="whitespace-pre-wrap break-words text-sm leading-6">{text}</p>;
- return <div className={'min-w-0 space-y-2 break-words '+(compact?'text-xs':'text-sm')} aria-label="Formatted business reply">
+ if(!styled)return <p className="max-w-full whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">{text}</p>;
+ return <div className={'min-w-0 max-w-full space-y-1.5 break-words [overflow-wrap:anywhere] '+(compact?'text-sm':'text-sm')} aria-label="Formatted business reply">
   {lines.map((line,i)=>{
    const isHeading=i===0||/^[✨📸💝✅]/u.test(line);
    const isPrice=/^[💰]/u.test(line);
    const isPolicy=/^[📦🚚]/u.test(line);
    const isAction=/^[🎁😊]/u.test(line);
    return <p key={i} className={
-     'whitespace-pre-wrap break-words leading-relaxed '+
-     (isHeading?'font-semibold text-slate-900 ':isPrice?'font-extrabold text-lg text-slate-950 ':
+     'whitespace-pre-wrap break-words leading-[1.5] '+
+     (isHeading?'font-semibold text-slate-900 ':isPrice?'font-extrabold text-base sm:text-lg text-slate-950 ':
       isPolicy?'rounded-lg bg-slate-100/80 px-2.5 py-1.5 text-slate-700 ':
       isAction?'rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 font-medium text-indigo-900 ':'text-slate-700 ')
    }>{line}</p>;
