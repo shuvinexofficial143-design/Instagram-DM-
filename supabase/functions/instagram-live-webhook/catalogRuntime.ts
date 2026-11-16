@@ -83,8 +83,20 @@ export function resolveCatalogReference(catalog:RuntimeCatalog,text:string,postI
  }
  const words:Record<string,number>={first:1,second:2,third:3,fourth:4,fifth:5,sixth:6,seventh:7,eighth:8,ninth:9,tenth:10,'पहला':1,'पहले':1,'दूसरा':2,'दूसरे':2,'तीसरा':3,'चौथा':4,'पाँचवाँ':5,'पांचवां':5,'छठा':6,'सातवाँ':7,'सातवां':7,'आठवाँ':8,'आठवां':8,'नौवाँ':9,'नौवां':9,'दसवाँ':10,'दसवां':10,pehla:1,dusra:2,teesra:3,chautha:4,saatva:7,saatwan:7,satva:7};
  const match=input.match(/(?:^|\s)(\d{1,3})(?:st|nd|rd|th|वाँ|वां|वा|वीं)\s*(?:frame|photo|design|फ्रेम|फोटो|डिजाइन|डिज़ाइन)/iu)||input.match(/(?:frame|photo|फ्रेम|फोटो)\s*(?:no\.?|number|नंबर|#)?\s*(\d{1,3})(?:\s|$)/iu);
- const ordinal=match?Number(match[1]):Object.entries(words).find(([word])=>new RegExp('(?:^|\\s)'+word+'(?:\\s+(?:वाला|वाली))?\\s+(?:frame|photo|design|फ्रेम|फोटो|डिजाइन|डिज़ाइन)(?:\\b|\\s|$)','iu').test(input))?.[1];
+ const labelled=Object.entries(words).find(([word])=>new RegExp('(?:^|\\s)'+word+'(?:\\s+(?:वाला|वाली|स्टाइल|style))?\\s+(?:frame|photo|design|style|फ्रेम|फोटो|स्टाइल|डिजाइन|डिज़ाइन)(?:\\s|$)','iu').test(input))?.[1];
+ const shortGalleryChoice=recentPhotoUrls.length>=3&&input.trim().length<=65?
+  Object.entries({...words,'चौथी':4,'चौथे':4,'पाँचवीं':5,'पांचवीं':5,'छठी':6,'सातवीं':7,'आठवीं':8}).find(([word])=>new RegExp('(?:^|\\s)'+word+'(?:\\s|$)','iu').test(input))?.[1]:undefined;
+ const ordinal=match?Number(match[1]):labelled||shortGalleryChoice;
  if(!ordinal)return {requested:false,products:[],ambiguous:false};
+ // When the customer is choosing from a gallery *we already sent*,
+ // "fourth style"/"चौथी" means that saved style, not the fourth DB row.
+ // Never apply this to an unrelated Instagram post, which needs post_refs.
+ if(!postId&&recentPhotoUrls.length>=3){
+  const candidates=catalog.products.filter(p=>(p.images||[]).some(url=>recentPhotoUrls.includes(url))&&
+    catalogStyleKey(p.style_number||'')===String(ordinal));
+  if(candidates.length===1)return {requested:true,products:candidates,ambiguous:false};
+  if(candidates.length>1)return {requested:true,products:[],ambiguous:true};
+ }
  const matches=catalog.products.filter(p=>(p.post_refs||[]).some(ref=>ref.position===ordinal&&(!postId||catalogPostKey(ref.post_id)===catalogPostKey(postId))));
  return {requested:true,products:matches.length===1?matches:[],ambiguous:matches.length!==1};
 }
