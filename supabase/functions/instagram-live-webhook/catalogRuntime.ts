@@ -318,7 +318,7 @@ export async function loadWorkspaceCatalogs(admin:any,workspaceId:string):Promis
  const results=await Promise.all(ids.map(async(id:string)=>{try{return await loadCatalog(admin,workspaceId,id);}catch{return null;}}));
  const valid=results.filter((c):c is RuntimeCatalog=>Boolean(c));
  if(!valid.length)return null;
- return {id:'workspace_active_catalogs',name:'Product Catalog',products:valid.flatMap(c=>c.products.map(p=>({...p,collection_name:c.name}))),delivery_style:'photos_ai'};
+ return {id:'workspace_active_catalogs',name:'Product Catalog',products:valid.flatMap(c=>c.products.map(p=>({...p,collection_name:c.name}))),delivery_style:valid.every(c=>c.delivery_style==='premium_cards')?'premium_cards':'photos_ai'};
 }
 function discountPriceLabel(price:string,percent:number):string {
  const match=String(price||'').trim().match(/^₹\s*(\d+(?:\.\d{1,2})?)\s*(?:\/-)?$/u);
