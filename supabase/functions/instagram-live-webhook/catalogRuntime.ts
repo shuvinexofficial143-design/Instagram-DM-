@@ -187,6 +187,36 @@ export async function recognizeCatalogImages(catalog:RuntimeCatalog,images:strin
 }
 
 export type CatalogReply={text?:string;catalog?:RuntimeCatalog;warning?:string;handoff?:{reason:string;summary:string}};
+/** Relevant styles may be offered on an inbound DM without making the buyer ask for photos. */
+export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,history:any[]=[],recentPhotoUrls:string[]=[],adProductId=''):RuntimeCatalog|null {
+ const message=String(text||'').trim();
+ if(!message||recentPhotoUrls.length)return null;
+ if(/(?:unsubscribe|stop\s*(?:dm|messages)|do not contact|spam|शिकायत|रिफंड|बंद करो|मत भेजो|नहीं चाहिए|not interested|no thanks|cancel order|ऑर्डर कैंसल)/iu.test(message))return null;
+ if(/(?:where is my order|order status|tracking|delivery status|refund status|ऑर्डर कहाँ|ट्रैकिंग|रिटर्न|रिफंड)/iu.test(message))return null;
+ if(history.length&&isReturnGreeting(message))return null;
+ const context=history.slice(-8).map(x=>String(x.content||'')).join(' ');
+ if(/(?:order (?:confirmed|placed)|ऑर्डर (?:कन्फर्म|हो गया)|order number|payment completed|नाम.*(?:नंबर|पता)|name.*(?:phone|address))/iu.test(context)&&history.length>2)return null;
+ const greeting=/^(?:hi+|hello+|hey+|hlo+|hy+|namaste|नमस्ते|हाय|हेलो|hello sir|hi sir)[\s!?.🙂😊👋]*$/iu.test(message);
+ const interest=/(?:price|cost|rate|kitna|how much|show|photo|image|design|style|available|details|gift|frame|pendant|necklace|buy|order|catalog|collection|option|variety|₹|कीमत|दाम|कितने|कितना|फोटो|डिज़ाइन|डिजाइन|स्टाइल|फ्रेम|दिखाओ|भेजो|खरीद|गिफ्ट|वेराइटी|कैटलॉग)/iu.test(message);
+ if(!interest&&!greeting)return null;
+ const photos=catalog.products.filter(p=>p.images?.length);
+ if(!photos.length)return null;
+ const parentIds=new Set(photos.map(p=>p.parent_product_id).filter(Boolean));
+ const eligible=photos.filter(p=>!parentIds.has(p.id));
+ const source=adProductId?eligible.filter(p=>p.id===adProductId||p.parent_product_id===adProductId):eligible;
+ const selected=(source.length?source:eligible).slice().sort((a,b)=>{
+  const sa=Number((a.style_number||'').match(/\d+/)?.[0]||Infinity);
+  const sb=Number((b.style_number||'').match(/\d+/)?.[0]||Infinity);
+  return sa-sb||a.name.localeCompare(b.name);
+ });
+ // A first gallery shows up to ten relevant designs; a single product may show its views.
+ const images=selected.length===1?selected[0].images.slice(0,10).map(url=>({product:selected[0],url})):selected.slice(0,10).map(p=>({product:p,url:p.images[0]}));
+ if(!images.length)return null;
+ const shown=selected.filter(p=>images.some(item=>item.product.id===p.id));
+ return {...catalog,products:shown,elements:images.map(item=>card(item.product,item.url)),delivery_style:'photos_ai',proactive:true,caption:'अपनी पसंद का डिज़ाइन चुनिए ✨'};
+}
+
+
 export async function generateCatalogReply(options:{key:string;model?:string;systemPrompt:string;history:any[];text:string;images?:string[];catalog?:RuntimeCatalog|null;catalogWarning?:string;timeoutMs?:number;maxTokens?:number;temperature?:number;fetcher?:typeof fetch;memory?:MemorySnapshot|null;memorySettings?:any;continuity?:any;manualAnchorId?:string;customerFacts?:(CustomerFacts&{configuredFields?:string[]})|null;historySearch?:(query:string)=>Promise<any>;onUsage?:(usage:any)=>void;signal?:AbortSignal;postId?:string;adSource?:InstagramAdSource|null;sharedMediaRefs?:string[];sharedMediaUnknown?:boolean;recentPhotoUrls?:string[]}):Promise<CatalogReply>{
  const callFetch=options.fetcher||fetch;
  const images=[...new Set((options.images||[]).map(url=>safeImageUrl(url,true)).filter(Boolean))];
@@ -219,35 +249,6 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
   return {text:catalogDeliveryStyle(selected.delivery_style)==='cards'?'[Product photos: '+selected.products.map(p=>p.name).join(', ')+']':catalogMessage(selected)||'[Product photos: '+selected.products.map(p=>p.name).join(', ')+']',catalog:selected,warning:''};
  };
  const specificPhotos=(products:CatalogProduct[],indexes:number[]=[])=>({...selectProductPhotos(catalog!,products.map((p,i)=>({product_id:p.id,image_indexes:[indexes[i]||0]}))),caption:catalogDeliveryStyle(catalog!.delivery_style)==='photos_ai'?(catalogHindi(options.text)?'आपको यह डिज़ाइन पसंद आया?':'Do you like this design?'):''});
-
-/** Relevant styles may be offered on an inbound DM without making the buyer ask for photos. */
-export function proactiveCatalogSelection(catalog:RuntimeCatalog,text:string,history:any[]=[],recentPhotoUrls:string[]=[],adProductId=''):RuntimeCatalog|null {
- const message=String(text||'').trim();
- if(!message||recentPhotoUrls.length)return null;
- if(/(?:unsubscribe|stop\s*(?:dm|messages)|do not contact|spam|शिकायत|रिफंड|बंद करो|मत भेजो|नहीं चाहिए|not interested|no thanks|cancel order|ऑर्डर कैंसल)/iu.test(message))return null;
- if(/(?:where is my order|order status|tracking|delivery status|refund status|ऑर्डर कहाँ|ट्रैकिंग|रिटर्न|रिफंड)/iu.test(message))return null;
- if(history.length&&isReturnGreeting(message))return null;
- const context=history.slice(-8).map(x=>String(x.content||'')).join(' ');
- if(/(?:order (?:confirmed|placed)|ऑर्डर (?:कन्फर्म|हो गया)|order number|payment completed|नाम.*(?:नंबर|पता)|name.*(?:phone|address))/iu.test(context)&&history.length>2)return null;
- const greeting=/^(?:hi+|hello+|hey+|hlo+|hy+|namaste|नमस्ते|हाय|हेलो|hello sir|hi sir)[\s!?.🙂😊👋]*$/iu.test(message);
- const interest=/(?:price|cost|rate|kitna|how much|show|photo|image|design|style|available|details|gift|frame|pendant|necklace|buy|order|catalog|collection|option|variety|₹|कीमत|दाम|कितने|कितना|फोटो|डिज़ाइन|डिजाइन|स्टाइल|फ्रेम|दिखाओ|भेजो|खरीद|गिफ्ट|वेराइटी|कैटलॉग)/iu.test(message);
- if(!interest&&!greeting)return null;
- const photos=catalog.products.filter(p=>p.images?.length);
- if(!photos.length)return null;
- const parentIds=new Set(photos.map(p=>p.parent_product_id).filter(Boolean));
- const eligible=photos.filter(p=>!parentIds.has(p.id));
- const source=adProductId?eligible.filter(p=>p.id===adProductId||p.parent_product_id===adProductId):eligible;
- const selected=(source.length?source:eligible).slice().sort((a,b)=>{
-  const sa=Number((a.style_number||'').match(/\d+/)?.[0]||Infinity);
-  const sb=Number((b.style_number||'').match(/\d+/)?.[0]||Infinity);
-  return sa-sb||a.name.localeCompare(b.name);
- });
- // A first gallery shows up to ten relevant designs; a single product may show its views.
- const images=selected.length===1?selected[0].images.slice(0,10).map(url=>({product:selected[0],url})):selected.slice(0,10).map(p=>({product:p,url:p.images[0]}));
- if(!images.length)return null;
- const shown=selected.filter(p=>images.some(item=>item.product.id===p.id));
- return {...catalog,products:shown,elements:images.map(item=>card(item.product,item.url)),delivery_style:'photos_ai',proactive:true,caption:'अपनी पसंद का डिज़ाइन चुनिए ✨'};
-}
 
  const handoffRequest=/\b(?:human|person|agent|staff)\b|इंसान|मालिक|कर्मचारी/iu.test(options.text);
  let identified:CatalogProduct[]=sharedMatch.status==='matched'?[sharedMatch.product as CatalogProduct]:reference.products,matchedIndexes:number[]=[];
