@@ -71,6 +71,7 @@ function fixture(automations = [ai], options = {}) {
     async rpc(name, args) {
       rpcCalls.push({name,args});
       if(name==='autoreply_dm_turn'){
+        if(args.p_action==='register'&&options.turnRegistrationGate)await options.turnRegistrationGate;
         const key=args.p_workspace+':'+args.p_sender;let turn=turns.get(key)||{revision:0,pending_ids:[],seen:new Map(),phase:'collecting'};
         if(args.p_action==='register'){
           if(turn.seen.has(args.p_message))return {data:{...turn,revision:turn.seen.get(args.p_message)}};
@@ -425,6 +426,19 @@ test('one preparation RPC gates typing and AI without separate rule/usage networ
   try { await withinDeadline(started.promise); assert.equal(f.apiCalls.length, 0); assert.equal(f.aiInputs.length, 0); }
   finally { ready.resolve(); }
   assert.equal((await request).body.sent, 1);
+});
+test('typing is dispatched while the eligible DM turn is still being registered',async()=>{
+ const registration=deferred(),typing=deferred();
+ const f=fixture([ai],{turnRegistrationGate:registration.promise,onTypingAttempt:()=>typing.resolve()});
+ const request=f.post(dm('typing-before-register','I want to see photo frames'));
+ try{
+  await withinDeadline(typing.promise);
+  assert.equal(f.apiCalls.filter(c=>c.body.sender_action==='typing_on').length,1);
+  assert.equal(f.apiCalls.filter(c=>c.body.message).length,0);
+ }finally{registration.resolve();}
+ const response=await request;
+ assert.equal(response.body.sent,1);
+ assert.equal(f.apiCalls.filter(c=>c.body.sender_action==='typing_off').length,1);
 });
 test('slow typing acknowledgement cannot delay generating and sending the reply', async () => {
   const typing = deferred(), sent = deferred();
