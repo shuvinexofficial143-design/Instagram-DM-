@@ -58,7 +58,7 @@ export function ProductShowcase({
               <div className="space-y-2.5 px-3.5 py-3.5">
                 {price && <p className="text-xl font-extrabold tracking-tight">{price}</p>}
                 {(delivery || cod) && <div className="flex flex-wrap gap-1.5">
-                  {delivery && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800"><Truck className="h-3.5 w-3.5"/>{freeDelivery(delivery) ? 'Free delivery' : delivery}</span>}
+                  {delivery && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800"><Truck className="h-3.5 w-3.5"/>{delivery.slice(0,72)}</span>}
                   {isCodAvailable(cod) && <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-800"><PackageCheck className="h-3.5 w-3.5"/>COD</span>}
                 </div>}
                 {item.customization && <p className="flex items-start gap-1.5 text-xs leading-5 text-slate-600"><Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-pink-500"/>{item.customization}</p>}
