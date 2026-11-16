@@ -52,7 +52,9 @@ function wantsManyCatalogPhotos(text:string){return /\b(?:all|both|every|differe
 function explicitCatalogResend(text:string){return /again|resend|once more|दोबारा|फिर से|वापस भेज|dubara|phir se/iu.test(text);}
 /** Format catalog labels without changing the merchant's stored product records. */
 export function cleanCatalogDisplayName(name:string,styleNumber=''):string {
- const trimmed=String(name||'').replace(/\.(?:png|jpe?g|webp|gif)\s*$/iu,'').replace(/[-_]+/g,' ').replace(/\s+/g,' ').trim();
+ const original=String(name||'').trim();
+ if(!styleNumber&&!/\.(?:png|jpe?g|webp|gif)\s*$/iu.test(original))return original;
+ const trimmed=original.replace(/\.(?:png|jpe?g|webp|gif)\s*$/iu,'').replace(/[-_]+/g,' ').replace(/\s+/g,' ').trim();
  const digits=(String(styleNumber||'').match(/\d+/)||[])[0];
  const deDuplicated=digits?trimmed.replace(new RegExp('^(?:style|स्टाइल)\\s*0*'+Number(digits)+'(?:\\s|$)','iu'),'').trim():trimmed;
  return (deDuplicated||trimmed).replace(/[.\s-]+$/g,'').replace(/^(?:style|स्टाइल)\s+(?:style|स्टाइल)\s+/iu,'Style ').trim();
