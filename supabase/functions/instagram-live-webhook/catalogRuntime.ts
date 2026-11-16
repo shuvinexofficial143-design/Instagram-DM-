@@ -408,7 +408,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
     return photoResult({...selected,proactive:true,reply_language:'hi'});
    }
   }
-  return {text:'📸 इस फोटो का डिज़ाइन अभी पक्का मैच नहीं हुआ। आप चाहें तो फोटो पर लिखा STYLE नंबर (जैसे 03 या 08) भेजें, ताकि सही डिज़ाइन दिखा सकूँ।',warning:'Image comparison did not identify one unique catalog design.'};
+  return {text:'📸 इस फोटो की सटीक पहचान अभी स्पष्ट नहीं है। फोटो पर लिखा STYLE नंबर (जैसे 03 या 08) भेजने पर सही डिज़ाइन दिखा सकूँगा।',warning:'Image comparison did not identify one unique catalog design.'};
  };
  const specificPhotos=(products:CatalogProduct[],indexes:number[]=[])=>({...selectProductPhotos(catalog!,products.map((p,i)=>({product_id:p.id,image_indexes:[indexes[i]||0]}))),caption:catalogDeliveryStyle(catalog!.delivery_style)==='photos_ai'?(catalogHindi(options.text)?'आपको यह डिज़ाइन पसंद आया?':'Do you like this design?'):''});
 
