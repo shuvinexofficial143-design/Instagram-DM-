@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {generateCatalogReply,resolveCatalogReference,catalogContext,catalogDeliveryParts,catalogProductMetadata,expandCatalogProduct,recognizeCatalogImages,type RuntimeCatalog} from '../supabase/functions/instagram-live-webhook/catalogRuntime';
-import {normalizeInstagramAdSource,matchInstagramAdProduct,mediaReferenceKey} from '../supabase/functions/instagram-live-webhook/adAttribution';
+import {normalizeInstagramAdSource,matchInstagramAdProduct,mediaReferenceKey,extractInstagramSharedMedia,matchSharedInstagramMedia} from '../supabase/functions/instagram-live-webhook/adAttribution';
 const frame=(id:string,style_number:string)=>({id,name:id+' frame',style_number,price:'₹250',description:'Custom photo frame',url:'',images:['https://images.example/'+id+'.jpg','https://images.example/'+id+'-side.jpg'],cod:'Available',delivery_time:'5–7 days',customization:'Customer photo',availability:'White only',post_refs:[{post_id:'post-a',position:7}]});
 const catalog:RuntimeCatalog={id:'frames',name:'Frames',delivery_style:'photos_details',products:[frame('heart','07'),{...frame('round','08'),post_refs:[{post_id:'post-b',position:7}]}]};
 const answer=(content:any)=>Response.json({choices:[{message:typeof content==='string'?{content}:{content:JSON.stringify(content)}}]});
@@ -95,13 +95,13 @@ test('signed Meta referral fields are sanitized; a mere view is never attributed
  assert.equal(normalizeInstagramAdSource({source:'ADS'}),null);
  assert.deepEqual(normalizeInstagramAdSource({ad_id:'1200123456789',ads_context_data:{post_id:'18001234'},source:'ADS'}),{ad_id:'1200123456789',media_id:'18001234',source:'ADS'});
  assert.equal(normalizeInstagramAdSource({ad_id:'unsafe!!'}),null);
- assert.equal(mediaReferenceKey('https://www.instagram.com/reel/AbCdEf/?utm_source=test'),'abcdef');
+ assert.equal(mediaReferenceKey('https://www.instagram.com/reel/AbCdEf/?utm_source=test'),'AbCdEf');
 });
 test('source mapping prefers exact Ad ID, handles Reel links and rejects ambiguous products',()=>{
  const products=[{id:'frame',ad_refs:['12001'],reel_refs:['https://www.instagram.com/reel/FrameOne/']},
   {id:'necklace',ad_refs:['12002'],reel_refs:['https://www.instagram.com/reel/NecklaceTwo/']}];
  assert.equal(matchInstagramAdProduct(products,{ad_id:'12002',media_id:'https://www.instagram.com/reel/FrameOne/'}).product?.id,'necklace');
- assert.equal(matchInstagramAdProduct(products,{media_id:'frameone'}).product?.id,'frame');
+ assert.equal(matchInstagramAdProduct(products,{media_id:'FrameOne'}).product?.id,'frame');
  assert.equal(matchInstagramAdProduct(products,{ad_id:'9999'}).status,'none');
  assert.equal(matchInstagramAdProduct([...products,{id:'duplicate',ad_refs:['12001']}],{ad_id:'12001'}).status,'ambiguous');
  assert.equal(matchInstagramAdProduct(products,null).status,'none');
@@ -166,4 +166,43 @@ test('variant normalization ignores duplicate identifiers and unsafe photos or r
  assert.equal(normalized.variants?.length,1);
  assert.deepEqual(normalized.variants?.[0].images,['https://images.example/ok.jpg']);
  assert.deepEqual(normalized.variants?.[0].ad_refs,['12000001111']);
+});
+
+test('Instagram Reel and Post shares are extracted without accepting video CDN URLs',()=>{
+ const reel='https://www.instagram.com/reel/AbCdEf/?igsh=abc';
+ const fromAttachment=extractInstagramSharedMedia({attachments:[{type:'share',payload:{url:reel}}]});
+ assert.equal(fromAttachment.hasSharedMedia,true);
+ assert.deepEqual(fromAttachment.references,[reel]);
+ assert.deepEqual(extractInstagramSharedMedia({text:'Please check https://www.instagram.com/p/PostABC/ and tell price'}).references,['https://www.instagram.com/p/PostABC/']);
+ assert.deepEqual(extractInstagramSharedMedia({attachments:[{type:'ig_post',payload:{media:{id:'180222333'}}}]}).references,['180222333']);
+ assert.deepEqual(extractInstagramSharedMedia({attachments:[{type:'share',payload:{url:'https://instagram.fcdn.net/video.mp4'}}]}),{references:[],hasSharedMedia:true});
+ assert.equal(extractInstagramSharedMedia({attachments:[{type:'image',payload:{url:'https://example.com/image.jpg'}}]}).hasSharedMedia,false);
+ assert.equal(mediaReferenceKey('https://www.instagram.com/reel/AbC/'), 'AbC');
+ assert.notEqual(mediaReferenceKey('https://www.instagram.com/reel/AbC/'),mediaReferenceKey('https://www.instagram.com/reel/abc/'));
+});
+test('multiple shared media references must all map to the SAME product',()=>{
+ const products=[{id:'photo',reel_refs:['https://www.instagram.com/reel/AbCd/','180333']},{id:'pendant',reel_refs:['https://www.instagram.com/p/ZyX/']}];
+ assert.equal(matchSharedInstagramMedia(products,['180333','https://www.instagram.com/reel/AbCd/']).product?.id,'photo');
+ assert.equal(matchSharedInstagramMedia(products,['180333','https://www.instagram.com/p/ZyX/']).status,'ambiguous');
+ assert.equal(matchSharedInstagramMedia(products,['180333','https://www.instagram.com/p/Unknown/']).status,'ambiguous');
+ assert.equal(matchSharedInstagramMedia(products,['https://www.instagram.com/p/Unknown/']).status,'none');
+});
+test('exact shared Post opens correct product photos and saved price without AI guessing',async()=>{
+ const products=[{...frame('heart','07'),reel_refs:['https://www.instagram.com/p/MappedPost/'],customer_photo_min:15,customer_photo_max:20},
+ { ...frame('round','08'),reel_refs:['https://www.instagram.com/reel/Other/']}];
+ let aiCalls=0;
+ const result=await generateCatalogReply({...base,catalog:{...catalog,products},text:'[Customer shared an Instagram Reel/Post]',sharedMediaRefs:['https://www.instagram.com/p/MappedPost/'],
+  fetcher:async()=>{aiCalls++;throw Error('Explicit share must resolve deterministically');}});
+ assert.equal(aiCalls,0);
+ assert.equal(result.catalog?.products.length,1);
+ assert.equal(result.catalog?.products[0].id,'heart');
+ assert.equal(result.catalog?.elements?.[0]?.image_url,products[0].images[0]);
+ assert.match(result.text||'',/₹250/);
+ assert.match(result.text||'',/15–20/);
+});
+test('unmapped or opaque shares ask for clarification instead of guessing another product',async()=>{
+ const offer={...catalog,products:[{...frame('heart','07'),reel_refs:['https://www.instagram.com/reel/Known/']}]};
+ const opts={...base,catalog:offer,text:'[Customer shared an Instagram Reel/Post]',fetcher:async()=>{throw Error('No guessing');}};
+ assert.equal((await generateCatalogReply({...opts,sharedMediaUnknown:true})).catalog,undefined);
+ assert.equal((await generateCatalogReply({...opts,sharedMediaRefs:['https://www.instagram.com/reel/Unknown/']})).catalog,undefined);
 });

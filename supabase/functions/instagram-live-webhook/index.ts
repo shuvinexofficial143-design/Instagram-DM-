@@ -4,7 +4,7 @@ import {scanCustomerFacts,scanConfiguredCustomerFields,customerFactValues,canoni
 import {fetchConversationUsernames,cacheInstagramProfilePhoto} from './instagramProfiles.ts';
 import { memorySettings,memoryLogPreview } from './smartMemory.ts';
 import { loadCatalog, buildCatalogPage, prepareCatalogDelivery, catalogDeliveryParts, catalogDeliveryStyle, extractImageAttachments, generateCatalogReply } from "./catalogRuntime.ts";
-import {normalizeInstagramAdSource} from "./adAttribution.js";
+import {normalizeInstagramAdSource,extractInstagramSharedMedia} from "./adAttribution.js";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -930,6 +930,8 @@ async function persistInboundMessage(
     from_avatar: profile.avatar_url || (avatar.startsWith('data:image/') ? '' : avatar),
     message_text: item.text,
     ...(item.images?.length ? { image_urls: item.images } : {}),
+    ...(item.sharedMediaRefs?.length ? { shared_media_refs:item.sharedMediaRefs } : {}),
+    ...(item.sharedMediaUnknown ? { shared_media_unresolved:true } : {}),
     ...(item.adSource ? {ad_source:{...item.adSource,received_at:nowIso}} : {}),
     direction: "in",
     is_automated: false,
@@ -1365,15 +1367,21 @@ function extractAutomationEvents(event: any): any[] {
     const story = message.reply_to?.story || value.reply_to?.story || value.story;
     const mediaId = String(story?.id || message.reply_to?.story_id || value.reply_to?.story_id || value.story_id || "");
     const images = extractImageAttachments(message);
+    const shared = extractInstagramSharedMedia(message);
+    const additional = extractInstagramSharedMedia(value === message ? null : value);
+    const sharedMediaRefs = [...new Set([...shared.references,...additional.references])].slice(0,8);
+    const sharedMediaUnknown = (shared.hasSharedMedia||additional.hasSharedMedia)&&!sharedMediaRefs.length;
     const adSource = normalizeInstagramAdSource(value.referral || message.referral);
-    const text = asText(message.text || value.text, 6000) || (images.length ? "[Customer sent an image]" : (Array.isArray(message.attachments)&&message.attachments.some((a:any)=>a?.type==="image") ? "[Customer image unavailable. Ask for a new clear photo or product name.]" : ""));
+    const text = asText(message.text || value.text, 6000) || (images.length ? "[Customer sent an image]" :
+      (shared.hasSharedMedia||additional.hasSharedMedia ? "[Customer shared an Instagram Reel/Post]" :
+      (Array.isArray(message.attachments)&&message.attachments.some((a:any)=>a?.type==="image") ? "[Customer image unavailable. Ask for a new clear photo or product name.]" : "")));
     const senderId = String(value.sender?.id || value.from?.id || "");
     const entryId = String(entry.id || "");
     const recipientId = String(value.recipient?.id || entryId);
     const senderUsername = String(value.from?.username || value.sender?.username || "").trim().toLowerCase();
     if (!text || !senderId || !recipientId || message.is_echo || value.is_echo || message.is_self || value.is_self || senderId === entryId) return;
     const timestamp = Number(value.timestamp || entry.time || Date.now());
-    items.push({ entryId, senderId, senderUsername, recipientId, text, timestamp, mediaId, images, adSource, postId:String(value.referral?.media?.id||message.referral?.media?.id||message.reply_to?.media?.id||''),
+    items.push({ entryId, senderId, senderUsername, recipientId, text, timestamp, mediaId, images, adSource,sharedMediaRefs,sharedMediaUnknown, postId:String(value.referral?.media?.id||message.referral?.media?.id||message.reply_to?.media?.id||sharedMediaRefs[0]||''),
       triggerType: story || mediaId ? "story_reply" : "dm",
       messageId: String(message.mid || value.mid || `dm_${senderId}_${timestamp}_${text}`),
     });
@@ -2043,7 +2051,7 @@ Instagram DM style rules:
           isGreeting,
           selectedCatalog ? {...selectedCatalog,onSelect:(chosen:any)=>{selectedCatalog=chosen;sendCatalog=true;}} : undefined,
           turnImages, catalogWarning, {
-            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,customerFacts:scannedCustomerFacts,signal:turnWatch?.signal,postId:item.postId,adSource:item.adSource,recentPhotoUrls,
+            memory:context.memory,memorySettings:context.memory_settings,continuity:context.continuity,manualAnchorId:context.manual_context?.id,customerFacts:scannedCustomerFacts,signal:turnWatch?.signal,postId:item.postId,adSource:item.adSource,sharedMediaRefs:item.sharedMediaRefs||[],sharedMediaUnknown:Boolean(item.sharedMediaUnknown),recentPhotoUrls,
             historySearch:async(query:string)=>{const {data,error}=await admin.rpc('autoreply_search_conversation',{p_workspace:workspaceId,p_sender:item.senderId,p_query:query});if(error)throw Error('Historical search unavailable');return data;},
             onUsage:(usage:any)=>{for(const key of ['input_tokens','output_tokens','cached_input_tokens','calls','provider_ms'])replyUsage[key]+=usage[key]||0;replyUsage.usage_available=replyUsage.usage_available||usage.usage_available;},
           }

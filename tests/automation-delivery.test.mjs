@@ -909,3 +909,41 @@ test('rapid separate image messages are coalesced and every pending image reache
  // The fixture supplies only one match, so the incomplete multi-image result safely asks for clarification once.
  const messages=f.apiCalls.filter(c=>c.body.message);assert.equal(messages.length,1);assert.ok(messages[0].body.message.text);assert.equal(messages[0].body.message.attachment,undefined);
 });
+
+test('signed Instagram DM share attachment routes Reel to exact SKU image and price',async()=>{
+ const rule={...ai,actions:ai.actions.map(a=>a.type==='ai_chatbot'?{...a,catalog_id:'products'}:a)};
+ const products=[{id:'frame',catalog_id:'products',name:'Heart Frame',price:'₹299',description:'Personalized frame',active:true,images:['https://images.example/heart.jpg'],reel_refs:['https://www.instagram.com/reel/FrameAbC/'],customer_photo_min:15,customer_photo_max:20},
+ {id:'pendant',catalog_id:'products',name:'Love Pair Necklace',price:'₹360',description:'White',active:true,images:['https://images.example/necklace.jpg'],reel_refs:['https://www.instagram.com/reel/PendantX/']}];
+ const f=fixture([rule],{catalogs:[{id:'products',name:'Store',active:true}],products});
+ const ev=dm('reel-share','',{attachments:[{type:'share',payload:{url:'https://www.instagram.com/reel/FrameAbC/?igsh=abc'}}]});
+ const response=await f.direct(ev);
+ assert.equal(response.body.sent,1);
+ assert.equal(f.aiInputs.length,0);
+ const inbound=f.writes.find(w=>w.collection==='inbox_messages'&&w.id==='reel-share');
+ assert.deepEqual(Array.from(inbound.data.shared_media_refs),['https://www.instagram.com/reel/FrameAbC/?igsh=abc']);
+ const sent=f.apiCalls.find(c=>c.body.message?.attachment?.payload?.template_type==='generic');
+ assert.equal(sent.body.message.attachment.payload.elements[0].image_url,'https://images.example/heart.jpg');
+ assert.match(sent.body.message.attachment.payload.elements[0].subtitle,/₹299/);
+ assert.equal(sent.body.message.attachment.payload.elements.length,1);
+});
+test('text Instagram Post links also route without Meta ad referral',async()=>{
+ const rule={...ai,actions:ai.actions.map(a=>a.type==='ai_chatbot'?{...a,catalog_id:'products'}:a)};
+ const f=fixture([rule],{catalogs:[{id:'products',name:'Store',active:true}],products:[
+  {id:'frame',catalog_id:'products',name:'Photo Frame',price:'₹250',active:true,images:['https://images.example/f.jpg'],reel_refs:['https://www.instagram.com/p/PhotoPost1/']}
+ ]});
+ const r=await f.direct(dm('post-link','https://www.instagram.com/p/PhotoPost1/'));
+ assert.equal(r.body.sent,1);
+ assert.equal(f.apiCalls.filter(c=>c.body.message).length,1);
+ assert.equal(f.apiCalls.find(c=>c.body.message)?.body.message.attachment.payload.elements[0].image_url,'https://images.example/f.jpg');
+});
+test('unmapped shared Reel does not borrow an old Ad ID or send an unrelated product image',async()=>{
+ const rule={...ai,actions:ai.actions.map(a=>a.type==='ai_chatbot'?{...a,catalog_id:'products'}:a)};
+ const f=fixture([rule],{catalogs:[{id:'products',name:'Store',active:true}],products:[
+ {id:'necklace',catalog_id:'products',name:'Necklace',price:'₹360',active:true,images:['https://images.example/n.jpg'],ad_refs:['12022222'],reel_refs:['https://www.instagram.com/reel/Known/']}
+ ]});
+ const r=await f.direct(dm('unmapped-share','',{attachments:[{type:'share',payload:{url:'https://www.instagram.com/reel/OtherUnknown/'}}],referral:{ad_id:'12022222'}}));
+ assert.equal(r.body.sent,1);
+ assert.equal(f.apiCalls.some(c=>c.body.message?.attachment),false);
+ const text=f.apiCalls.find(c=>c.body.message)?.body.message.text;
+ assert.match(text,/catalog|Catalog|Style Number/);
+});
