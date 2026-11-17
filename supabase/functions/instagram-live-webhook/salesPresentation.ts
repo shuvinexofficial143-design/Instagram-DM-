@@ -60,7 +60,7 @@ export function formatMobileSalesText(text:string,maxLineChars=42):string{
  * never invent a price, order, discount, photo count or delivery promise.
  */
 export function formatConversationalSalesText(draft:string):string{
- const source=String(draft||'').replace(/\r\n/g,'\n').replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+ const source=String(draft||'').replace(/\r\n/g,'\n').replace(/\*\*([\s\S]{1,160}?)\*\*/gu,'$1').replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
  if(!source||source.length>1400||/https?:\/\/\S+|`{3}/u.test(source))return source;
  if(!/(?:₹|कीमत|price|COD|order|ऑर्डर|frame|फ्रेम|design|डिज़ाइन|डिजाइन|photo|फोटो|तस्वीर|कस्टमाइज|delivery|डिलीवरी)/iu.test(source))return source;
  if(source.includes('\n\n'))return formatMobileSalesText(source);
