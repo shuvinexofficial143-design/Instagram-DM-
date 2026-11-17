@@ -3,7 +3,7 @@ import {DM_AI_MODEL,chatModelParams,businessPrompt} from './openaiConfig.ts';
 import {scanCustomerFacts,scanConfiguredCustomerFields,customerFactValues,canonicalCustomerField,type CustomerFacts} from './customerFacts.ts';
 import {fetchConversationUsernames,cacheInstagramProfilePhoto} from './instagramProfiles.ts';
 import { memorySettings,memoryLogPreview } from './smartMemory.ts';
-import { loadCatalog, buildCatalogPage, prepareCatalogDelivery, catalogDeliveryParts, catalogDeliveryStyle, extractImageAttachments, generateCatalogReply, loadWorkspaceCatalogs } from "./catalogRuntime.ts";
+import { loadCatalog, buildCatalogPage, prepareCatalogDelivery, catalogDeliveryParts, catalogDeliveryStyle, extractImageAttachments, generateCatalogReply, loadWorkspaceCatalogs, resolveCatalogReference, selectProductPhotos } from "./catalogRuntime.ts";
 import {normalizeInstagramAdSource,extractInstagramSharedMedia} from "./adAttribution.js";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -2208,6 +2208,24 @@ Instagram DM style rules:
       continue;
     }
 
+    // Never expose an internal catalog marker copied from conversation history.
+    // If a numbered style has an exact saved photo, send the Meta card instead.
+    if(!sendCatalog&&/^\s*\[(?:Product cards|Product photos|Catalog):[^\]]*\]\s*$/iu.test(responseText)){
+      let matched:any=null;
+      if(selectedCatalog&&/^\s*[0-9०-९]{1,2}\s*$/u.test(item.text)){
+        const ref=resolveCatalogReference(selectedCatalog,item.text,item.postId||'',history,[]);
+        if(ref.requested&&!ref.ambiguous&&ref.products.length===1&&ref.products[0].images.length)matched=ref.products[0];
+      }
+      if(matched){
+        selectedCatalog={...selectProductPhotos(selectedCatalog,[{product_id:matched.id,image_indexes:[0]}]),reply_language:'hi'};
+        sendCatalog=true;
+        responseText='[Approved product photo: '+matched.style_number+']'; // internal history only, not a customer DM
+        console.log('[LIVE_DM_CATALOG_SENTINEL_RECOVERED]',{selectedCount:1});
+      }else{
+        responseText='📸 कृपया जिस डिज़ाइन की फोटो चाहिए, उसका Style नंबर भेजिए। मैं उसी की सही फोटो दिखाऊँगा।';
+        console.warn('[LIVE_DM_CATALOG_SENTINEL_BLOCKED]',{reason:'missing_unique_photo_match'});
+      }
+    }
     const outgoingTextKey = normalizeReplyCacheKey(responseText);
     const outgoingMemoryKey = `${igUserId}:${outgoingTextKey}`;
     pendingOutboundMemory.set(outgoingMemoryKey, {
