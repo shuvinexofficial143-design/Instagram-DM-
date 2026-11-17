@@ -132,3 +132,12 @@ test('mobile price and buying templates separate the price, delivery and CTA int
  assert.match(buying,/₹250\n\n/);
  assert.match(buying,/\n\n😊 ऑर्डर शुरू करें\?/);
 });
+
+
+test('Instagram customer sees readable design text rather than raw **bold** delimiters',()=>{
+ const raw='✨ ठीक है 😊 आपका चयन अभी भी **डिज़ाइन 4 (FR-04)** है।\n\n✨ ऑर्डर के लिए मोबाइल नंबर भेजें।';
+ const formatted=formatConversationalSalesText(raw);
+ assert.doesNotMatch(formatted,/\*\*/);
+ assert.match(formatted,/डिज़ाइन 4 \(FR-04\)/);
+ assert.match(formatted,/\n\n/);
+});
