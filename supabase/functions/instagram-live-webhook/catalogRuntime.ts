@@ -432,9 +432,9 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
  let reference=catalog?resolveCatalogReference(catalog,options.text,options.postId,options.history,options.recentPhotoUrls||[]):{requested:false,products:[],ambiguous:false};
  // A buyer's "No" after an offer is a refusal, not permission to continue checkout.
  // Do not reuse an older selected SKU or ask for phone/address on this turn.
- const refuses= /^(?:no(?:pe| thanks)?|not now|nah[iy]?|nahi+n?|नहीं(?: चाहिए)?|नही|मत भेजो|अभी नहीं|नहीं लेना|नहीं लूँगा|नहीं लूंगी)[.!?\s🙏😊]*$/iu.test(options.text.trim());
+ const refuses= /^(?:no(?:pe| thanks)?|not now|nah[iy]?|nahi+n?|nhi|नहीं(?: चाहिए)?|नही|मत भेजो|अभी नहीं|नहीं लेना|नहीं लूँगा|नहीं लूंगी)[.!?\s🙏😊]*$/iu.test(options.text.trim());
  const priorSales=options.history.slice(-7).some(m=>m?.role==='assistant'&&/(?:\border\b|checkout|buy|style|catalog|product|ऑर्डर|खरीद|डिज़ाइन|स्टाइल|फोटो|डिजाइन)/iu.test(String(m?.content||'')));
- if(refuses&&priorSales)return {text:catalogHindi(options.text)||options.history.some(m=>m?.role==='user'&&catalogHindi(String(m?.content||'')))?
+ if(refuses&&priorSales)return {text:catalogHindi(options.text)||options.history.some(m=>/[ऀ-ॿ]/u.test(String(m?.content||'')))?
   'ठीक है 😊 अभी ऑर्डर आगे नहीं बढ़ाऊँगा। आप चाहें तो कोई और डिज़ाइन देख सकते हैं।':
   'No problem 😊 I will not continue the order. You can explore another design whenever you like.',warning:''};
  const recentUrls=new Set(options.recentPhotoUrls||[]);
