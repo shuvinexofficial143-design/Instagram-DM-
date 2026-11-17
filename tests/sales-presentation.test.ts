@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {defaultSalesLayout,renderSalesTemplate,formatMobileSalesText,selectSalesLayoutAI,customerLanguage,type SalesProduct} from '../supabase/functions/instagram-live-webhook/salesPresentation';
+import {defaultSalesLayout,renderSalesTemplate,formatMobileSalesText,formatConversationalSalesText,selectSalesLayoutAI,customerLanguage,type SalesProduct} from '../supabase/functions/instagram-live-webhook/salesPresentation';
 
 const frame:SalesProduct={id:'frame02',name:'Floral Birthday Frame',style_number:'Style 02',price:'₹250',
  cod:'Available',delivery_time:'5–6 days • free delivery',customization:'Use your photos',
@@ -104,4 +104,31 @@ test('explicit price and purchase requests skip expensive secondary model, while
  assert.deepEqual(price,{layout:'price',source:'rules'});
  assert.deepEqual(buying,{layout:'buying',source:'rules'});
  assert.equal(calls,0);
+});
+
+
+test('Instagram sales reply after "Ha" has legible blank paragraphs without changing price, photo count or question',()=>{
+ const original='बहुत बढ़िया 😊 आपने डिज़ाइन 4 पसंद किया है। इसकी कीमत ₹250 है और इसमें 6–8 साफ़ photos लगेंगी।  \nऑर्डर आगे बढ़ाने के लिए आपका नाम बताइए।';
+ const result=formatConversationalSalesText(original);
+ assert.match(result,/✨ बहुत बढ़िया/);
+ assert.match(result,/💰 इसकी कीमत ₹250/);
+ assert.match(result,/🎁 ऑर्डर आगे/);
+ assert.ok((result.match(/\n\n/g)||[]).length>=2);
+ for(const s of ['₹250','6–8 साफ़ photos','आपका नाम बताइए'])assert.ok(result.includes(s));
+ assert.ok(result.split('\n').filter(Boolean).every(s=>[...s].length<=48));
+});
+test('the formatter keeps normal chat, links, existing sections, and support replies intact',()=>{
+ assert.equal(formatConversationalSalesText('हाय! कैसे हैं?'),'हाय! कैसे हैं?');
+ assert.equal(formatConversationalSalesText('See https://example.com/order for details.'),'See https://example.com/order for details.');
+ const spaced='✨ Style 04\n\n💰 कीमत: ₹250\n\n📦 COD उपलब्ध';
+ assert.equal(formatConversationalSalesText(spaced),spaced);
+ const support=renderSalesTemplate({layout:'support',draft:'Please share your tracking number.'});
+ assert.equal(support,'Please share your tracking number.');
+});
+test('mobile price and buying templates separate the price, delivery and CTA into paragraphs',()=>{
+ const price=renderSalesTemplate({layout:'price',product:frame,language:'hi'});
+ const buying=renderSalesTemplate({layout:'buying',product:frame,language:'hi'});
+ assert.match(price,/₹250\n\n📦 COD/);
+ assert.match(buying,/₹250\n\n/);
+ assert.match(buying,/\n\n😊 ऑर्डर शुरू करें\?/);
 });
