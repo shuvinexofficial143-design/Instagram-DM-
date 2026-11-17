@@ -430,6 +430,13 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
  // Explicitly shared media takes priority over a possibly stale ad referral.
  const adMatch=sharedMediaRefs.length||options.sharedMediaUnknown?{status:'none' as const}:matchInstagramAdProduct(catalog?.products||[],options.adSource);
  let reference=catalog?resolveCatalogReference(catalog,options.text,options.postId,options.history,options.recentPhotoUrls||[]):{requested:false,products:[],ambiguous:false};
+ // A buyer's "No" after an offer is a refusal, not permission to continue checkout.
+ // Do not reuse an older selected SKU or ask for phone/address on this turn.
+ const refuses= /^(?:no(?:pe| thanks)?|not now|nah[iy]?|nahi+n?|नहीं(?: चाहिए)?|नही|मत भेजो|अभी नहीं|नहीं लेना|नहीं लूँगा|नहीं लूंगी)[.!?\s🙏😊]*$/iu.test(options.text.trim());
+ const priorSales=options.history.slice(-7).some(m=>m?.role==='assistant'&&/(?:\border\b|checkout|buy|style|catalog|product|ऑर्डर|खरीद|डिज़ाइन|स्टाइल|फोटो|डिजाइन)/iu.test(String(m?.content||'')));
+ if(refuses&&priorSales)return {text:catalogHindi(options.text)||options.history.some(m=>m?.role==='user'&&catalogHindi(String(m?.content||'')))?
+  'ठीक है 😊 अभी ऑर्डर आगे नहीं बढ़ाऊँगा। आप चाहें तो कोई और डिज़ाइन देख सकते हैं।':
+  'No problem 😊 I will not continue the order. You can explore another design whenever you like.',warning:''};
  const recentUrls=new Set(options.recentPhotoUrls||[]);
  // A customer's bare "4" can refer to the screenshot sent immediately before it.
  // The printed label distinguishes STYLE 04 from the separate FR-04 design.
@@ -455,7 +462,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
  // A verified numeric or explicit style selection must actually send its catalog photo.
  // Avoid a stale conversational quantity ("2 frames") leaking into a new photo request.
  if(catalog&&reference.requested&&!reference.ambiguous&&reference.products.length===1&&!images.length&&!sharedMediaRefs.length&&!options.sharedMediaUnknown&&
-    !/(?:handoff|hand off|send to human|staff handles|agent takeover|मानव एजेंट)/iu.test(options.systemPrompt)){
+    !/(?:hand\s*off|send|route|transfer)\s+(?:all\s+)?(?:photo|catalog|product|design)\s+requests?\s+(?:to\s+)?(?:staff|human|agent)|(?:staff|human|agent)\s+handles?\s+(?:all\s+)?(?:photo|catalog|product|design)\s+requests?/iu.test(options.systemPrompt)){
   const selected=reference.products[0];
   if(selected.images.length)return photoResult(selectProductPhotos(catalog,[{product_id:selected.id,image_indexes:[0]}]));
  }
@@ -621,6 +628,12 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
       customerText:options.text,language:catalogHindi(options.text)?'hi':'en'});
     if(arranged)return {text:arranged,warning:imageWarning||options.catalogWarning||''};
    }
+  }
+  // Never leak the internal catalog-delivery sentinel as a customer DM.
+  if(/^\s*\[(?:Product cards|Product photos|Catalog):[^\]]*\]\s*$/iu.test(text)){
+   if(catalog&&!reference.ambiguous&&reference.products.length===1&&reference.products[0].images.length)
+    return photoResult(selectProductPhotos(catalog,[{product_id:reference.products[0].id,image_indexes:[0]}]));
+   return {text:catalogHindi(options.text)?'📸 कौन-सा स्टाइल देखना है? उसका नंबर भेज दीजिए, मैं सही फोटो दिखाऊँगा।':'📸 Which style would you like to see? Reply with its number and I will show the exact photo.',warning:'AI attempted to echo internal catalog marker.'};
   }
   return {text:formatConversationalSalesText(text),warning:imageWarning||options.catalogWarning||''};
  }
