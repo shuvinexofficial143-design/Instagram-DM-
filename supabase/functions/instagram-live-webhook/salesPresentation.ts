@@ -95,7 +95,7 @@ export function renderSalesTemplate(input:SalesRenderInput):string{
    order.total?(hi?'💰 कुल कीमत: ':'💰 Total: ')+cleanPrice(order.total):'',
    order.delivery_time?(hi?'🚚 अनुमानित डिलीवरी: ':'🚚 Estimated delivery: ')+order.delivery_time:'',
    hi?'💖 खरीदारी के लिए धन्यवाद!':'💖 Thank you for your order!'
-  ].filter(Boolean).join('\n'));
+  ].filter(Boolean).join('\n\n'));
  }
  const name=p?cleanName(p.name):'';
  const style=p?.style_number?String(p.style_number).trim().slice(0,40):'';
@@ -119,7 +119,7 @@ export function renderSalesTemplate(input:SalesRenderInput):string{
    '✨ '+heading,priceLine,...addShipping(p,hi),
    custom?(hi?'💖 तस्वीरों के साथ कस्टमाइजेशन उपलब्ध है।':'💖 Photo customization is available.'):'',
    hi?'🎁 चाहें तो इस डिज़ाइन की फोटो भी दिखा सकता हूँ।':'🎁 I can show this design as well.'
-  ].filter(Boolean).join('\n'));
+  ].filter(Boolean).join('\n\n'));
  }
  if(layout==='photo'){
   return formatMobileSalesText([
@@ -128,7 +128,7 @@ export function renderSalesTemplate(input:SalesRenderInput):string{
    use?'🌟 '+use:'',...addShipping(p,hi),
    custom?(hi?'💖 इसे आपकी तस्वीरों से कस्टमाइज किया जा सकता है।':'💖 It can be personalized with your photos.'):'',
    hi?'🎁 यह स्टाइल पसंद आया?':'🎁 Is this your favourite style?'
-  ].filter(Boolean).join('\n'));
+  ].filter(Boolean).join('\n\n'));
  }
  if(layout==='buying'){
   return formatMobileSalesText([
@@ -138,7 +138,7 @@ export function renderSalesTemplate(input:SalesRenderInput):string{
    ...addShipping(p,hi),
    hi?'🎁 अगर यही डिज़ाइन लेना है, तो ऑर्डर आगे बढ़ा सकते हैं।':'🎁 If you like this style, we can start your order.',
    hi?'😊 ऑर्डर शुरू करें?':'😊 Shall we get started?'
-  ].filter(Boolean).join('\n'));
+  ].filter(Boolean).join('\n\n'));
  }
  return safeDraft;
 }
