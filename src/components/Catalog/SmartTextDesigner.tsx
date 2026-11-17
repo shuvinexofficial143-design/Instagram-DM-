@@ -6,18 +6,19 @@ import {renderSalesTemplate,type SalesLayout,type SalesProduct} from '../../../s
  * No HTML from customers or the AI is interpreted as markup.
  */
 export function SmartMessageRenderer({text,compact=false}:{text:string;compact?:boolean}){
- const lines=String(text||'').split(/\r?\n/u).map(value=>value.trim()).filter(Boolean);
+ const raw=String(text||'').split(/\r?\n/u);
+ const lines=raw.map((value,index)=>({value:value.trim(),paragraphStart:index>0&&!raw[index-1].trim()})).filter(line=>line.value);
  if(!lines.length)return null;
- const styled=lines.some(value=>/^[✨📸💰📦🚚💖💝🎁🧾✅🌟😊]/u.test(value));
+ const styled=lines.some(line=>/^[✨📸💰📦🚚💖💝🎁🧾✅🌟😊]/u.test(line.value));
  if(!styled)return <p className="max-w-full whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">{text}</p>;
  return <div className={'min-w-0 max-w-full space-y-1.5 break-words [overflow-wrap:anywhere] '+(compact?'text-sm':'text-sm')} aria-label="Formatted business reply">
-  {lines.map((line,i)=>{
+  {lines.map(({value:line,paragraphStart},i)=>{
    const isHeading=i===0||/^[✨📸💝✅]/u.test(line);
    const isPrice=/^[💰]/u.test(line);
    const isPolicy=/^[📦🚚]/u.test(line);
    const isAction=/^[🎁😊]/u.test(line);
    return <p key={i} className={
-     'whitespace-pre-wrap break-words leading-[1.5] '+
+     'whitespace-pre-wrap break-words leading-[1.5] '+(paragraphStart?'mt-3 ':'')+
      (isHeading?'font-semibold text-slate-900 ':isPrice?'font-extrabold text-base sm:text-lg text-slate-950 ':
       isPolicy?'rounded-lg bg-slate-100/80 px-2.5 py-1.5 text-slate-700 ':
       isAction?'rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 font-medium text-indigo-900 ':'text-slate-700 ')
