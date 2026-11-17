@@ -59,3 +59,13 @@ test('premium gallery contains up to 10 swipeable cards in one Meta template',()
  assert.equal(parts.filter(part=>part.kind==='text').length,1);
  assert.doesNotMatch(parts[1].text,/Notes:|Customer photos needed/);
 });
+
+
+test('premium carousel caption has real blank paragraph spacing rather than three glued lines',()=>{
+ const catalog={...base,delivery_style:'premium_cards' as const,products:[{...product,name:'Style 04 — Forever Bestie Frame',style_number:'FR-04',price:'₹250',customization:'Customer photos'}]};
+ const parts=catalogDeliveryParts({...prepareCatalogDelivery(catalog),reply_language:'hi'});
+ assert.deepEqual(parts.map(p=>p.kind),['cards','text']);
+ assert.match(parts[1].text,/✨.*\n\n💖.*\n\n🎁/u);
+ assert.equal(parts[1].message.text,parts[1].text);
+ assert.doesNotMatch(parts[1].text,/Notes:|internal|markdown/iu);
+});
