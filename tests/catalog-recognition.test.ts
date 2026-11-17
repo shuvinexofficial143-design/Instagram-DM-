@@ -323,3 +323,42 @@ test('if screenshot vision remains unavailable the bot sends a real labeled styl
  assert.equal((await generateCatalogReply({...base,catalog:all,text:'[Customer sent an image]',images:['https://images.example/customer-screen.jpg'],
   recentPhotoUrls:frames.map(p=>p.images[0]),fetcher:async()=>answer({styles:[]})})).catalog,undefined);
 });
+
+
+test('selecting 8 after an eight-card FR gallery sends exactly the real FR-08 image without AI',async()=>{
+ const parent={...frame('parent',''),name:'Personalized Photo Frame',style_number:'',images:[],
+  variants:Array.from({length:8},(_,i)=>({id:'v'+(i+1),name:'Design '+(i+1),
+    style_number:'FR-'+String(i+1).padStart(2,'0'),
+    images:['https://images.example/fr-'+(i+1)+'.jpg'],price:''}))};
+ const expanded=expandCatalogProduct(parent);
+ const all:RuntimeCatalog={id:'all',name:'All products',delivery_style:'premium_cards',products:expanded};
+ const photos=expanded.filter(p=>p.images.length).map(p=>p.images[0]);
+ const result=await generateCatalogReply({...base,catalog:all,text:'8',recentPhotoUrls:photos,
+  systemPrompt:'Sell photo frames; handoff to staff is available for customer support only.',
+  history:[{role:'user',content:'photo Frame'},{role:'assistant',content:'[Product cards: All products]'},
+   {role:'assistant',content:'✨ अपना पसंदीदा डिज़ाइन चुनिए!'}],
+  fetcher:async()=>{throw Error('Selecting a saved style must not invoke another model')}});
+ assert.equal(result.catalog?.products.length,1);
+ assert.equal(result.catalog?.products[0].style_number,'FR-08');
+ assert.equal(result.catalog?.elements?.length,1);
+ assert.equal(result.catalog?.elements?.[0].image_url,'https://images.example/fr-8.jpg');
+ assert.equal(catalogDeliveryParts(result.catalog!)[0].kind,'cards');
+});
+
+test('No after a design offer must not ask for phone or insist on old Style 04',async()=>{
+ const result=await generateCatalogReply({...base,text:'No',
+  history:[{role:'user',content:'4'},{role:'assistant',content:'✨ आपका चुना हुआ डिज़ाइन!'},
+    {role:'assistant',content:'🎁 ऑर्डर करने के लिए नंबर बताइए।'}],
+  fetcher:async()=>{throw Error('A clear refusal should not invoke the sales AI')}});
+ assert.equal(result.catalog,undefined);
+ assert.match(result.text||'',/ऑर्डर आगे नहीं|order/i);
+ assert.doesNotMatch(result.text||'',/मोबाइल नंबर|10 अंकों|FR-04|डिज़ाइन 4/i);
+});
+
+test('internal Product cards sentinel from an AI draft is never a customer-facing text reply',async()=>{
+ const result=await generateCatalogReply({...base,text:'okay',history:[],
+  fetcher:async()=>Response.json({choices:[{message:{content:'[Product cards: All products]'}}]})});
+ assert.equal(result.catalog,undefined);
+ assert.doesNotMatch(result.text||'',/\[Product cards:/i);
+ assert.match(result.text||'',/Style|स्टाइल|डिज़ाइन/);
+});
