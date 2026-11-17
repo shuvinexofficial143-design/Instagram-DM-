@@ -55,6 +55,30 @@ export function formatMobileSalesText(text:string,maxLineChars=42):string{
  }).join('\n');
 }
 
+
+/** Cosmetic Instagram sales-message styling. Preserve all AI-supplied facts:
+ * never invent a price, order, discount, photo count or delivery promise.
+ */
+export function formatConversationalSalesText(draft:string):string{
+ const source=String(draft||'').replace(/\r\n/g,'\n').replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+ if(!source||source.length>1400||/https?:\/\/\S+|`{3}/u.test(source))return source;
+ if(!/(?:₹|कीमत|price|COD|order|ऑर्डर|frame|फ्रेम|design|डिज़ाइन|डिजाइन|photo|फोटो|तस्वीर|कस्टमाइज|delivery|डिलीवरी)/iu.test(source))return source;
+ if(source.includes('\n\n'))return formatMobileSalesText(source);
+ const sections=source.split(/\n+|(?<=[।!?])\s+|(?<=\.)\s+(?=[\p{L}])/u).map(s=>s.trim()).filter(Boolean);
+ if(sections.length<2||sections.length>8)return formatMobileSalesText(source);
+ const paragraphs=sections.map(s=>{
+  if(/^[✨📸💰📦🚚💖💝🎁🧾✅🌟😊]/u.test(s))return s;
+  const emoji=/(?:नाम बताइए|नाम भेज|ऑर्डर आगे|ऑर्डर शुरू|ऑर्डर करना|order|confirm|खरीदना|बुक कर)/iu.test(s)?'🎁':
+   /(?:₹|कीमत|price|cost|rate|दाम)/iu.test(s)?'💰':
+   /(?:photo|फोटो|तस्वीर|तस्वीरें|pictures)/iu.test(s)?'📸':
+   /(?:delivery|डिलीवरी)/iu.test(s)?'🚚':
+   /(?:COD|कैश ऑन डिलीवरी)/iu.test(s)?'📦':
+   /(?:कस्टमाइज|customiz|personaliz)/iu.test(s)?'💖':'✨';
+  return emoji+' '+s;
+ });
+ return formatMobileSalesText(paragraphs.join('\n\n'));
+}
+
 export function renderSalesTemplate(input:SalesRenderInput):string{
  const hi=input.language==='hi'||(!input.language&&customerLanguage(input.customerText||'')==='hi');
  const p=input.product||null,layout=input.layout;
