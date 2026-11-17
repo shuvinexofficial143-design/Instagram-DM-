@@ -1,7 +1,7 @@
 import {DM_AI_MODEL,chatModelParams} from './openaiConfig.js';
 import {matchInstagramAdProduct,matchSharedInstagramMedia,type InstagramAdSource} from './adAttribution.js';
 import {customerFactsInstructions,customerFactValues,canonicalCustomerField,repeatedCustomerQuestion,customerDetailFallback,type CustomerFacts} from './customerFacts.js';
-import {selectSalesLayoutAI,renderSalesTemplate} from './salesPresentation.ts';
+import {selectSalesLayoutAI,renderSalesTemplate,formatConversationalSalesText} from './salesPresentation.ts';
 import {memoryBuildContext,memorySettings,memoryBytes,isReturnGreeting,isSalesRestart,continuityFallback,type MemorySnapshot} from './smartMemory.js';
 /** Shared by live Instagram replies and the builder preview. No credentials or browser state. */
 export type CatalogPostReference={post_id:string;position:number};
@@ -622,7 +622,7 @@ export async function generateCatalogReply(options:{key:string;model?:string;sys
     if(arranged)return {text:arranged,warning:imageWarning||options.catalogWarning||''};
    }
   }
-  return {text,warning:imageWarning||options.catalogWarning||''};
+  return {text:formatConversationalSalesText(text),warning:imageWarning||options.catalogWarning||''};
  }
  if(returningGreeting)return {text:continuityFallback(built.continuity,options.history,options.memory),warning:imageWarning||options.catalogWarning||''};
  throw Error('AI could not resolve the product selection. Please clarify the product name.');
@@ -678,7 +678,7 @@ export function catalogMessage(catalog:RuntimeCatalog):string {
    single?(hi?'✨ आपका चुना हुआ डिज़ाइन!':'✨ Your selected design!'):(hi?'✨ अपना पसंदीदा डिज़ाइन चुनिए!':'✨ Swipe to find your favourite!'),
    ...(customizable?[hi?'💖 इसे उपलब्ध विकल्पों के अनुसार आपकी तस्वीरों से कस्टमाइज कर सकते हैं।':'💖 We can personalize it using your pictures where available.']:[]),
    single?(hi?'🎁 पसंद हो तो यही स्टाइल बताइए।':'🎁 Let me know if this is your style.'):(hi?'🎁 जो स्टाइल पसंद आए उसका नंबर भेजिए।':'🎁 Reply with your favourite style number.')
-  ].join('\n');
+  ].join('\n\n');
  }
  if(style==='photos_ai'||catalog.proactive)return renderSalesTemplate({layout:single?'photo':'gallery',product:single?p:null,products,language:lang,draft:preface+'\n'+rows.join('\n')+'\n'+details.join('\n')+'\n'+conclusion});
  // Photos + details remains concise; do not disclose staff notes or order-field definitions.
