@@ -5,6 +5,7 @@ import {fetchConversationUsernames,cacheInstagramProfilePhoto} from './instagram
 import { memorySettings,memoryLogPreview } from './smartMemory.ts';
 import { loadCatalog, buildCatalogPage, prepareCatalogDelivery, catalogDeliveryParts, catalogDeliveryStyle, extractImageAttachments, generateCatalogReply, loadWorkspaceCatalogs, resolveCatalogReference, selectProductPhotos } from "./catalogRuntime.ts";
 import {normalizeInstagramAdSource,extractInstagramSharedMedia} from "./adAttribution.js";
+import {formatConversationalSalesText} from './salesPresentation.ts';
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -2226,6 +2227,7 @@ Instagram DM style rules:
         console.warn('[LIVE_DM_CATALOG_SENTINEL_BLOCKED]',{reason:'missing_unique_photo_match'});
       }
     }
+    if(!sendCatalog)responseText=formatConversationalSalesText(responseText);
     const outgoingTextKey = normalizeReplyCacheKey(responseText);
     const outgoingMemoryKey = `${igUserId}:${outgoingTextKey}`;
     pendingOutboundMemory.set(outgoingMemoryKey, {
