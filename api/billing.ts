@@ -1,4 +1,5 @@
 import usageHandler from "../src/server/usage.js";
+import {getAdminSupportSession} from "../src/server/adminSupport.js";
 import { ensurePaidInvoice,emailInvoiceIfConfigured,invoiceEmailConfigured } from "../src/server/invoiceService.js";
 import { generateInvoicePdf,invoiceLabel } from "../src/server/invoicePdf.js";
 import { randomUUID } from "node:crypto";
@@ -122,6 +123,10 @@ export default async function handler(req: any, res: any) {
       return res
         .status(401)
         .json({ ok: false, error: "Sign in to manage your payments." });
+    const support=await getAdminSupportSession(req,user);
+    if(support && ["create","choose","methods","cancel","invoice-email"].includes(action))
+      return res.status(403).json({ok:false,error:"Payment and subscription changes must be authorized by the customer in their own login."});
+    const scopedOwnerId=support?.ownerId||user.id;
     const rate = enforceRateLimit(
       `billing:${action}:${user.id}`,
       action === "create" ? 10 : 90,
@@ -155,7 +160,7 @@ export default async function handler(req: any, res: any) {
       }
       if(!orderIdValid(orderId))throw new BillingError('Invalid invoice reference.',400);
       const orders=await billingDb('autoreply_billing_orders?order_id=eq.'+encodeURIComponent(orderId)
-        +'&owner_user_id=eq.'+encodeURIComponent(user.id)+'&limit=1');
+        +'&owner_user_id=eq.'+encodeURIComponent(scopedOwnerId)+'&limit=1');
       if(!orders?.[0])throw new BillingError('Invoice order not found.',404);
       if(orders[0].status!=='paid'||orders[0].environment!=='production')
         throw new BillingError('Invoices are available only for verified live payments.',409);
@@ -254,7 +259,7 @@ export default async function handler(req: any, res: any) {
       // pending-plan screen. Replacement is handled when payment begins.
       const env = billingConfig().mode;
       const pending = await billingDb(
-        `autoreply_billing_orders?owner_user_id=eq.${encodeURIComponent(user.id)}&environment=eq.${env}&status=in.(creating,pending)&checkout_state=eq.active&order=created_at.desc&limit=1`,
+        `autoreply_billing_orders?owner_user_id=eq.${encodeURIComponent(scopedOwnerId)}&environment=eq.${env}&status=in.(creating,pending)&checkout_state=eq.active&order=created_at.desc&limit=1`,
       );
       const o = pending?.[0] ? await reconcileOrder(pending[0]) : null;
       return res.status(200).json({
@@ -295,7 +300,7 @@ export default async function handler(req: any, res: any) {
       // The backend AI usage ledger is the verified source of truth.
       const rows=await billingDb(
         'autoreply_usage_monthly?select=month_key,ai_replies,total_messages,updated_at&user_id=eq.'+
-          encodeURIComponent(user.id)+'&order=month_key.desc&limit=120'
+          encodeURIComponent(scopedOwnerId)+'&order=month_key.desc&limit=120'
       );
       const months=Array.isArray(rows)?rows:[];
       const totalAi=months.reduce((count:any,row:any)=>count+Math.max(0,Number(row.ai_replies)||0),0);
@@ -310,7 +315,7 @@ export default async function handler(req: any, res: any) {
     }
     if (action === "history") {
       const rows = await billingDb(
-        `autoreply_billing_orders?owner_user_id=eq.${user.id}&select=*&order=created_at.desc&limit=50`,
+        `autoreply_billing_orders?owner_user_id=eq.${scopedOwnerId}&select=*&order=created_at.desc&limit=50`,
       );
       return res.status(200).json({ ok: true, orders: rows.map(safeOrder) });
     }
@@ -320,7 +325,7 @@ export default async function handler(req: any, res: any) {
         subscription: await billingDb(
           "rpc/autoreply_billing_entitlement",
           "POST",
-          { p_workspace_id: user.id },
+          { p_workspace_id: scopedOwnerId },
         ),
       });
     if (action === "status") {
@@ -328,7 +333,7 @@ export default async function handler(req: any, res: any) {
       if (!orderIdValid(id))
         throw new BillingError("Invalid payment order.", 400);
       const rows = await billingDb(
-        `autoreply_billing_orders?order_id=eq.${encodeURIComponent(id)}&owner_user_id=eq.${user.id}&limit=1`,
+        `autoreply_billing_orders?order_id=eq.${encodeURIComponent(id)}&owner_user_id=eq.${scopedOwnerId}&limit=1`,
       );
       if (!rows?.[0]) throw new BillingError("Payment order not found.", 404);
       const order = await reconcileOrder(rows[0]);
