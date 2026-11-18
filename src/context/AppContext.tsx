@@ -104,6 +104,7 @@ interface AppContextType {
   webhookLogs: WebhookLogEvent[];
   pausedAiUsers: string[];
   isAdmin: boolean;
+  supportSession: {ownerId:string;initialWorkspaceId:string;expiresAt:string;customer:{name:string;email:string;avatarUrl:string}}|null;
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   
@@ -309,6 +310,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   workspaceScope.current=workspaceId || firebaseUser?.uid || '';
   const isAutomationSaving=(id:string)=>pendingAutomationStatuses.current.has(id);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [supportSession,setSupportSession]=useState<AppContextType['supportSession']>(null);
 
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() =>
     typeof window === 'undefined' ? 'home' : tabFromPath(window.location.pathname)
@@ -491,6 +493,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [firebaseUser?.uid, firebaseUser?.email]);
+
+  // Keep the admin's original Supabase identity; only workspace data is scoped
+  // to the server-verified customer support session.
+  useEffect(()=>{
+    if(!firebaseUser?.uid){setSupportSession(null);return;}
+    let live=true;
+    void (async()=>{
+      try{
+        const jwt=await auth.currentUser?.getIdToken();
+        if(!jwt)return;
+        const response=await fetch('/api/workspace-data?action=admin-support-status',{
+          headers:{Authorization:'Bearer '+jwt},credentials:'same-origin',cache:'no-store'
+        });
+        if(!response.ok)throw Error('Support status unavailable');
+        const data=await response.json();
+        if(!live)return;
+        if(!data?.active){setSupportSession(null);return;}
+        setSupportSession({ownerId:data.ownerId,initialWorkspaceId:data.initialWorkspaceId,
+          expiresAt:data.expiresAt,customer:data.customer});
+        setUser(previous=>({...previous,id:data.ownerId,name:data.customer?.name||'Customer',
+          email:data.customer?.email||'',avatar_url:data.customer?.avatarUrl||''}));
+      }catch(error){if(live)console.warn('[ADMIN_SUPPORT_STATUS_ERROR]');}
+    })();
+    return ()=>{live=false;};
+  },[firebaseUser?.uid]);
 
   // 2. Multi-Tenant Firestore Synchronization (Strictly scoped by active authenticated user UID)
   useEffect(() => {
@@ -899,6 +926,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
   const startInstagramConnection = (mode:'connect'|'add'|'reconnect'='connect',targetWorkspaceId?:string) => {
     if (accountMutation.current || accountSwitching) return;
+    if(supportSession){window.alert('The customer must authorize a new Instagram connection through their own Meta account. Existing connected accounts can be managed here.');return;}
     setInstagramConnectMode(mode);
     setInstagramReconnectWorkspaceId(mode==='reconnect'?(targetWorkspaceId||workspaceId||firebaseUser?.uid||null):null);
     setIsConnectModalOpen(true);
@@ -1394,6 +1422,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         webhookLogs,
         pausedAiUsers,
         isAdmin,
+        supportSession,
         activeTab,
         setActiveTab,
         isBuilderOpen,
