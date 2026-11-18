@@ -877,7 +877,7 @@ export const AdminPage: React.FC = () => {
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-slate-600 font-mono truncate">{item.email}</p><div className="flex gap-3 text-xs text-indigo-700">{['Open Now','AI Limit'].map((label,i)=>i===0?
+                            <p className="text-xs text-slate-600 font-mono truncate">{item.email}</p><div className="flex gap-3 text-xs text-indigo-700">{['Open Now','Give AI Replies'].map((label,i)=>i===0?
   <button key={label} className="font-semibold underline" onClick={async event=>{event.stopPropagation();try{await adminToolsRequest('admin-support-start',{workspaceId:item.uid});window.location.assign('/');}catch(err:any){setError(err?.message||'Could not open the customer workspace.');}}}>Open Real Workspace</button>:
   <a key={label} target="_blank" rel="noopener noreferrer" onClick={event=>event.stopPropagation()} href={'/admin?customer='+encodeURIComponent(item.email||item.uid)+'#allowance'}>{label}</a>)}</div>
                           </div>
