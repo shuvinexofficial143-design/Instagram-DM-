@@ -5,3 +5,22 @@
 
 .admin-tools .at-table th:nth-child(2),.admin-tools .at-table td:nth-child(2){white-space:nowrap}.admin-tools .at-table th:first-child{min-width:135px}.admin-tools .at-table th:last-child{min-width:180px}@media(max-width:760px){.admin-tools .at-heading>svg{display:none}.admin-tools .at-account-list .at-empty{padding:20px 10px}}
 .handoff-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:16px}.handoff-layout>*{min-width:0}.handoff-row{display:flex!important;flex-direction:column;align-items:flex-start!important;gap:8px;width:100%;text-align:left;overflow-wrap:anywhere}.handoff-row.is-selected{border-color:#8b5cf6;background:#faf8ff}.handoff-row>span:not(.at-pill){font-size:13px;color:#64748b}.handoff-row small{display:flex;align-items:center;gap:5px;color:#64748b}.handoff-summary{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.handoff-conversation{min-width:0;align-self:start}.handoff-messages{display:flex;flex-direction:column;gap:10px;margin:18px 0;padding:12px;max-height:480px;overflow:auto;background:#f8fafc;border-radius:14px}.handoff-message{max-width:90%;align-self:flex-start;padding:10px 12px;border:1px solid #e2e8f0;background:white;border-radius:12px;overflow-wrap:anywhere}.handoff-message.is-out{align-self:flex-end;background:#f1edff;border-color:#e4dbff}.handoff-message p{white-space:pre-wrap;font-size:14px;color:#0f172a}.handoff-message small{display:block;margin-top:5px;font-size:11px;color:#64748b}.handoff-conversation textarea{resize:vertical;min-height:90px}.handoff-conversation .at-workspace-head p{overflow-wrap:anywhere}@media(min-width:1100px){.handoff-layout{grid-template-columns:minmax(240px,.75fr) minmax(0,1.5fr)}}
+
+/* Scoped customer AI allowance controls: built into the real administrator workspace. */
+.admin-tools .at-ai-grant{display:grid;gap:16px;min-width:0}
+.admin-tools .at-ai-grant .at-workspace-head{align-items:center}
+.admin-tools .at-ai-grant .at-workspace-head h3{margin-bottom:5px}
+.admin-tools .at-ai-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.admin-tools .at-ai-stats>div{display:flex;flex-direction:column;gap:8px;padding:15px 12px;border:1px solid #e5e8f3;border-radius:12px;background:#fafaff;min-width:0}
+.admin-tools .at-ai-stats small{font-size:11px;color:#64748b;line-height:1.4}
+.admin-tools .at-ai-stats strong{font-size:19px;color:#2b3154;font-weight:750;overflow-wrap:anywhere}
+.admin-tools .at-ai-form{display:grid;gap:16px;min-width:0}
+.admin-tools .at-ai-form .at-check{font-weight:700;color:#283b5f}
+.admin-tools .at-ai-form .at-muted{margin:0}
+.admin-tools .at-ai-presets{display:flex;flex-wrap:wrap;gap:8px}
+.admin-tools .at-ai-presets button[aria-pressed=true]{border-color:#5545be;background:#f0edff;color:#4b3aaa}
+.admin-tools .at-ai-history{border-top:1px solid #e8eaf3;padding-top:15px;color:#465372;font-size:13px}
+.admin-tools .at-ai-history summary{cursor:pointer;font-weight:650}
+.admin-tools .at-ai-history p{margin-top:9px;margin-bottom:3px;overflow-wrap:anywhere}
+@media(max-width:1200px){.admin-tools .at-ai-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:560px){.admin-tools .at-ai-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-tools .at-ai-stats strong{font-size:17px}}
