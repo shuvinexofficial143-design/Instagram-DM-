@@ -1,5 +1,6 @@
 import { typedFetch as httpFetch } from '../src/server/typedFetch.js';
 import adminHandler from '../src/server/adminAccess.js';
+import {adminDb} from '../src/server/adminOperations.js';
 import threadControl from '../src/server/threadControl.js';
 import supportHandler from '../src/server/support.js';
 import lifecycleHandler from '../src/server/customerLifecycle.js';
@@ -65,6 +66,25 @@ export default async function handler(req: any, res: any) {
       const identity=authorization ? await authenticatedWorkspace(req) : null;
       const workspaceId=authorization ? identity?.id || '' : getCookie(req,GUEST_COOKIE);
       if(!workspaceId || (!identity && !isWorkspaceId(workspaceId)))return res.status(401).json({ok:false,error:'Workspace session required.'});
+      if(identity?.supportMode){
+        let result:any;
+        if(action==='inbox-page'){
+          result=await adminDb('rpc/autoreply_inbox_page','POST',{
+            p_workspace:workspaceId,p_sender:String(req.query.sender||''),
+            p_before_time:req.query.before_time||null,p_before_id:req.query.before_id||null,p_limit:50
+          });
+        }else if(action==='inbox-analytics'){
+          result=await adminDb('rpc/autoreply_inbox_analytics','POST',{
+            p_workspace:workspaceId,p_start:req.query.start,p_end:req.query.end,p_timezone:req.query.timezone||'UTC'
+          });
+        }else{
+          result=await adminDb('rpc/autoreply_mark_inbox_read','POST',{
+            p_workspace:workspaceId,p_sender:String(req.body?.sender||''),p_read:req.body?.read!==false
+          });
+        }
+        res.setHeader('Cache-Control','private, no-store');
+        return res.status(200).json({ok:true,...(result||{})});
+      }
       const response=await fetchWithTimeout(SUPABASE_URL+'/functions/v1/instagram-account-store',{method:'POST',headers:{'Content-Type':'application/json',...guestStoreHeaders(),...(identity?{Authorization:authorization}:{})},body:JSON.stringify({
         action:action==='inbox-page'?'list_inbox_page':action==='inbox-analytics'?'inbox_analytics':'mark_inbox_read',workspaceId,
         sender:action==='inbox-read'?req.body?.sender:String(req.query.sender||''),read:req.body?.read,
