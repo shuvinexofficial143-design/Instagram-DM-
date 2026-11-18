@@ -1,5 +1,6 @@
 import {adminOperationMethods,runAdminOperation,AdminOperationError} from './adminOperations.js';
 import { createHmac } from 'node:crypto';
+import { supportOperation } from './adminSupport.js';
 import { authenticatedUser, cleanEnvironment, SUPABASE_URL, upstreamFetch } from './supabaseConfig.js';
 import { isConfiguredAdmin, synchronizeAdminPolicy } from './adminPolicy.js';
 export { configuredAdminEmails, isConfiguredAdmin } from './adminPolicy.js';
@@ -17,8 +18,9 @@ export default async function adminHandler(req: any, res: any) {
   res.setHeader('Cache-Control', 'private, no-store');
   try {
     const action = String(req.query?.action || '');
-    const method = adminOperationMethods[action] || (action === 'admin-update-plan' ? 'POST' : 'GET');
-    if (!['admin-access','admin-overview','admin-update-plan'].includes(action) && !adminOperationMethods[action]) return res.status(400).json({ok:false,error:'Unknown administrator action.'});
+    const supportMethods:Record<string,string>={'admin-support-start':'POST','admin-support-status':'GET','admin-support-stop':'POST'};
+     const method = adminOperationMethods[action] || supportMethods[action] || (action === 'admin-update-plan' ? 'POST' : 'GET');
+    if (!['admin-access','admin-overview','admin-update-plan'].includes(action) && !adminOperationMethods[action] && !supportMethods[action]) return res.status(400).json({ok:false,error:'Unknown administrator action.'});
     if (req.method !== method) { res.setHeader('Allow', method); return res.status(405).json({ok:false,error:'Method Not Allowed'}); }
     const user = await authenticatedUser(req);
     if (!user) return res.status(401).json({ok:false,isAdmin:false,error:'Sign in to continue.'});
@@ -29,6 +31,7 @@ export default async function adminHandler(req: any, res: any) {
     }
     if (!isAdmin) return res.status(403).json({ok:false,error:'Administrator access required.'});
     await synchronizeAdminPolicy();
+    if(supportMethods[action])return supportOperation(req,res,user);
     if (adminOperationMethods[action] && action!=='admin-handoff-reply') return res.status(200).json(await runAdminOperation(req,user));
     if(action==='admin-handoff-reply'&&(!/^[a-f0-9-]{36}$/i.test(req.body?.id||'')||typeof req.body?.messageText!=='string'||!req.body.messageText.trim()||req.body.messageText.length>1000))return res.status(400).json({ok:false,error:'Enter a handoff and a message of 1–1000 characters.'});
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
