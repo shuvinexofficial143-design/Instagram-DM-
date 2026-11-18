@@ -1,0 +1,33 @@
+name: Verify Admin Customer Workspace
+on:
+  push:
+    branches: [feature/admin-full-customer-workspace]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  support:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: TypeScript
+        run: bun run lint
+      - name: Admin security and workspace
+        run: bun run test:admin
+      - name: Support permissions
+        run: bun run test:support
+      - name: Connections and Inbox
+        run: bun run test:connections
+      - name: Dashboard hydration
+        run: bun run test:dashboard
+      - name: Production bundle
+        run: bun run build
