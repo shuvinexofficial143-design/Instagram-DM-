@@ -1,6 +1,7 @@
 import { typedFetch as httpFetch } from './typedFetch.js';
 import { enforceRateLimit, resolveAiIdentity } from '../../api/_auth.js';
 import { synchronizeAdminPolicy } from './adminPolicy.js';
+import { authenticatedWorkspace } from './supabaseConfig.js';
 
 const SUPABASE_URL = String(
   process.env.SUPABASE_URL ||
@@ -17,6 +18,8 @@ export default async function handler(req: any, res: any) {
 
   const identity = await resolveAiIdentity(req, false);
   if (!identity?.userId) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  const scope=await authenticatedWorkspace(req);
+  const usageWorkspace=scope?.supportMode?scope.id:identity.userId;
 
   const rate = enforceRateLimit('usage:' + identity.userId, 60, 60_000);
   if (!rate.allowed) {
@@ -38,7 +41,7 @@ export default async function handler(req: any, res: any) {
   try {
     await synchronizeAdminPolicy();
     const response = await httpFetch(SUPABASE_URL + '/rest/v1/rpc/autoreply_billing_entitlement', {
-      method: 'POST', headers, body: JSON.stringify({ p_workspace_id: identity.userId }), signal: AbortSignal.timeout(8000),
+      method: 'POST', headers, body: JSON.stringify({ p_workspace_id: usageWorkspace }), signal: AbortSignal.timeout(8000),
     });
     if (!response.ok) throw new Error('Could not verify workspace usage');
     const entitlement = await response.json();
