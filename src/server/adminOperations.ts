@@ -2,7 +2,7 @@ import {MAX_BUSINESS_PROMPT_CHARS} from '../../supabase/functions/instagram-live
 import {cleanEnvironment,SUPABASE_URL,upstreamFetch} from './supabaseConfig.js';
 export const adminOperationMethods:Record<string,string>={
  'admin-handoffs':'GET','admin-handoff-detail':'GET','admin-handoff-action':'POST','admin-handoff-reply':'POST',
- 'admin-workspaces':'GET','admin-workspace':'GET','admin-automation-save':'POST','admin-automation-status':'POST','admin-automation-delete':'POST','admin-automation-restore':'POST',
+ 'admin-support-inbox':'GET','admin-support-upload':'POST','admin-support-takeover':'POST','admin-catalog-save':'POST','admin-support-note':'POST','admin-ai-allowance':'POST','admin-workspaces':'GET','admin-workspace':'GET','admin-automation-save':'POST','admin-automation-status':'POST','admin-automation-delete':'POST','admin-automation-restore':'POST',
  'admin-campaign-preview':'POST','admin-campaign-create':'POST','admin-campaign-list':'GET','admin-campaign-detail':'GET','admin-campaign-action':'POST','admin-campaign-update':'POST',
  'admin-payments':'GET','admin-audit':'GET','admin-health-totals':'GET',
 };
@@ -81,10 +81,57 @@ export async function runAdminOperation(req:any,user:{id:string;email?:string}){
   return {ok:true,handoff,messages};
  }
  if(action==='admin-workspaces')return adminDb('rpc/autoreply_admin_workspace_directory','POST',{p_query:String(req.query.search||''),p_offset:Math.max(0,Math.min(100000,Number(req.query.offset)||0))});
+ if(action==='admin-support-inbox'){
+  await workspaceExists(workspace);
+  const offset=Number(req.query.offset);
+  if(!Number.isSafeInteger(offset)||offset<0)throw new AdminOperationError('Invalid page.');
+  const rows=await adminDb('autoreply_documents?select=id,data&user_id=eq.'+enc(workspace)+'&collection=eq.inbox_messages&order=created_at.desc,id.desc&limit=50&offset='+offset);
+  return {ok:true,messages:rows.map((row:any)=>({...row.data,id:row.id}))};
+ }
+ if(action==='admin-support-upload'){
+  await workspaceExists(workspace);
+  const extensions:Record<string,string>={'image/png':'png','image/jpeg':'jpg','image/webp':'webp'};
+  if(!Object.hasOwn(extensions,b.mimeType)||!Number.isInteger(b.size)||b.size<=0||b.size>5242880||!/^[a-zA-Z0-9_-]{1,100}$/.test(b.catalogId))throw new AdminOperationError('Invalid catalog image.');
+  const {createClient}=await import('@supabase/supabase-js');
+  const client=createClient(SUPABASE_URL,cleanEnvironment(process.env.SUPABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_SECRET_KEY),{auth:{persistSession:false,autoRefreshToken:false}});
+  const bucket=client.storage.from('catalog-images');
+  const path=workspace+'/'+b.catalogId+'/'+crypto.randomUUID()+'.'+extensions[b.mimeType];
+  const {data,error}=await bucket.createSignedUploadUrl(path);
+  if(error)throw new AdminOperationError('Could not prepare image upload.',503);
+  return {ok:true,path,token:data.token,publicUrl:bucket.getPublicUrl(path).data.publicUrl};
+ }
+ if(action==='admin-support-takeover'){
+  await workspaceExists(workspace);
+  if(!/^\d{5,30}$/.test(b.sender))throw new AdminOperationError('Invalid conversation.');
+  const rows=await adminDb('autoreply_documents?select=id&user_id=eq.'+enc(workspace)+'&collection=eq.inbox_messages&data->>from_ig_id=eq.'+enc(b.sender)+'&limit=1');
+  if(!rows.length)throw new AdminOperationError('Conversation not found.',404);
+  return adminDb('rpc/autoreply_request_human_handoff','POST',{p_workspace:workspace,p_sender:b.sender,p_automation_id:'',p_automation_name:'Admin support',p_reason:'needs_staff',p_summary:'Administrator took over this conversation.',p_message_id:crypto.randomUUID()});
+ }
+ if(action==='admin-catalog-save'||action==='admin-support-note'){
+  await workspaceExists(workspace);
+  const record=b.record;
+  if(action==='admin-catalog-save'){
+   if(!['catalogs','catalog_products'].includes(b.collection)||!record||!/^[a-zA-Z0-9_-]{1,128}$/.test(record.id)||typeof record.name!=='string'||!record.name.trim()||JSON.stringify(record).length>500000)throw new AdminOperationError('Invalid catalog record.');
+   if(b.collection==='catalog_products'){
+    const catalogs=await adminDb('autoreply_documents?select=id&user_id=eq.'+enc(workspace)+'&collection=eq.catalogs&id=eq.'+enc(record.catalog_id));
+    if(!catalogs.length)throw new AdminOperationError('Choose a catalog in this workspace.');
+   }
+  }else if(typeof b.note!=='string'||!b.note.trim()||b.note.length>1000)throw new AdminOperationError('Enter a note of 1–1000 characters.');
+  return adminDb('rpc/autoreply_support_change','POST',{p_workspace:workspace,p_actor:user.id,p_email:user.email,p_collection:action==='admin-support-note'?'note':b.collection,p_record:action==='admin-support-note'?{note:b.note.trim()}:record});
+ }
+ if(action==='admin-ai-allowance'){
+  await workspaceExists(workspace);
+  const {mode,limit,expiresAt}=b;
+  if(!['plan','custom','once','extra','unlimited','off'].includes(mode) || (['custom','once','extra'].includes(mode) && (!Number.isSafeInteger(limit)||limit<0||limit>2147483647)))throw new AdminOperationError('Choose a valid allowance.');
+  if(expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt)<=Date.now()))throw new AdminOperationError('Choose a future expiry.');
+  return adminDb('rpc/autoreply_set_ai_allowance','POST',{p_workspace:workspace,p_actor:user.id,p_mode:mode,p_limit:['custom','once','extra'].includes(mode)?limit:null,p_expires:expiresAt||null});
+ }
  if(action==='admin-workspace'){
   const membership=await workspaceExists(workspace);
-  const [documents,versions,entitlement]=await Promise.all([adminDb('autoreply_documents?select=id,collection,data&user_id=eq.'+enc(workspace)+'&collection=in.(automations,catalogs)&limit=1000'),adminDb('autoreply_admin_automation_versions?workspace_id=eq.'+enc(workspace)+'&order=created_at.desc&limit=100'),adminDb('rpc/autoreply_billing_entitlement','POST',{p_workspace_id:workspace})]);
-  return {ok:true,membership,automations:documents.filter((d:any)=>d.collection==='automations').map((d:any)=>({...d.data,id:d.id})),catalogs:documents.filter((d:any)=>d.collection==='catalogs').map((d:any)=>({...d.data,id:d.id})),versions,entitlement};
+  const [documents,versions,entitlement]=await Promise.all([adminDb('autoreply_documents?select=id,collection,data&user_id=eq.'+enc(workspace)+'&collection=in.(automations,catalogs,catalog_products)&limit=1000'),adminDb('autoreply_admin_automation_versions?workspace_id=eq.'+enc(workspace)+'&order=created_at.desc&limit=100'),adminDb('rpc/autoreply_billing_entitlement','POST',{p_workspace_id:workspace})]);
+  const owner=await adminDb('rpc/autoreply_usage_owner','POST',{p_workspace_id:workspace});
+  const [inbox,activity,allowances]=await Promise.all([adminDb('autoreply_documents?select=id,data&user_id=eq.'+enc(workspace)+'&collection=eq.inbox_messages&order=created_at.desc,id.desc&limit=50'),adminDb('autoreply_admin_audit_logs?select=id,action,created_at,after_data&entity_type=eq.support_workspace&entity_id=eq.'+enc(workspace)+'&order=created_at.desc&limit=50'),adminDb('autoreply_ai_allowance_history?select=id,mode,reply_limit,expires_at,created_at&owner_id=eq.'+enc(owner)+'&order=id.desc&limit=50')]);
+  return {ok:true,membership,products:documents.filter((d:any)=>d.collection==='catalog_products').map((d:any)=>({...d.data,id:d.id})),messages:inbox.map((d:any)=>({...d.data,id:d.id})),activity,allowances,automations:documents.filter((d:any)=>d.collection==='automations').map((d:any)=>({...d.data,id:d.id})),catalogs:documents.filter((d:any)=>d.collection==='catalogs').map((d:any)=>({...d.data,id:d.id})),versions,entitlement};
  }
  if(action.startsWith('admin-automation-')){
   await workspaceExists(workspace);const operation=action.slice('admin-automation-'.length);let automation=b.automation;

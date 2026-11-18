@@ -231,7 +231,7 @@ test('bare "2" chooses the style mentioned last, not an unrelated catalog varian
  const result=await generateCatalogReply({...base,catalog:both,text:'2',history,recentPhotoUrls:[variant.images[0]],fetcher:async()=>photoTool()});
  assert.equal(result.catalog?.products[0].id,'variant');
  assert.equal(result.catalog?.elements?.[0].image_url,variant.images[0]);
- assert.match(result.catalog?.reply_language||'','hi');
+ assert.equal(result.catalog?.reply_language,'hi');
 });
 
 test('a screenshot with verified printed Style 03 sends the matching photo without asking again',async()=>{

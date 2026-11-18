@@ -171,7 +171,7 @@ export async function selectSalesLayoutAI(args:{
   const body:any=await response.json();
   const parsed=JSON.parse(String(body?.choices?.[0]?.message?.content||'{}'));
   const value=parsed?.layout;
-  if(value==='price'||value==='buying'||value==='general')return {layout:rule==='price'||rule==='buying'?rule:value,source:'secondary_ai'};
+  if(value==='price'||value==='buying'||value==='general')return {layout:value,source:'secondary_ai'};
  }catch{}
  return {layout:rule,source:'rules'};
 }

@@ -80,7 +80,7 @@ export const AdminPage: React.FC = () => {
 
   // Selected User Detail Modal
   const [selectedUser, setSelectedUser] = useState<AdminUserOverviewItem | null>(null);
-  const [adminSection, setAdminSection] = useState<'dashboard' | 'users' | 'instagram' | 'automations' | 'plans' | 'payments' | 'support' | 'ai' | 'health' | 'activity' | 'settings' | 'campaigns' | 'handoffs'>('dashboard');
+  const [adminSection, setAdminSection] = useState<'dashboard' | 'users' | 'instagram' | 'automations' | 'plans' | 'payments' | 'support' | 'ai' | 'health' | 'activity' | 'settings' | 'campaigns' | 'handoffs'>(new URLSearchParams(location.search).has('customer')?'automations':'dashboard');
   const [handoffCount,setHandoffCount]=useState(0),[handoffError,setHandoffError]=useState(false);
   const refreshHandoffs=async()=>{try{const result=await handoffRequest('admin-handoffs',undefined,'&summary=1');setHandoffCount(result.openCount);setHandoffError(false);}catch{setHandoffError(true);}};
   useEffect(()=>{if(!isAdminAuthenticated)return;void refreshHandoffs();const timer=setInterval(()=>{if(!document.hidden)void refreshHandoffs();},10000);return()=>clearInterval(timer);},[firebaseUser?.uid]);
@@ -877,7 +877,7 @@ export const AdminPage: React.FC = () => {
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-slate-600 font-mono truncate">{item.email}</p>
+                            <p className="text-xs text-slate-600 font-mono truncate">{item.email}</p><div className="flex gap-3 text-xs text-indigo-700">{['Open Now','AI Limit'].map((label,i)=><a key={label} target="_blank" rel="noopener noreferrer" onClick={event=>event.stopPropagation()} href={'/admin?customer='+encodeURIComponent(item.email||item.uid)+(i?'#allowance':'')}>{label}</a>)}</div>
                           </div>
                         </div>
                       </td>

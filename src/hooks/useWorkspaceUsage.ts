@@ -11,6 +11,7 @@ type ServerUsage = {
   priceInr?: number;
   billingDays?: number;
   totalUsed?: number;
+  aiAllowanceMode?: string;
   aiUsed?: number;
   totalLimit?: number | null;
   aiLimit?: number | null;
@@ -125,7 +126,8 @@ export const useWorkspaceUsage = () => {
     messageUsed: Number(serverUsage?.totalUsed ?? fallback.messageUsed),
     messageLimit: unlimited ? Infinity : Number(serverUsage?.totalLimit ?? (baseMessageLimit + freeBonusMessages)),
     aiUsed: Number(serverUsage?.aiUsed ?? fallback.aiUsed),
-    aiLimit: unlimited ? Infinity : Number(serverUsage?.aiLimit ?? (baseAiLimit + freeBonusAi)),
+    aiAllowanceMode: serverUsage?.aiAllowanceMode,
+    aiLimit: serverUsage?.aiAllowanceMode ? (serverUsage.aiLimit ?? Infinity) : unlimited ? Infinity : Number(serverUsage?.aiLimit ?? (baseAiLimit + freeBonusAi)),
     baseMessageLimit, baseAiLimit, freeBonusMessages, freeBonusAi,
     automationUsed: fallback.automationUsed,
     automationLimit: unlimited ? null : serverUsage?.automationLimit === null ? null : serverUsage?.automationLimit ?? plan.automations,

@@ -52,7 +52,10 @@ export async function uploadCatalogImages(workspaceId:string,catalogId:string,fi
  if(files.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024||!file.size)) throw Error('Choose JPG, PNG or WebP images, up to 5 MB each.');
  const urls:string[]=[];
  for(const file of files){
-  const {data,error}=await supabase.functions.invoke('instagram-account-store',{body:{action:'create_catalog_upload',workspaceId,catalogId,mimeType:file.type,size:file.size}});
+  const params={workspaceId,catalogId,mimeType:file.type,size:file.size};
+  const {data,error}=location.pathname==='/admin'
+   ? {data:await (await import('./adminTools')).adminToolsRequest('admin-support-upload',params),error:null}
+   : await supabase.functions.invoke('instagram-account-store',{body:{action:'create_catalog_upload',...params}});
   if(error||!data?.ok)throw Error(data?.error||error?.message||'Could not prepare image upload.');
   const uploaded=await supabase.storage.from(CATALOG_BUCKET).uploadToSignedUrl(data.path,data.token,file,{contentType:file.type});
   if(uploaded.error)throw uploaded.error;

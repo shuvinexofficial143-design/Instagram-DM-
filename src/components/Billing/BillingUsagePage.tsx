@@ -92,7 +92,7 @@ export const BillingUsagePage:React.FC=()=>{
         <div className="mb-3"><h2 className="text-base font-bold text-slate-950">Monthly usage</h2><p className="mt-0.5 text-xs text-slate-500">Your current workspace limits and consumption.</p></div>
         {usageVerified ? <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Usage icon={BarChart3} label="Standard replies" used={usage.messageUsed} limit={usage.messageLimit} bonus={usage.freeBonusMessages} note={usage.source==='server'?"Monthly automation messages":"Monthly outgoing automation messages"}/>
-          <Usage icon={Bot} label="AI Replies" used={usage.aiUsed} limit={usage.aiLimit} bonus={usage.freeBonusAi} note="Independent AI allowance"/>
+          <Usage icon={Bot} label="AI Replies" used={usage.aiUsed} limit={usage.aiLimit} unlimited={usage.aiLimit===Infinity} bonus={usage.aiAllowanceMode ? 0 : usage.freeBonusAi} note={usage.aiAllowanceMode === "once" ? "One-time AI reply allowance" : usage.aiAllowanceMode ? "Allowance set by admin" : "Independent AI allowance"}/>
           <Usage icon={Zap} label="Automations" used={usage.automationUsed} limit={autoLimit} note={usage.automationLimit===null?"Unlimited on this plan":"Workspace automations"}/>
           <Usage icon={Instagram} label="Instagram Accounts" used={Math.max(instagramAccounts.filter(({account})=>account?.status==='connected').length,instagramAccount?1:0)} limit={plan.accounts} note="Connected Instagram accounts"/>
         </div> : <div role="status" aria-label={usage.error?'Usage data is unavailable':'Loading your plan usage'} className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
