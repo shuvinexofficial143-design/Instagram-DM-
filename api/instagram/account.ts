@@ -5,6 +5,7 @@ import { authenticatedUser, authenticatedWorkspace } from '../../src/server/supa
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
 import {getAdminSupportSession,supportInstagramAccounts} from '../../src/server/adminSupport.js';
 import {adminDb} from '../../src/server/adminOperations.js';
+import {hydrateInstagramAccountAvatars} from '../../src/server/instagramAccountAvatar.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
@@ -78,7 +79,8 @@ export default async function handler(req: any, res: any) {
     if (req.headers?.authorization && !owner) return res.status(401).json({ success:false,error:'Sign in again to manage Instagram accounts.' });
     const support=owner?await getAdminSupportSession(req,owner):null;
     if(support && owner){
-      const accounts=await supportInstagramAccounts(support.ownerId);
+      const rawAccounts=await supportInstagramAccounts(support.ownerId);
+      const accounts=req.method==='GET' ? await hydrateInstagramAccountAvatars(rawAccounts) : rawAccounts;
       const allowed=new Set(accounts.map((a:any)=>a.workspaceId));
       const requested=String(req.headers?.['x-autoreply-workspace']||'');
       const stored=getRequestCookie(req,'autoreply_active_workspace');
@@ -114,7 +116,8 @@ export default async function handler(req: any, res: any) {
       });
       const payload = await response.json();
       if (!response.ok || !payload?.ok) return res.status(response.status).json(payload);
-      const accounts = (payload.accounts || []).filter((item:any)=>item.account?.status !== "disconnected");
+      const rawAccounts = (payload.accounts || []).filter((item:any)=>item.account?.status !== "disconnected");
+      const accounts = req.method==='GET' ? await hydrateInstagramAccountAvatars(rawAccounts) : rawAccounts;
       res.setHeader('Cache-Control','private, no-store');
       const explicit = String(req.headers?.['x-autoreply-workspace'] || '');
       const selected = (req.method === 'POST' && req.body?.account === null ? getRequestCookie(req,'autoreply_active_workspace') : explicit || getRequestCookie(req,'autoreply_active_workspace'));
@@ -153,9 +156,10 @@ export default async function handler(req: any, res: any) {
       }
 
       const payload = await callStore('load', workspaceId);
+      const photos=payload?.account ? await hydrateInstagramAccountAvatars([{workspaceId,account:payload.account}]) : [];
       return res.status(200).json({
         success: true,
-        account: payload?.account || null,
+        account: photos[0]?.account || payload?.account || null,
       });
     }
 
