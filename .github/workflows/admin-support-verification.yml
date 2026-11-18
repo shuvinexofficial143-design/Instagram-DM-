@@ -28,6 +28,8 @@ jobs:
       - name: Existing connection regression check (informational)
         continue-on-error: true
         run: bun run test:connections
+      - name: Instagram business-profile avatar caching regressions
+        run: node --import tsx --test tests/instagram-account-avatar.test.ts tests/instagram-profile-photo.test.ts
       - name: Dashboard hydration
         run: bun run test:dashboard
       - name: Production bundle
