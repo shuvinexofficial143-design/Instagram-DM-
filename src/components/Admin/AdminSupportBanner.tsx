@@ -7,7 +7,7 @@ import {ShieldCheck,LogOut} from 'lucide-react';
 export function AdminSupportBanner(){
  const {supportSession}=useApp();
  const [leaving,setLeaving]=useState(false),[error,setError]=useState('');
- if(!supportSession)return null;
+ if(!supportSession?.ownerId||!supportSession.customer)return null;
  const exit=async()=>{
    if(leaving)return;
    setLeaving(true);setError('');
