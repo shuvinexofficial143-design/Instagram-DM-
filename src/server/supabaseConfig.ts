@@ -79,9 +79,28 @@ export async function authenticatedUser(req: any): Promise<{ id: string; email?:
 }
 
 /** Validate the selected Instagram workspace against memberships using the user's RLS session. */
-export async function authenticatedWorkspace(req: any): Promise<{id:string;ownerId:string}|null> {
+export async function authenticatedWorkspace(req: any): Promise<{id:string;ownerId:string;supportMode?:boolean}|null> {
   const user = await authenticatedUser(req);
   if (!user) return null;
+  // Support access is granted only by a server-issued HttpOnly session, never
+  // by an arbitrary workspace header. Customer login and JWT stay untouched.
+  const {getAdminSupportSession,supportInstagramAccounts}=await import('./adminSupport.js');
+  const support=await getAdminSupportSession(req,user);
+  if(support){
+    const requested=String(req.headers?.['x-autoreply-workspace']||'').trim();
+    const cookies=String(req.headers?.cookie||'');
+    const match=cookies.match(/(?:^|;\s*)autoreply_active_workspace=([^;]+)/);
+    let selected=requested||support.initialWorkspaceId;
+    if(!requested&&match){try{selected=decodeURIComponent(match[1]);}catch{}}
+    const accounts=await supportInstagramAccounts(support.ownerId);
+    const allowed=new Set(accounts.map((a:{workspaceId:string})=>a.workspaceId));
+    allowed.add(support.ownerId);
+    if(!allowed.has(selected)){
+      if(requested)throw Object.assign(new Error('This Instagram account is outside the authorized support session.'),{status:403});
+      selected=allowed.has(support.initialWorkspaceId)?support.initialWorkspaceId:support.ownerId;
+    }
+    return {id:selected,ownerId:support.ownerId,supportMode:true};
+  }
   const explicit = String(req.headers?.['x-autoreply-workspace'] || '').trim();
   const raw = String(req.headers?.cookie || '').match(/(?:^|;\s*)autoreply_active_workspace=([^;]+)/)?.[1];
   let selected = explicit; try { if(!selected) selected = raw ? decodeURIComponent(raw) : ''; } catch {}
