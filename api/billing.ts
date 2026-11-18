@@ -140,7 +140,7 @@ export default async function handler(req: any, res: any) {
       });
     }
     if(action==='invoice-list'){
-      const rows=await billingDb('autoreply_billing_orders?owner_user_id=eq.'+encodeURIComponent(user.id)
+      const rows=await billingDb('autoreply_billing_orders?owner_user_id=eq.'+encodeURIComponent(scopedOwnerId)
         +'&status=eq.paid&environment=eq.production&select=*&order=paid_at.desc&limit=50');
       // Historical paid orders are issued lazily when first listed/downloaded.
       const invoices:any[]=[];
@@ -274,7 +274,7 @@ export default async function handler(req: any, res: any) {
       if (!orderIdValid(orderId))
         throw new BillingError("Invalid checkout reference.", 400);
       const rows = await billingDb(
-        `autoreply_billing_orders?order_id=eq.${encodeURIComponent(orderId)}&owner_user_id=eq.${encodeURIComponent(user.id)}&limit=1`,
+        `autoreply_billing_orders?order_id=eq.${encodeURIComponent(orderId)}&owner_user_id=eq.${encodeURIComponent(scopedOwnerId)}&limit=1`,
       );
       if (!rows?.length)
         throw new BillingError("Payment order not found.", 404);
