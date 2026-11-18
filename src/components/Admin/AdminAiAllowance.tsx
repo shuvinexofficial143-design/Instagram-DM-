@@ -49,7 +49,7 @@ export function AdminAiAllowance({workspaceId,entitlement,planEntitlement,histor
   async function apply(nextMode:Mode=mode){
     setError('');setSuccess('');
     if(numericMode(nextMode)&&!validLimit){setError('Enter a whole number from 0 to 2,147,483,647. Extra replies must be greater than zero.');return;}
-    if(expiry&&(!Number.isFinite(new Date(expiry).getTime())||new Date(expiry).getTime()<=Date.now())){
+    if(nextMode!=='plan'&&expiry&&(!Number.isFinite(new Date(expiry).getTime())||new Date(expiry).getTime()<=Date.now())){
       setError('Choose a future date and time, or leave expiry empty.');return;
     }
     if(nextMode==='custom'&&chosenValue>100000&&!window.confirm('Grant more than 100,000 AI replies per month? AI usage has a real cost.')){
@@ -83,16 +83,16 @@ export function AdminAiAllowance({workspaceId,entitlement,planEntitlement,histor
       <div><small>Customer’s plan</small><strong>{planName}</strong></div>
       <div><small>Plan AI replies/month</small><strong>{fmt(planLimit)}</strong></div>
       <div><small>Current AI limit</small><strong>{fmt(currentLimit)}</strong></div>
-      <div><small>Used this month</small><strong>{fmt(used)}</strong></div>
+      <div><small>{currentMode==='once'?'Used since grant':'Used this month'}</small><strong>{fmt(used)}</strong></div>
       <div><small>Remaining</small><strong>{fmt(remaining)}</strong></div>
     </div>
-    <p className="at-info">All linked Instagram accounts for this customer share one AI reply allowance. Monthly limits and usage reset at 00:00 UTC on the first day of each month. Existing usage is not erased when you change the limit.</p>
+    <p className="at-info">All linked Instagram accounts for this customer share one AI reply allowance. Monthly usage resets at 00:00 UTC on the first day of each month. One-time grants count usage since the grant; changing a limit never deletes usage.</p>
     {active&&currentExpiry&&<p>Current override ends: <strong>{new Date(currentExpiry).toLocaleString()}</strong></p>}
     <form className="at-ai-form" onSubmit={event=>{event.preventDefault();void apply();}}>
       <label className="at-check"><input type="checkbox" checked={mode!=='plan'} disabled={busy} onChange={event=>{setMode(event.target.checked?'custom':'plan');setError('');setSuccess('');}}/>Enable a customer-specific Admin AI limit</label>
       {mode!=='plan'&&<>
         <label>Allowance type
-          <select aria-label="AI allowance type" value={mode} disabled={busy} onChange={event=>{setMode(event.target.value as Mode);setError('');}}>
+          <select aria-label="AI allowance type" value={mode} disabled={busy} onChange={event=>{const next=event.target.value as Mode;setMode(next);if(next==='extra'&&mode!=='extra')setLimit('100');setError('');}}>
             <option value="custom">Set monthly AI replies — 500, 5,000, 10,000 or any number</option>
             <option value="extra">Give extra AI replies this month</option>
             <option value="once">One-time AI reply allowance</option>
