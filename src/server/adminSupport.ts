@@ -59,26 +59,31 @@ export async function supportOperation(req:any,res:any,user:{id:string;email?:st
  }
  if(ownerId===user.id)throw new AdminOperationError('Use your regular workspace for your own account.',400);
  const token=randomBytes(32).toString('hex'),expiresAt=new Date(Date.now()+MAX_AGE*1000).toISOString();
- await adminDb('autoreply_admin_support_sessions?on_conflict=admin_user_id','POST',{admin_user_id:user.id,customer_owner_id:ownerId,initial_workspace_id:workspaceId,token_hash:hash(token),expires_at:expiresAt});
+ await adminDb('autoreply_admin_support_sessions?admin_user_id=eq.'+esc(user.id),'DELETE');
+ await adminDb('autoreply_admin_support_sessions','POST',{admin_user_id:user.id,customer_owner_id:ownerId,initial_workspace_id:workspaceId,token_hash:hash(token),expires_at:expiresAt});
  await adminDb('autoreply_admin_audit_logs','POST',{admin_user_id:user.id,admin_email:user.email,action:'support_login',entity_type:'customer_workspace',entity_id:workspaceId,after_data:{owner_user_id:ownerId}});
  res.setHeader('Set-Cookie',[cookieFor(token,MAX_AGE),'autoreply_active_workspace='+esc(workspaceId)+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age='+MAX_AGE]);
  return res.status(200).json({ok:true,active:true,ownerId,initialWorkspaceId:workspaceId,expiresAt,customer:await customerProfile(ownerId)});
 }
 export async function supportInstagramAccounts(ownerId:string){
  const members=await adminDb('autoreply_instagram_memberships?select=workspace_id,ig_user_id,profile,connection_archived&owner_user_id=eq.'+esc(ownerId)+'&connection_archived=eq.false&order=created_at.asc');
- return (members||[]).map((m:any)=>({
-   workspaceId:m.workspace_id,
+ const ids=(members||[]).map((m:any)=>m.workspace_id);
+ const tokens=ids.length?await adminDb('autoreply_instagram_tokens?select=user_id,account&user_id=in.('+ids.map(esc).join(',')+')'):[];
+ return (members||[]).flatMap((m:any)=>{
+   const token=tokens.find((t:any)=>t.user_id===m.workspace_id)?.account;
+   if(!token?.access_token)return [];
+   return [{workspaceId:m.workspace_id,
    account:{
-     id:m.ig_user_id||m.profile?.id||'',
-     ig_user_id:m.ig_user_id||m.profile?.ig_user_id||'',
-     username:String(m.profile?.username||''),
-     profile_pic_url:String(m.profile?.profile_pic_url||''),
+     id:token.id||m.ig_user_id||m.profile?.id||'',
+     ig_user_id:token.ig_user_id||m.ig_user_id||m.profile?.ig_user_id||'',
+     username:String(token.username||m.profile?.username||''),
+     profile_pic_url:String(token.profile_pic_url||m.profile?.profile_pic_url||''),
      account_type:m.profile?.account_type||'BUSINESS',
-     status:m.profile?.status==='disconnected'?'disconnected':(m.ig_user_id?'connected':'disconnected'),
+     status:token.status||'connected',
      connected_at:m.profile?.connected_at||null,
      followers_count:m.profile?.followers_count||0,
      following_count:m.profile?.following_count||0,
      media_count:m.profile?.media_count||0,
-   }
- }));
+   }}];
+ });
 }
