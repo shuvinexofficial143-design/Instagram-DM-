@@ -122,16 +122,38 @@ export async function runAdminOperation(req:any,user:{id:string;email?:string}){
  if(action==='admin-ai-allowance'){
   await workspaceExists(workspace);
   const {mode,limit,expiresAt}=b;
-  if(!['plan','custom','once','extra','unlimited','off'].includes(mode) || (['custom','once','extra'].includes(mode) && (!Number.isSafeInteger(limit)||limit<0||limit>2147483647)))throw new AdminOperationError('Choose a valid allowance.');
-  if(expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt)<=Date.now()))throw new AdminOperationError('Choose a future expiry.');
-  return adminDb('rpc/autoreply_set_ai_allowance','POST',{p_workspace:workspace,p_actor:user.id,p_mode:mode,p_limit:['custom','once','extra'].includes(mode)?limit:null,p_expires:expiresAt||null});
+  const needsAmount=['custom','once','extra'].includes(mode);
+  if(!['plan','custom','once','extra','unlimited','off'].includes(mode)
+     || (needsAmount && (!Number.isSafeInteger(limit)||limit<0||limit>2147483647))
+     || (mode==='extra'&&limit<1))throw new AdminOperationError('Enter a valid AI reply limit.');
+  if(mode!=='plan'&&expiresAt&&(!Number.isFinite(Date.parse(expiresAt))||Date.parse(expiresAt)<=Date.now()))
+    throw new AdminOperationError('Choose a future expiry.');
+  const before=await adminDb('rpc/autoreply_billing_entitlement','POST',{p_workspace_id:workspace});
+  const result=await adminDb('rpc/autoreply_set_ai_allowance','POST',{
+    p_workspace:workspace,p_actor:user.id,p_mode:mode,
+    p_limit:needsAmount?limit:null,p_expires:mode==='plan'?null:expiresAt||null
+  });
+  if(!result?.ok)throw new AdminOperationError('The AI allowance change was not confirmed.',502);
+  const entitlement=await adminDb('rpc/autoreply_billing_entitlement','POST',{p_workspace_id:workspace});
+  if(mode==='custom'&&Number(entitlement?.aiLimit)!==limit)
+    throw new AdminOperationError('The saved limit differs from the requested amount. Refresh before making another change.',409);
+  // Auditable customer-specific administrator grant; no payment or plan rows are edited.
+  try{
+    await adminDb('autoreply_admin_audit_logs','POST',{
+      admin_user_id:user.id,admin_email:user.email||'Administrator',
+      action:'admin_ai_allowance_'+mode,entity_type:'customer_ai_allowance',
+      entity_id:workspace,before_data:{mode:before?.aiAllowanceMode||'plan',limit:before?.aiLimit??null},
+      after_data:{mode:entitlement?.aiAllowanceMode||'plan',limit:entitlement?.aiLimit??null,expiresAt:entitlement?.aiAllowanceExpiresAt||null}
+    });
+  }catch(error){console.error('[ADMIN_AI_ALLOWANCE_AUDIT_FAILED]',error);}
+  return {ok:true,entitlement};
  }
  if(action==='admin-workspace'){
   const membership=await workspaceExists(workspace);
-  const [documents,versions,entitlement]=await Promise.all([adminDb('autoreply_documents?select=id,collection,data&user_id=eq.'+enc(workspace)+'&collection=in.(automations,catalogs,catalog_products)&limit=1000'),adminDb('autoreply_admin_automation_versions?workspace_id=eq.'+enc(workspace)+'&order=created_at.desc&limit=100'),adminDb('rpc/autoreply_billing_entitlement','POST',{p_workspace_id:workspace})]);
+  const [documents,versions,entitlement,planEntitlement]=await Promise.all([adminDb('autoreply_documents?select=id,collection,data&user_id=eq.'+enc(workspace)+'&collection=in.(automations,catalogs,catalog_products)&limit=1000'),adminDb('autoreply_admin_automation_versions?workspace_id=eq.'+enc(workspace)+'&order=created_at.desc&limit=100'),adminDb('rpc/autoreply_billing_entitlement','POST',{p_workspace_id:workspace}),adminDb('rpc/autoreply_plan_entitlement','POST',{p_workspace_id:workspace})]);
   const owner=await adminDb('rpc/autoreply_usage_owner','POST',{p_workspace_id:workspace});
   const [inbox,activity,allowances]=await Promise.all([adminDb('autoreply_documents?select=id,data&user_id=eq.'+enc(workspace)+'&collection=eq.inbox_messages&order=created_at.desc,id.desc&limit=50'),adminDb('autoreply_admin_audit_logs?select=id,action,created_at,after_data&entity_type=eq.support_workspace&entity_id=eq.'+enc(workspace)+'&order=created_at.desc&limit=50'),adminDb('autoreply_ai_allowance_history?select=id,mode,reply_limit,expires_at,created_at&owner_id=eq.'+enc(owner)+'&order=id.desc&limit=50')]);
-  return {ok:true,membership,products:documents.filter((d:any)=>d.collection==='catalog_products').map((d:any)=>({...d.data,id:d.id})),messages:inbox.map((d:any)=>({...d.data,id:d.id})),activity,allowances,automations:documents.filter((d:any)=>d.collection==='automations').map((d:any)=>({...d.data,id:d.id})),catalogs:documents.filter((d:any)=>d.collection==='catalogs').map((d:any)=>({...d.data,id:d.id})),versions,entitlement};
+  return {ok:true,membership,products:documents.filter((d:any)=>d.collection==='catalog_products').map((d:any)=>({...d.data,id:d.id})),messages:inbox.map((d:any)=>({...d.data,id:d.id})),activity,allowances,automations:documents.filter((d:any)=>d.collection==='automations').map((d:any)=>({...d.data,id:d.id})),catalogs:documents.filter((d:any)=>d.collection==='catalogs').map((d:any)=>({...d.data,id:d.id})),versions,entitlement,planEntitlement};
  }
  if(action.startsWith('admin-automation-')){
   await workspaceExists(workspace);const operation=action.slice('admin-automation-'.length);let automation=b.automation;
