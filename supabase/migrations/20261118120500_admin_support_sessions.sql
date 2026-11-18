@@ -76,3 +76,15 @@ revoke all on function public.autoreply_audit_support_document_change() from pub
 drop trigger if exists autoreply_support_document_audit on public.autoreply_documents;
 create trigger autoreply_support_document_audit after insert or update or delete
 on public.autoreply_documents for each row execute function public.autoreply_audit_support_document_change();
+
+-- Inbox paging, unread counts, analytics and thread-control RPCs use this
+-- shared predicate in addition to ordinary row-level security.
+create or replace function public.autoreply_memory_can_access(p_workspace text)
+returns boolean language sql stable set search_path = '' as $$
+  select (select auth.uid()) is not null and (
+    p_workspace = (select auth.uid())::text
+    or exists (select 1 from public.autoreply_instagram_memberships m
+                where m.workspace_id=p_workspace and m.owner_user_id=(select auth.uid())::text)
+    or public.autoreply_support_access(p_workspace)
+  );
+$$;
