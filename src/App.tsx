@@ -5,6 +5,7 @@ import { publicSupportPage } from './lib/navigation';
 import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
+import { AdminSupportBanner } from './components/Admin/AdminSupportBanner';
 import { PlanBanner } from './components/Common/PlanBanner';
 import { PlanRenewModal } from './components/Common/PlanRenewModal';
 import { ConnectChannelModal } from './components/Common/ConnectChannelModal';
@@ -173,6 +174,7 @@ const AppShell: React.FC = () => {
         <div className="flex min-h-[100dvh] w-full overflow-x-clip bg-[#F7FAFF] font-sans text-slate-900 md:h-[100dvh] md:overflow-hidden">
           <div className="hidden shrink-0 md:block"><Sidebar /></div>
           <div className="flex min-w-0 flex-1 flex-col md:h-[100dvh] md:min-h-0">
+            <AdminSupportBanner />
             <Header />
             <MainContent />
           </div>

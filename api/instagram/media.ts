@@ -2,6 +2,7 @@ import { typedFetch as httpFetch } from '../../src/server/typedFetch.js';
 import { guestStoreHeaders } from '../../src/server/guestStoreAuth.js';
 import { authenticatedWorkspace } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
+import {adminDb} from '../../src/server/adminOperations.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
@@ -53,6 +54,33 @@ export default async function handler(req: any, res: any) {
 
     const requestedKind = String(req.query?.kind || 'comment');
     const kind = requestedKind === 'story' ? 'story' : 'comment';
+
+    const verified=await authenticatedWorkspace(req);
+    if(verified?.supportMode){
+      const rows=await adminDb('autoreply_instagram_tokens?select=account&user_id=eq.'+encodeURIComponent(workspaceId)+'&limit=1');
+      const account=rows?.[0]?.account;
+      const token=String(account?.access_token||'');
+      if(!token)return res.status(409).json({ok:false,error:'Customer Instagram account is not connected.'});
+      const params=new URLSearchParams({fields:kind==='story'
+        ?'id,media_type,media_url,thumbnail_url,permalink,timestamp'
+        :'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp',limit:'50'});
+      const endpoint=kind==='story'?'stories':'media';
+      const igId=String(account?.ig_user_id||'me');
+      const media=await fetchWithTimeout('https://graph.instagram.com/v25.0/'+encodeURIComponent(igId)+'/'+endpoint+'?'+params,{
+        headers:{Authorization:'Bearer '+token}
+      });
+      const result=await media.json().catch(()=>({}));
+      if(!media.ok)return res.status(media.status).json({ok:false,error:'Instagram media could not be loaded.'});
+      const items=(Array.isArray(result?.data)?result.data:[]).map((item:any)=>{
+        const rawType=String(item.media_type||'').toUpperCase(),prod=String(item.media_product_type||'').toUpperCase(),permalink=String(item.permalink||'');
+        const contentType=kind==='story'?'STORY':prod==='REELS'||permalink.includes('/reel/')?'REEL':'POST';
+        return {id:String(item.id||''),media_type:rawType,media_product_type:prod,
+          content_type:contentType,caption:String(item.caption||''),media_url:String(item.media_url||''),
+          thumbnail_url:String(item.thumbnail_url||item.media_url||''),permalink,timestamp:String(item.timestamp||'')};
+      }).filter((item:any)=>item.id);
+      res.setHeader('Cache-Control','private, no-store');
+      return res.status(200).json({ok:true,kind,username:String(account.username||''),items});
+    }
 
     const response = await fetchWithTimeout(
       `${SUPABASE_URL}/functions/v1/instagram-account-store`,

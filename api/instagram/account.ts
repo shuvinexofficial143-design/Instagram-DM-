@@ -3,6 +3,8 @@ import { guestStoreHeaders } from '../../src/server/guestStoreAuth.js';
 import manualDmHandler from '../../src/server/manualDm.js';
 import { authenticatedUser, authenticatedWorkspace } from '../../src/server/supabaseConfig.js';
 import { SUPABASE_URL } from '../../src/server/supabaseConfig.js';
+import {getAdminSupportSession,supportInstagramAccounts} from '../../src/server/adminSupport.js';
+import {adminDb} from '../../src/server/adminOperations.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
@@ -74,6 +76,37 @@ export default async function handler(req: any, res: any) {
   try {
     const owner = await authenticatedUser(req);
     if (req.headers?.authorization && !owner) return res.status(401).json({ success:false,error:'Sign in again to manage Instagram accounts.' });
+    const support=owner?await getAdminSupportSession(req,owner):null;
+    if(support && owner){
+      const accounts=await supportInstagramAccounts(support.ownerId);
+      const allowed=new Set(accounts.map((a:any)=>a.workspaceId));
+      const requested=String(req.headers?.['x-autoreply-workspace']||'');
+      const stored=getRequestCookie(req,'autoreply_active_workspace');
+      const selected=allowed.has(requested)?requested:allowed.has(stored)?stored:allowed.has(support.initialWorkspaceId)?support.initialWorkspaceId:accounts[0]?.workspaceId||support.ownerId;
+      if(req.method==='POST' && req.body?.workspaceId){
+        const target=String(req.body.workspaceId);
+        if(!allowed.has(target))return res.status(403).json({ok:false,error:'This Instagram account is not part of this customer workspace.'});
+        res.setHeader('Set-Cookie','autoreply_active_workspace='+encodeURIComponent(target)+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=7200');
+        return res.status(200).json({ok:true,activeWorkspaceId:target,accounts});
+      }
+      if(req.method==='POST' && req.body?.account===null){
+        const target=requested||selected;
+        if(!allowed.has(target))return res.status(403).json({ok:false,error:'Choose a connected customer Instagram account first.'});
+        // Official disconnect RPC archives only the connection and credentials.
+        // Customer DMs, automations, contacts and catalogs are preserved.
+        const result=await adminDb('rpc/autoreply_disconnect_instagram_connection','POST',{p_workspace_id:target});
+        if(!result?.ok)return res.status(502).json({ok:false,error:'Instagram disconnect was not confirmed.'});
+        await adminDb('autoreply_admin_audit_logs','POST',{admin_user_id:owner.id,admin_email:owner.email,action:'support_disconnect_instagram',entity_type:'customer_workspace',entity_id:target});
+        const remaining=await supportInstagramAccounts(support.ownerId);
+        const next=remaining[0]?.workspaceId||support.ownerId;
+        res.setHeader('Set-Cookie','autoreply_active_workspace='+encodeURIComponent(next)+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=7200');
+        return res.status(200).json({ok:true,success:true,account:null,accounts:remaining,activeWorkspaceId:next});
+      }
+      if(req.method!=='GET')return res.status(405).json({ok:false,error:'Method Not Allowed'});
+      res.setHeader('Cache-Control','private, no-store');
+      return res.status(200).json({ok:true,success:true,accounts,activeWorkspaceId:selected,
+        account:accounts.find((a:any)=>a.workspaceId===selected)?.account||null});
+    }
     if (owner) {
       const response = await fetchWithTimeout(`${SUPABASE_URL}/functions/v1/instagram-account-store`, {
         method:'POST', headers:{'Content-Type':'application/json',Authorization:String(req.headers.authorization)},

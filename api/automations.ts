@@ -1,7 +1,9 @@
 import {businessPrompt} from '../supabase/functions/instagram-live-webhook/openaiConfig.js';
 import { typedFetch as httpFetch } from '../src/server/typedFetch.js';
 import { guestStoreHeaders } from '../src/server/guestStoreAuth.js';
-import { SUPABASE_URL, authenticatedWorkspace, UpstreamError } from '../src/server/supabaseConfig.js';
+import { SUPABASE_URL, authenticatedWorkspace, UpstreamError, authenticatedUser } from '../src/server/supabaseConfig.js';
+import {getAdminSupportSession} from '../src/server/adminSupport.js';
+import {runAdminOperation} from '../src/server/adminOperations.js';
 
 const GUEST_COOKIE = 'autoreply_guest_workspace';
 
@@ -57,6 +59,38 @@ export default async function handler(req: any, res: any) {
         ok: false,
         error: 'Your workspace session is unavailable. Sign in again and retry.',
       });
+    }
+
+    // The real customer's Automation page keeps its normal API. Support writes
+    // use the existing audited administrator RPC, never customer credentials.
+    const support=await getAdminSupportSession(req);
+    if(support){
+      const actor=await authenticatedUser(req);
+      if(!actor)return res.status(401).json({ok:false,error:'Admin sign-in required.'});
+      const operate=(action:string,body:any={})=>runAdminOperation({
+        ...req,query:{action,workspaceId},body:{workspaceId,...body}
+      },actor);
+      if(req.method==='GET'){
+        const data=await operate('admin-workspace');
+        return res.status(200).json({ok:true,automations:data.automations||[]});
+      }
+      if(req.method==='POST'){
+        const automation=req.body?.automation;
+        if(!automation || JSON.stringify(automation).length>100000)return res.status(400).json({ok:false,error:'Invalid automation.'});
+        await operate('admin-automation-save',{automation,overrideLimit:false});
+        return res.status(200).json({ok:true,automation});
+      }
+      if(req.method==='PATCH'){
+        const automationId=String(req.body?.automationId||''),status=String(req.body?.status||'');
+        await operate('admin-automation-status',{automationId,status});
+        return res.status(200).json({ok:true,automationId,status});
+      }
+      if(req.method==='DELETE'){
+        const automationId=String(req.query?.id||req.body?.automationId||'');
+        await operate('admin-automation-delete',{automationId});
+        return res.status(200).json({ok:true,automationId});
+      }
+      return res.status(405).json({ok:false,error:'Method Not Allowed'});
     }
 
     if (req.method === 'GET') {
